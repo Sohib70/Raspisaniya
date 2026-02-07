@@ -1,0 +1,20 @@
+{% extends 'raspisaniya/base.html' %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h2 class="mb-0">📘 Fanlar ro‘yxati</h2>
+    </div>
+    <div class="card-body">
+        {% if subjects %}
+        <ul class="list-group">
+            {% for subject in subjects %}
+                <li class="list-group-item">{{ subject.name }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+            <div class="alert alert-info">Hozircha fan yo‘q.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

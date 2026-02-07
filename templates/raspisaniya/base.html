@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Raspisaniya</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding-top: 70px;
+            background-color: #f8f9fa;
+        }
+        .navbar-brand { font-weight: bold; }
+        .message-success { color: green; }
+        .message-error { color: red; }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+    <div class="container">
+        <a class="navbar-brand" href="#">📘 Raspisaniya</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item"><a class="nav-link" href="{% url 'lesson_list' %}">📋 Darslar</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'lesson_create' %}">➕ Dars</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'teacher_create' %}">👨‍🏫 O‘qituvchi</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'student_create' %}">🎓 O‘quvchi</a></li>
+                <li class="nav-item"><a class="nav-link" href="{% url 'subject_create' %}">📘 Fan</a></li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<!-- Main container -->
+<div class="container mt-4">
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert
+                {% if message.tags == 'success' %}alert-success
+                {% elif message.tags == 'error' %}alert-danger
+                {% else %}alert-info{% endif %}" role="alert">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Page content -->
+    {% block content %}
+    {% endblock %}
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>

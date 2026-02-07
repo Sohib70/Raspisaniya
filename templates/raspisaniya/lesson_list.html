@@ -1,0 +1,45 @@
+{% extends 'raspisaniya/base.html' %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h2 class="mb-0">📋 Darslar ro‘yxati</h2>
+    </div>
+    <div class="card-body">
+        {% if lessons %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fan</th>
+                        <th>O‘qituvchilar</th>
+                        <th>O‘quvchilar soni</th>
+                        <th>Boshlanish vaqti</th>
+                        <th>Oxirgi vaqti</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lesson in lessons %}
+                    <tr>
+                        <td>{{ lesson.subject }}</td>
+                        <td>
+                            {% for t in lesson.teachers.all %}
+                                {{ t }}<br>
+                            {% endfor %}
+                        </td>
+                        <td>{{ lesson.students.count }}</td>
+                        <td>{{ lesson.start_time|date:"d-m-Y H:i" }}</td>
+                        <td>{{ lesson.end_time|date:"d-m-Y H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="alert alert-info">
+                Hozircha dars yo‘q.
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

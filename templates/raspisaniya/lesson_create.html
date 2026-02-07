@@ -1,0 +1,98 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+{% load widget_tweaks %}
+<div class="container mt-5">
+    <h2>➕ Dars qo‘shish</h2>
+
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        <!-- Fan -->
+        <div class="mb-3">
+            <label for="id_subject" class="form-label">Fan</label>
+            {{ form.subject|add_class:"form-select" }}
+        </div>
+
+        <!-- O'qituvchi tugmasi -->
+        <div class="mb-3" id="teachers_button_div" style="display:block;">
+            <button type="button" class="btn btn-secondary" id="show_teachers">O‘qituvchi tanlash</button>
+        </div>
+
+        <!-- O'qituvchilar select -->
+        <div class="mb-3" id="teachers_div" style="display:none;">
+            <label for="id_teachers" class="form-label">O‘qituvchi biriktirish (maks 2 ta)</label>
+            {{ form.teachers|add_class:"form-select" }}
+            <div class="form-text">Faqat 2 ta o‘qituvchi tanlashingiz mumkin</div>
+        </div>
+
+        <!-- O'quvchilar tugmasi -->
+        <div class="mb-3" id="students_button_div" style="display:none;">
+            <button type="button" class="btn btn-secondary" id="show_students">O‘quvchilar tanlash</button>
+        </div>
+
+        <!-- O'quvchilar select -->
+        <div class="mb-3" id="students_div" style="display:none;">
+            <label for="id_students" class="form-label">O‘quvchilar biriktirish</label>
+            {{ form.students|add_class:"form-select" }}
+        </div>
+
+        <!-- Boshlanish vaqti -->
+        <div class="mb-3">
+            <label for="id_start_time" class="form-label">Boshlanish vaqti</label>
+            {{ form.start_time|add_class:"form-control" }}
+        </div>
+
+        <!-- Muddati -->
+        <div class="mb-3">
+            <label for="id_duration_minutes" class="form-label">Muddati (minut)</label>
+            {{ form.duration_minutes|add_class:"form-control" }}
+        </div>
+
+        <button type="submit" class="btn btn-primary">Saqlash</button>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const showTeachersBtn = document.getElementById('show_teachers');
+    const teachersDiv = document.getElementById('teachers_div');
+    const showStudentsBtnDiv = document.getElementById('students_button_div');
+    const showStudentsBtn = document.getElementById('show_students');
+    const studentsDiv = document.getElementById('students_div');
+    const teacherSelect = document.getElementById('id_teachers');
+    const maxTeachers = 2;
+
+    // O'qituvchi tugmasi bosilganda
+    showTeachersBtn.addEventListener('click', () => {
+        teachersDiv.style.display = 'block';
+        showStudentsBtnDiv.style.display = 'block'; // O‘quvchilar tugmasi endi chiqadi
+        showTeachersBtn.style.display = 'none'; // O‘qituvchi tugmasi yo‘qoladi
+    });
+
+    // O'quvchilar tugmasi bosilganda
+    showStudentsBtn.addEventListener('click', () => {
+        studentsDiv.style.display = 'block';
+        showStudentsBtnDiv.style.display = 'none'; // Tugma yo‘qoladi
+    });
+
+    // O'qituvchilarni 2 ta bilan cheklash
+    if (teacherSelect) {
+        teacherSelect.addEventListener('change', () => {
+            const selected = [...teacherSelect.options].filter(o => o.selected);
+            if (selected.length >= maxTeachers) {
+                [...teacherSelect.options].forEach(o => {
+                    if (!o.selected) o.disabled = true;
+                });
+            } else {
+                [...teacherSelect.options].forEach(o => o.disabled = false);
+            }
+        });
+    }
+});
+</script>
+
+{% endblock %}
