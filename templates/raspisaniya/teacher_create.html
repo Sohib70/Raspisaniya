@@ -1,30 +1,19 @@
 {% extends 'raspisaniya/base.html' %}
 {% load widget_tweaks %}
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-header bg-primary text-white">
-        <h2 class="mb-0">👨‍🏫 O‘qituvchi qo‘shish</h2>
-    </div>
-    <div class="card-body">
-        <form method="post">
-            {% csrf_token %}
-
-            <!-- Form fields -->
-            {% for field in form %}
-                <div class="mb-3">
-                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                    {{ field|add_class:"form-control" }}
-                    {% if field.errors %}
-                        <div class="text-danger small">
-                            {{ field.errors }}
-                        </div>
-                    {% endif %}
-                </div>
-            {% endfor %}
-
-            <button type="submit" class="btn btn-success">Saqlash</button>
-            <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Ortga</a>
-        </form>
-    </div>
-</div>
+<h2>➕ O‘qituvchi qo‘shish / tahrirlash</h2>
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+        <div class="mb-3">
+            <label class="form-label">{{ field.label }}</label>
+            {{ field|add_class:"form-control" }}
+            {% if field.errors %}
+                <div class="text-danger small">{{ field.errors }}</div>
+            {% endif %}
+        </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-success">Saqlash</button>
+    <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Ortga</a>
+</form>
 {% endblock %}

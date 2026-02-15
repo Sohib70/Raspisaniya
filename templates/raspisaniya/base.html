@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}TimeTable Flow{% endblock %}</title>
+    <title>{% block title %}Dars jadvali{% endblock %}</title>
 
     <!-- Material Icons & Fonts -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -672,11 +672,7 @@
                         <a href="{% url 'teacher_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'teacher_list' %}active{% endif %}">
                             <span class="material-icons-round">schedule</span>
                             <span>O'qituvchilar</span>
-                        </a>
-                        <a href="{% url 'teacher_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'teacher_create' %}active{% endif %}">
-                            <span class="material-icons-round">person_add</span>
-                            <span>O'qituvchi</span>
-                        </a>
+
                         <a href="{% url 'student_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'student_list' %}active{% endif %}">
                             <span class="material-icons-round">schedule</span>
                             <span>O'quvchilar</span>

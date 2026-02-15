@@ -1,48 +1,47 @@
 {% extends 'raspisaniya/base.html' %}
-
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-header bg-primary text-white">
-        <h2 class="mb-0">👨‍🎓 O‘qituvchilar ro‘yxati</h2>
-    </div>
-    <div class="card-body">
 
-        {% if teachers %}
-        <table class="table table-striped table-hover">
-            <thead class="table-dark">
-                <tr>
-                    <th>#</th>
-                    <th>Familiya</th>
-                    <th>Ism</th>
-                    <th>fanlar</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for teacher in teachers %}
-                <tr>
-                    <td>{{ forloop.counter }}</td>
-                    <td>{{ teacher.last_name }}</td>
-                    <td>{{ teacher.first_name }}</td>
+<h2 class="mb-4">👨‍🎓 O‘quvchilar ro‘yxati</h2>
 
-                    <td>
-                        {% if teacher.subjects.all %}
-                            {% for subject in teacher.subjects.all %}
-                                <span class="badge bg-danger">{{ subject.name }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span class="text-muted">Yo‘q</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="alert alert-info text-center">
-            Hozircha o‘qituvchilar mavjud emas.
-        </div>
-        {% endif %}
+<a href="{% url 'student_create' %}" class="btn btn-success mb-3">➕ O‘qituvchi qo‘shish</a>
 
-    </div>
-</div>
+{% if teachers %}
+<table class="table table-striped table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>#</th>
+            <th>Familiya</th>
+            <th>Ism</th>
+            <th>Fanlar</th>
+
+            <th>Amallar</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for teacher in teachers %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ teacher.last_name }}</td>
+            <td>{{ teacher.first_name }}</td>
+            <td>
+                {% if teacher.subjects.all %}
+                    {% for subject in teacher.subjects.all %}
+                        <span class="badge bg-info">{{ subject.name }}</span>
+                    {% endfor %}
+                {% else %}
+                    <span class="text-muted">Yo‘qq</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{% url 'teacher_update' teacher.pk %}" class="btn btn-sm btn-warning">✏️</a>
+                <a href="{% url 'teacher_delete' teacher.pk %}" class="btn btn-sm btn-danger">🗑️</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">Hozircha o‘qituvchilar mavjud emas.</div>
+{% endif %}
+
 {% endblock %}

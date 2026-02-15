@@ -1,6 +1,13 @@
-<form method="post">
-    {% csrf_token %}
-    <p>Haqiqatan ham bu darsni o‘chirmoqchimisiz?</p>
-    <button type="submit" class="btn btn-danger">Ha, o‘chirilsin</button>
-    <a href="{% url 'lesson_list' %}" class="btn btn-secondary">Ortga</a>
-</form>
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h4>Haqiqatan ham <strong>{{ teacher.name }}</strong> ni o‘chirmoqchimisiz?</h4>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Ha, o‘chirilsin</button>
+            <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Ortga</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

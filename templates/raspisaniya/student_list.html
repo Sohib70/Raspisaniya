@@ -12,7 +12,6 @@
             <th>#</th>
             <th>Familiya</th>
             <th>Ism</th>
-            <th>Fanlar</th>
             <th>Qarzdor fanlar</th>
             <th>Amallar</th>
         </tr>
@@ -23,15 +22,7 @@
             <td>{{ forloop.counter }}</td>
             <td>{{ student.last_name }}</td>
             <td>{{ student.first_name }}</td>
-            <td>
-                {% if student.subject_set.all %}
-                    {% for subject in student.subject_set.all %}
-                        <span class="badge bg-info">{{ subject.name }}</span>
-                    {% endfor %}
-                {% else %}
-                    <span class="text-muted">Yo‘q</span>
-                {% endif %}
-            </td>
+
             <td>
                 {% if student.debts.all %}
                     {% for debt in student.debts.all %}
