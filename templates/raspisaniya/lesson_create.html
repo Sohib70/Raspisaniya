@@ -2,49 +2,90 @@
 {% load widget_tweaks %}
 {% block content %}
 
-<h2 class="mb-4">➕ Dars qo‘shish / tahrirlash</h2>
+<div class="container mt-4">
+    <div class="card shadow-lg">
+        <div class="card-body">
+            <h2 class="mb-4 text-primary">➕ Dars qo‘shish</h2>
 
-<form method="post">
-    {% csrf_token %}
+            <form method="post">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+    <div class="alert alert-danger">
+        {% for error in form.non_field_errors %}
+            <div>{{ error }}</div>
+        {% endfor %}
+    </div>
+{% endif %}
 
-    <!-- Fan -->
-    <div class="mb-3">
-        <label class="form-label">Fan</label>
-        {{ form.subject|add_class:"form-select" }}
-    </div>
+                <!-- Fan -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Fan</label>
+                    {{ form.subject|add_class:"form-select" }}
+                </div>
 
-    <!-- O‘qituvchi toggle -->
-    <div class="mb-3">
-        <button type="button" class="btn btn-secondary" id="show_teachers">O‘qituvchi tanlash</button>
-    </div>
-    <div class="mb-3" id="teachers_div" style="display:none;">
-        <label class="form-label">O‘qituvchilar (maks 2 ta)</label>
-        {{ form.teachers|add_class:"form-select" }}
-    </div>
+                <!-- O‘qituvchi toggle -->
+                <div class="mb-3">
+                    <button type="button" class="btn btn-outline-secondary w-100" id="show_teachers">
+                        👨‍🏫 O‘qituvchi tanlash
+                    </button>
+                </div>
 
-    <!-- O‘quvchi toggle -->
-    <div class="mb-3" id="students_button_div" style="display:none;">
-        <button type="button" class="btn btn-secondary" id="show_students">O‘quvchilar tanlash</button>
-    </div>
-    <div class="mb-3" id="students_div" style="display:none;">
-        <label class="form-label">O‘quvchilar</label>
-        {{ form.students|add_class:"form-select" }}
-    </div>
+                <!-- O‘qituvchilar -->
+                <div class="mb-3 border rounded p-3 bg-light" id="teachers_div" style="display:none;">
+                    <label class="form-label fw-bold">
+                        O‘qituvchilar (maks 2 ta)
+                    </label>
 
-    <!-- Boshlanish vaqti -->
-    <div class="mb-3">
-        <label class="form-label">Boshlanish vaqti</label>
-        {{ form.start_time|add_class:"form-control" }}
-    </div>
+                    {% for checkbox in form.teachers %}
+                        <div class="form-check">
+                            {{ checkbox.tag }}
+                            <label class="form-check-label">
+                                {{ checkbox.choice_label }}
+                            </label>
+                        </div>
+                    {% endfor %}
+                </div>
 
-    <!-- Muddati -->
-    <div class="mb-3">
-        <label class="form-label">Muddati (minut)</label>
-        {{ form.duration_minutes|add_class:"form-control" }}
-    </div>
+                <!-- O‘quvchi toggle -->
+                <div class="mb-3" id="students_button_div" style="display:none;">
+                    <button type="button" class="btn btn-outline-secondary w-100" id="show_students">
+                        👨‍🎓 O‘quvchilar tanlash
+                    </button>
+                </div>
 
-    <button type="submit" class="btn btn-primary">Saqlash</button>
-</form>
+                <!-- O‘quvchilar -->
+                <div class="mb-3 border rounded p-3 bg-light" id="students_div" style="display:none;">
+                    <label class="form-label fw-bold">O‘quvchilar</label>
+
+                    {% for checkbox in form.students %}
+                        <div class="form-check">
+                            {{ checkbox.tag }}
+                            <label class="form-check-label">
+                                {{ checkbox.choice_label }}
+                            </label>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Boshlanish vaqti -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Boshlanish vaqti</label>
+                    {{ form.start_time|add_class:"form-control" }}
+                </div>
+
+                <!-- Muddati -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Muddati (minut)</label>
+                    {{ form.duration_minutes|add_class:"form-control" }}
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100">
+                    💾 Saqlash
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
 
 <script>
     const showTeachersBtn = document.getElementById("show_teachers");
@@ -60,6 +101,29 @@
 
     showStudentsBtn.addEventListener("click", function() {
         studentsDiv.style.display = "block";
+    });
+
+    // ======== 2 TA O‘QITUVCHI CHEKLOVI ========
+
+    const teacherCheckboxes = document.querySelectorAll('#teachers_div input[type="checkbox"]');
+
+    teacherCheckboxes.forEach(cb => {
+        cb.addEventListener('change', function() {
+
+            const checked = document.querySelectorAll('#teachers_div input[type="checkbox"]:checked');
+
+            if (checked.length >= 2) {
+                teacherCheckboxes.forEach(box => {
+                    if (!box.checked) {
+                        box.disabled = true;
+                    }
+                });
+            } else {
+                teacherCheckboxes.forEach(box => {
+                    box.disabled = false;
+                });
+            }
+        });
     });
 </script>
 

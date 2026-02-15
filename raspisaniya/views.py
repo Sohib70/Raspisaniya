@@ -3,30 +3,33 @@ from django.contrib import messages
 from .forms import LessonForm, TeacherForm, StudentForm, SubjectForm
 from .models import Lesson,Student,Subject,Teacher
 from django.core.exceptions import ValidationError
+from django import forms
+
+from .models import Lesson
+
 
 def lesson_list(request):
     lessons = Lesson.objects.all().order_by('start_time')
     return render(request, 'raspisaniya/lesson_list.html', {'lessons': lessons})
 
+from django import forms
+from django.core.exceptions import ValidationError
+from .models import Lesson
+from datetime import timedelta
+
 def lesson_create(request):
     if request.method == 'POST':
         form = LessonForm(request.POST)
-        if form.is_valid():
-            lesson = form.save(commit=False)
-            lesson.save()
-            form.save_m2m()
 
-            try:
-                lesson.full_clean()
-                lesson.save()
-                messages.success(request, "Dars muvaffaqiyatli qo‘shildi")
-                return redirect('lesson_list')
-            except ValidationError as e:
-                messages.error(request, e)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Dars muvaffaqiyatli qo‘shildi")
+            return redirect('lesson_list')
     else:
         form = LessonForm()
 
     return render(request, 'raspisaniya/lesson_create.html', {'form': form})
+
 
 def lesson_update(request, pk):
     lesson = get_object_or_404(Lesson, pk=pk)

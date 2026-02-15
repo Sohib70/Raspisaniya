@@ -665,10 +665,7 @@
                             <span class="material-icons-round">schedule</span>
                             <span>Darslar</span>
                         </a>
-                        <a href="{% url 'lesson_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'lesson_create' %}active{% endif %}">
-                            <span class="material-icons-round">add_circle</span>
-                            <span>Yangi dars</span>
-                        </a>
+
                         <a href="{% url 'teacher_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'teacher_list' %}active{% endif %}">
                             <span class="material-icons-round">schedule</span>
                             <span>O'qituvchilar</span>
@@ -677,7 +674,7 @@
                             <span class="material-icons-round">schedule</span>
                             <span>O'quvchilar</span>
 
-                        <a href="{% url 'subject_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'subject_create' %}active{% endif %}">
+                        <a href="{% url 'subject_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'subject_create' %}active{% endif %}">
                             <span class="material-icons-round">library_add</span>
                             <span>Fan</span>
                         </a>

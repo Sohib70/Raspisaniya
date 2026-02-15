@@ -24,7 +24,7 @@
             <td>{{ lesson.subject.name }}</td>
             <td>
                 {% for teacher in lesson.teachers.all %}
-                    <span class="badge bg-info">{{ teacher.name }}</span>
+                    <span class="badge bg-info">{{ teacher.first_name }} {{ teacher.last_name }}</span>
                 {% empty %}<span class="text-muted">Yo‘q</span>{% endfor %}
             </td>
             <td>
