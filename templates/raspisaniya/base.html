@@ -3,65 +3,1050 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Raspisaniya</title>
-    <!-- Bootstrap CSS -->
+    <title>{% block title %}TimeTable Flow{% endblock %}</title>
+
+    <!-- Material Icons & Fonts -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 minimal -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
 
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding-top: 70px;
-            background-color: #f8f9fa;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .navbar-brand { font-weight: bold; }
-        .message-success { color: green; }
-        .message-error { color: red; }
+
+        :root {
+            /* Material Design 3 Colors - Light theme */
+            --md-primary: #5850a4;
+            --md-primary-container: #e9e4ff;
+            --md-secondary: #625b71;
+            --md-secondary-container: #e8def8;
+            --md-tertiary: #7d5260;
+            --md-tertiary-container: #ffd8e4;
+            --md-surface: #fef7ff;
+            --md-surface-variant: #e7e0ec;
+            --md-background: #fffbfe;
+            --md-error: #ba1a1a;
+            --md-error-container: #ffdad6;
+            --md-outline: #79747e;
+            --md-shadow: 0 4px 6px -2px rgba(0,0,0,0.05), 0 10px 15px -3px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] {
+            --md-primary: #d0bcff;
+            --md-primary-container: #4f378b;
+            --md-secondary: #ccc2dc;
+            --md-secondary-container: #4a4458;
+            --md-tertiary: #efb8c8;
+            --md-tertiary-container: #633b48;
+            --md-surface: #1c1b1f;
+            --md-surface-variant: #49454f;
+            --md-background: #1c1b1f;
+            --md-error: #f2b8b5;
+            --md-error-container: #8c1d18;
+            --md-outline: #938f99;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--md-background);
+            color: var(--md-surface);
+            transition: all 0.3s ease;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* Floating Bubbles Background */
+        .bubbles {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            top: 0;
+            left: 0;
+        }
+
+        .bubble {
+            position: absolute;
+            background: linear-gradient(135deg, var(--md-primary), transparent);
+            border-radius: 50%;
+            opacity: 0.1;
+            animation: float 8s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+
+        /* Material 3 Top App Bar */
+        .app-bar {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] .app-bar {
+            background: rgba(28, 27, 31, 0.8);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .app-bar.scrolled {
+            box-shadow: var(--md-shadow);
+            padding: 0.5rem 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--md-primary), var(--md-tertiary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo .material-icons-round {
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--md-primary), var(--md-tertiary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Navigation Chips - Fixed version with black text */
+        .nav-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 20px;
+            border-radius: 40px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #000000 !important;  /* Black text */
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            margin: 0 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        [data-theme="dark"] .nav-chip {
+            background: rgba(50, 50, 50, 0.9);
+            color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-chip:hover {
+            background: var(--md-primary-container);
+            border-color: var(--md-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .nav-chip.active {
+            background: var(--md-primary);
+            color: white !important;
+            border-color: var(--md-primary);
+        }
+
+        .nav-chip .material-icons-round {
+            font-size: 1.2rem;
+            color: inherit;
+        }
+
+        /* Current time display */
+        .current-time {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--md-primary-container);
+            border-radius: 32px;
+            color: var(--md-primary);
+            font-weight: 600;
+            border: 1px solid var(--md-outline);
+        }
+
+        .current-time .material-icons-round {
+            font-size: 1.2rem;
+        }
+
+        /* Main Container - Material 3 Surface */
+        .md-surface {
+            background: var(--md-surface);
+            border-radius: 28px;
+            box-shadow: var(--md-shadow);
+            padding: 2rem;
+            margin-top: 100px;
+            margin-bottom: 2rem;
+            border: 1px solid var(--md-outline);
+            transition: all 0.3s ease;
+            animation: surfaceAppear 0.6s ease;
+        }
+
+        @keyframes surfaceAppear {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Material 3 Cards */
+        .md-card {
+            background: var(--md-surface);
+            border-radius: 24px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 6px 2px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid var(--md-outline);
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .md-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--md-primary), var(--md-tertiary));
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .md-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 8px 12px 6px rgba(0,0,0,0.15), 0 4px 4px rgba(0,0,0,0.3);
+        }
+
+        .md-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        /* Material 3 Buttons */
+        .md-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 24px;
+            border-radius: 32px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+            color: var(--md-primary);
+            border: 1px solid var(--md-outline);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .md-button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 5px;
+            height: 5px;
+            background: rgba(255,255,255,0.5);
+            opacity: 0;
+            border-radius: 100%;
+            transform: scale(1, 1) translate(-50%);
+            transform-origin: 50% 50%;
+        }
+
+        .md-button:active::after {
+            animation: ripple 0.6s ease-out;
+        }
+
+        @keyframes ripple {
+            0% {
+                transform: scale(0, 0);
+                opacity: 0.5;
+            }
+            20% {
+                transform: scale(25, 25);
+                opacity: 0.3;
+            }
+            100% {
+                opacity: 0;
+                transform: scale(40, 40);
+            }
+        }
+
+        .md-button-filled {
+            background: var(--md-primary);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 8px 3px rgba(103, 80, 164, 0.15);
+        }
+
+        .md-button-filled:hover {
+            background: var(--md-primary);
+            filter: brightness(1.1);
+            box-shadow: 0 6px 12px 4px rgba(103, 80, 164, 0.25);
+        }
+
+        .md-button-tonal {
+            background: var(--md-secondary-container);
+            color: var(--md-secondary);
+            border: none;
+        }
+
+        .md-button-outlined {
+            border: 1px solid var(--md-outline);
+            background: transparent;
+        }
+
+        /* Material 3 Text Fields */
+        .md-text-field {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .md-text-field input,
+        .md-text-field select,
+        .md-text-field textarea {
+            width: 100%;
+            padding: 16px 16px 8px;
+            font-size: 1rem;
+            border: 1px solid var(--md-outline);
+            border-radius: 16px 16px 8px 8px;
+            background: var(--md-surface);
+            color: var(--md-surface);
+            transition: all 0.2s ease;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .md-text-field label {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--md-outline);
+            pointer-events: none;
+            transition: all 0.2s ease;
+            background: var(--md-surface);
+            padding: 0 4px;
+        }
+
+        .md-text-field input:focus,
+        .md-text-field select:focus,
+        .md-text-field textarea:focus {
+            border-color: var(--md-primary);
+            border-width: 2px;
+            outline: none;
+        }
+
+        .md-text-field input:focus ~ label,
+        .md-text-field input:not(:placeholder-shown) ~ label,
+        .md-text-field select:focus ~ label,
+        .md-text-field textarea:focus ~ label,
+        .md-text-field textarea:not(:placeholder-shown) ~ label {
+            top: 0;
+            transform: translateY(-50%) scale(0.85);
+            color: var(--md-primary);
+            background: var(--md-surface);
+        }
+
+        /* Material 3 Chips */
+        .md-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 32px;
+            background: var(--md-surface-variant);
+            color: var(--md-surface);
+            font-size: 0.9rem;
+            font-weight: 500;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .md-chip:hover {
+            background: var(--md-secondary-container);
+            border-color: var(--md-primary);
+        }
+
+        .md-chip.selected {
+            background: var(--md-primary);
+            color: white;
+        }
+
+        .md-chip .material-icons-round {
+            font-size: 1rem;
+        }
+
+        /* Material 3 Divider */
+        .md-divider {
+            height: 1px;
+            background: var(--md-outline);
+            margin: 1.5rem 0;
+            opacity: 0.2;
+        }
+
+        /* Material 3 Progress Indicator */
+        .md-progress {
+            height: 4px;
+            background: var(--md-surface-variant);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .md-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--md-primary), var(--md-tertiary));
+            border-radius: 4px;
+            animation: progressPulse 2s infinite;
+        }
+
+        @keyframes progressPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Material 3 Dialog */
+        .md-dialog {
+            background: var(--md-surface);
+            border-radius: 28px;
+            padding: 2rem;
+            max-width: 400px;
+            margin: auto;
+            box-shadow: var(--md-shadow);
+            border: 1px solid var(--md-outline);
+        }
+
+        .md-dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 1.5rem;
+        }
+
+        /* Material 3 Snackbar */
+        .md-snackbar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--md-surface-variant);
+            color: var(--md-surface);
+            padding: 14px 24px;
+            border-radius: 24px;
+            box-shadow: var(--md-shadow);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 2000;
+            animation: snackbarAppear 0.3s ease;
+            border: 1px solid var(--md-outline);
+        }
+
+        @keyframes snackbarAppear {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: var(--md-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px 3px rgba(103, 80, 164, 0.15);
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+        }
+
+        .fab:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 6px 12px 4px rgba(103, 80, 164, 0.25);
+        }
+
+        .fab .material-icons-round {
+            font-size: 1.8rem;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--md-surface);
+            border: 1px solid var(--md-outline);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            color: var(--md-primary);
+        }
+
+        .theme-toggle:hover {
+            transform: rotate(180deg);
+            background: var(--md-primary-container);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .md-surface {
+                margin-top: 80px;
+                padding: 1rem;
+                border-radius: 20px;
+            }
+
+            .fab {
+                bottom: 16px;
+                right: 16px;
+            }
+
+            .theme-toggle {
+                bottom: 16px;
+                left: 16px;
+            }
+        }
+
+        /* Table Styles */
+        .md-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+
+        .md-table th {
+            text-align: left;
+            padding: 1rem;
+            font-weight: 600;
+            color: var(--md-primary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .md-table td {
+            padding: 1rem;
+            background: var(--md-surface-variant);
+            border-radius: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .md-table tr:hover td {
+            background: var(--md-primary-container);
+            transform: scale(1.02);
+        }
+
+        /* Grid Layout */
+        .md-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        /* Typography */
+        .display-small {
+            font-size: 2.25rem;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--md-primary);
+        }
+
+        .headline-medium {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--md-surface);
+        }
+
+        .title-large {
+            font-size: 1.375rem;
+            font-weight: 600;
+            color: var(--md-surface);
+        }
+
+        .body-large {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: var(--md-outline);
+        }
+
+        /* Label Styles */
+        .md-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 16px;
+            background: var(--md-primary-container);
+            color: var(--md-primary);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Mobile menu styles */
+        .mobile-menu-toggle {
+            display: none;
+        }
+
+        @media (max-width: 992px) {
+            .desktop-menu {
+                display: none;
+            }
+
+            .mobile-menu-toggle {
+                display: block;
+            }
+        }
     </style>
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
+    <!-- Floating Bubbles Background -->
+    <div class="bubbles" id="bubbles"></div>
 
-<!-- Navbar -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
-    <div class="container">
-        <a class="navbar-brand" href="#">📘 Raspisaniya</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link" href="{% url 'lesson_list' %}">📋 Darslar</a></li>
-                <li class="nav-item"><a class="nav-link" href="{% url 'lesson_create' %}">➕ Dars</a></li>
-                <li class="nav-item"><a class="nav-link" href="{% url 'teacher_create' %}">👨‍🏫 O‘qituvchi</a></li>
-                <li class="nav-item"><a class="nav-link" href="{% url 'student_create' %}">🎓 O‘quvchi</a></li>
-                <li class="nav-item"><a class="nav-link" href="{% url 'subject_create' %}">📘 Fan</a></li>
-            </ul>
+    <!-- Top App Bar -->
+    <div class="app-bar" id="appBar">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <a href="{% url 'lesson_list' %}" class="logo text-decoration-none">
+                    <span class="material-icons-round">event_available</span>
+                    TimeTable Flow
+                </a>
+
+                <div class="d-flex gap-3 align-items-center">
+                    <!-- Desktop Menu - Now visible with black text -->
+                    <div class="d-none d-lg-flex gap-2 desktop-menu">
+                        <a href="{% url 'lesson_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'lesson_list' %}active{% endif %}">
+                            <span class="material-icons-round">schedule</span>
+                            <span>Darslar</span>
+                        </a>
+                        <a href="{% url 'lesson_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'lesson_create' %}active{% endif %}">
+                            <span class="material-icons-round">add_circle</span>
+                            <span>Yangi dars</span>
+                        </a>
+                        <a href="{% url 'teacher_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'teacher_list' %}active{% endif %}">
+                            <span class="material-icons-round">schedule</span>
+                            <span>O'qituvchilar</span>
+                        </a>
+                        <a href="{% url 'teacher_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'teacher_create' %}active{% endif %}">
+                            <span class="material-icons-round">person_add</span>
+                            <span>O'qituvchi</span>
+                        </a>
+                        <a href="{% url 'student_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'student_list' %}active{% endif %}">
+                            <span class="material-icons-round">schedule</span>
+                            <span>O'quvchilar</span>
+
+                        <a href="{% url 'subject_create' %}" class="nav-chip {% if request.resolver_match.url_name == 'subject_create' %}active{% endif %}">
+                            <span class="material-icons-round">library_add</span>
+                            <span>Fan</span>
+                        </a>
+                    </div>
+
+                    <!-- Current Time Display -->
+                    <div class="current-time" id="currentTime">
+                        <span class="material-icons-round">schedule</span>
+                        <span id="timeDisplay">13 February, 2026 14:30</span>
+                    </div>
+
+                    <!-- Mobile Menu Toggle -->
+                    <button class="md-chip mobile-menu-toggle" onclick="toggleMobileMenu()">
+                        <span class="material-icons-round">menu</span>
+                    </button>
+
+                    <button class="md-chip" onclick="window.print()">
+                        <span class="material-icons-round">print</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mobile Menu (Hidden by default) -->
+            <div id="mobileMenu" style="display: none; margin-top: 1rem;" class="mobile-menu">
+                <div class="d-flex flex-column gap-2">
+                    <a href="{% url 'lesson_list' %}" class="nav-chip w-100 justify-content-start">
+                        <span class="material-icons-round">schedule</span>
+                        <span>Darslar</span>
+                    </a>
+                    <a href="{% url 'lesson_create' %}" class="nav-chip w-100 justify-content-start">
+                        <span class="material-icons-round">add_circle</span>
+                        <span>Yangi dars</span>
+                    </a>
+                    <a href="{% url 'teacher_create' %}" class="nav-chip w-100 justify-content-start">
+                        <span class="material-icons-round">person_add</span>
+                        <span>O'qituvchi</span>
+                    </a>
+                    <a href="{% url 'student_create' %}" class="nav-chip w-100 justify-content-start">
+                        <span class="material-icons-round">person_add</span>
+                        <span>O'quvchi</span>
+                    </a>
+                    <a href="{% url 'subject_create' %}" class="nav-chip w-100 justify-content-start">
+                        <span class="material-icons-round">library_add</span>
+                        <span>Fan</span>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
-</nav>
 
-<!-- Main container -->
-<div class="container mt-4">
+    <!-- Theme Toggle -->
+    <button class="theme-toggle" id="themeToggle">
+        <span class="material-icons-round">dark_mode</span>
+    </button>
 
-    <!-- Messages -->
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert
-                {% if message.tags == 'success' %}alert-success
-                {% elif message.tags == 'error' %}alert-danger
-                {% else %}alert-info{% endif %}" role="alert">
-                {{ message }}
+    <!-- Floating Action Button -->
+    <button class="fab" onclick="showQuickAdd()">
+        <span class="material-icons-round">add</span>
+    </button>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="md-surface">
+            <!-- Page Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-small">{% block page_title %}Boshqaruv paneli{% endblock %}</h1>
+                    <p class="body-large">{% block page_subtitle %}Bugun {% now "j F, Y" %}{% endblock %}</p>
+                </div>
+                <div>
+                    {% block header_buttons %}{% endblock %}
+                </div>
             </div>
-        {% endfor %}
-    {% endif %}
 
-    <!-- Page content -->
-    {% block content %}
-    {% endblock %}
-</div>
+            <!-- Stats Cards -->
+            {% block stats %}
+            <div class="md-grid">
+                <div class="md-card">
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-primary);">event</span>
+                        <div>
+                            <div class="title-large" id="totalLessons">0</div>
+                            <div class="body-large">Jami darslar</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="md-card">
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-secondary);">group</span>
+                        <div>
+                            <div class="title-large" id="totalTeachers">0</div>
+                            <div class="body-large">O'qituvchilar</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="md-card">
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-tertiary);">school</span>
+                        <div>
+                            <div class="title-large" id="totalStudents">0</div>
+                            <div class="body-large">O'quvchilar</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endblock %}
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+            <!-- Messages -->
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="md-snackbar" style="position: relative; transform: none; left: 0; margin-bottom: 1rem;">
+                        <span class="material-icons-round">
+                            {% if message.tags == 'success' %}check_circle{% endif %}
+                            {% if message.tags == 'error' %}error{% endif %}
+                            {% if message.tags == 'info' %}info{% endif %}
+                        </span>
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
 
+            <!-- Content -->
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Quick Add Dialog (hidden by default) -->
+    <div class="md-dialog" id="quickAddDialog" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2000;">
+        <h3 class="title-large mb-3">Tez qo'shish</h3>
+        <div class="md-grid" style="grid-template-columns: repeat(2, 1fr);">
+            <a href="{% url 'lesson_create' %}" class="md-card text-decoration-none" style="padding: 1rem; text-align: center;">
+                <span class="material-icons-round" style="font-size: 2rem; color: var(--md-primary);">event</span>
+                <div class="body-large">Dars</div>
+            </a>
+            <a href="{% url 'teacher_create' %}" class="md-card text-decoration-none" style="padding: 1rem; text-align: center;">
+                <span class="material-icons-round" style="font-size: 2rem; color: var(--md-secondary);">person</span>
+                <div class="body-large">O'qituvchi</div>
+            </a>
+            <a href="{% url 'student_create' %}" class="md-card text-decoration-none" style="padding: 1rem; text-align: center;">
+                <span class="material-icons-round" style="font-size: 2rem; color: var(--md-tertiary);">school</span>
+                <div class="body-large">O'quvchi</div>
+            </a>
+            <a href="{% url 'subject_create' %}" class="md-card text-decoration-none" style="padding: 1rem; text-align: center;">
+                <span class="material-icons-round" style="font-size: 2rem; color: var(--md-primary);">menu_book</span>
+                <div class="body-large">Fan</div>
+            </a>
+        </div>
+        <div class="md-dialog-actions">
+            <button class="md-button" onclick="hideQuickAdd()">Yopish</button>
+        </div>
+    </div>
+    <div id="overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1999;" onclick="hideQuickAdd()"></div>
+
+    <script>
+        // Initialize bubbles
+        function createBubbles() {
+            const bubblesContainer = document.getElementById('bubbles');
+            for (let i = 0; i < 20; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                const size = Math.random() * 100 + 50;
+                bubble.style.width = size + 'px';
+                bubble.style.height = size + 'px';
+                bubble.style.left = Math.random() * 100 + '%';
+                bubble.style.top = Math.random() * 100 + '%';
+                bubble.style.animationDelay = Math.random() * 5 + 's';
+                bubble.style.animationDuration = Math.random() * 10 + 10 + 's';
+                bubblesContainer.appendChild(bubble);
+            }
+        }
+        createBubbles();
+
+        // Update current time
+        function updateCurrentTime() {
+            const now = new Date();
+            const options = {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            const timeString = now.toLocaleDateString('en-US', options);
+            document.getElementById('timeDisplay').textContent = timeString;
+        }
+        updateCurrentTime();
+        setInterval(updateCurrentTime, 60000); // Update every minute
+
+        // App bar scroll effect
+        window.addEventListener('scroll', function() {
+            const appBar = document.getElementById('appBar');
+            if (window.scrollY > 50) {
+                appBar.classList.add('scrolled');
+            } else {
+                appBar.classList.remove('scrolled');
+            }
+        });
+
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        themeToggle.addEventListener('click', function() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            themeToggle.innerHTML = `<span class="material-icons-round">${newTheme === 'dark' ? 'light_mode' : 'dark_mode'}</span>`;
+            localStorage.setItem('theme', newTheme);
+
+            // Animate theme change
+            gsap.from('body', {
+                opacity: 0.5,
+                duration: 0.3
+            });
+        });
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        themeToggle.innerHTML = `<span class="material-icons-round">${savedTheme === 'dark' ? 'light_mode' : 'dark_mode'}</span>`;
+
+        // GSAP Animations
+        gsap.from('.md-card', {
+            duration: 0.8,
+            scale: 0.9,
+            opacity: 0,
+            stagger: 0.1,
+            delay: 0.3,
+            ease: "elastic.out(1, 0.5)"
+        });
+
+        // Quick Add Dialog
+        function showQuickAdd() {
+            gsap.to('#quickAddDialog', {
+                duration: 0.3,
+                scale: 1,
+                opacity: 1,
+                display: 'block'
+            });
+            gsap.to('#overlay', {
+                duration: 0.3,
+                opacity: 1,
+                display: 'block'
+            });
+        }
+
+        function hideQuickAdd() {
+            gsap.to('#quickAddDialog', {
+                duration: 0.3,
+                scale: 0.8,
+                opacity: 0,
+                display: 'none'
+            });
+            gsap.to('#overlay', {
+                duration: 0.3,
+                opacity: 0,
+                display: 'none'
+            });
+        }
+
+        // Mobile menu toggle
+        function toggleMobileMenu() {
+            const mobileMenu = document.getElementById('mobileMenu');
+            if (mobileMenu.style.display === 'none') {
+                mobileMenu.style.display = 'block';
+                gsap.from(mobileMenu, {
+                    duration: 0.3,
+                    height: 0,
+                    opacity: 0,
+                    ease: "power2.out"
+                });
+            } else {
+                gsap.to(mobileMenu, {
+                    duration: 0.3,
+                    height: 0,
+                    opacity: 0,
+                    ease: "power2.in",
+                    onComplete: () => {
+                        mobileMenu.style.display = 'none';
+                        mobileMenu.style.height = 'auto';
+                        mobileMenu.style.opacity = '1';
+                    }
+                });
+            }
+        }
+
+        // Fetch stats (you'll need to implement these endpoints)
+        async function fetchStats() {
+            try {
+                const response = await fetch('/api/stats/');
+                const data = await response.json();
+                document.getElementById('totalLessons').textContent = data.lessons || 0;
+                document.getElementById('totalTeachers').textContent = data.teachers || 0;
+                document.getElementById('totalStudents').textContent = data.students || 0;
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+        fetchStats();
+
+        // Confirm delete with Material style
+        window.confirmDelete = function(event, itemName) {
+            event.preventDefault();
+            const dialog = document.createElement('div');
+            dialog.className = 'md-dialog';
+            dialog.style.position = 'fixed';
+            dialog.style.top = '50%';
+            dialog.style.left = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.zIndex = '2000';
+            dialog.innerHTML = `
+                <span class="material-icons-round" style="font-size: 3rem; color: var(--md-error);">warning</span>
+                <h3 class="title-large mt-3">O'chirishni tasdiqlang</h3>
+                <p class="body-large">Haqiqatan ham ${itemName}ni o'chirmoqchimisiz?</p>
+                <div class="md-dialog-actions">
+                    <button class="md-button" onclick="this.closest('.md-dialog').remove(); document.getElementById('overlay').remove();">Bekor qilish</button>
+                    <button class="md-button md-button-filled" style="background: var(--md-error);" onclick="window.location.href='${event.target.href}'; this.closest('.md-dialog').remove();">O'chirish</button>
+                </div>
+            `;
+            document.body.appendChild(dialog);
+
+            const overlay = document.createElement('div');
+            overlay.id = 'overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.background = 'rgba(0,0,0,0.5)';
+            overlay.style.zIndex = '1999';
+            overlay.onclick = function() {
+                dialog.remove();
+                this.remove();
+            };
+            document.body.appendChild(overlay);
+
+            gsap.from(dialog, {
+                duration: 0.3,
+                scale: 0.8,
+                opacity: 0
+            });
+        };
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Ctrl/Cmd + N for new item
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                showQuickAdd();
+            }
+            // Escape to close dialog
+            if (e.key === 'Escape') {
+                hideQuickAdd();
+            }
+        });
+
+        // Smooth scroll to top
+        window.scrollToTop = function() {
+            gsap.to(window, {
+                duration: 0.8,
+                scrollTo: { y: 0 },
+                ease: "power2.inOut"
+            });
+        };
+    </script>
+
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

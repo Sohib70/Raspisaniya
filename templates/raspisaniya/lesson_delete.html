@@ -1,0 +1,16 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h4>Haqiqatan ham bu darsni o‘chirmoqchimisiz?</h4>
+        <p><strong>{{ lesson.subject.name }}</strong> - {{ lesson.start_time }}</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Ha, o‘chirilsin</button>
+            <a href="{% url 'lesson_list' %}" class="btn btn-secondary">Ortga</a>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

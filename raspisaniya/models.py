@@ -22,15 +22,11 @@ class Student(models.Model):
 class Teacher(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-    subjects = models.ManyToManyField(Subject)
+    subjects = models.ManyToManyField(Subject,related_name='students')
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
-
-from django.db import models
-from django.core.exceptions import ValidationError
-from datetime import timedelta
 
 class Lesson(models.Model):
     subject = models.ForeignKey('Subject', on_delete=models.CASCADE)
@@ -43,16 +39,12 @@ class Lesson(models.Model):
         return self.start_time + timedelta(minutes=self.duration_minutes)
 
     def clean(self):
-        # O‘qituvchi va o‘quvchi tekshiruvlarini many-to-many dan keyin qilish kerak
         if not self.id:
-            # Object hali saqlanmagan, Many-to-Many mavjud emas
             return
 
-        # 2 ta o‘qituvchidan oshmasligi
         if self.teachers.count() > 2:
             raise ValidationError("Bitta darsga 2 tadan ortiq o‘qituvchi bo‘lmaydi")
 
-        # O‘qituvchi vaqt to‘qnashuvi
         for teacher in self.teachers.all():
             qs = Lesson.objects.filter(
                 teachers=teacher,
@@ -62,7 +54,6 @@ class Lesson(models.Model):
             if qs.exists():
                 raise ValidationError(f"{teacher} bu vaqtda band")
 
-        # O‘quvchi vaqt to‘qnashuvi
         for student in self.students.all():
             qs = Lesson.objects.filter(
                 students=student,
@@ -73,9 +64,7 @@ class Lesson(models.Model):
                 raise ValidationError(f"{student} bu vaqtda boshqa darsda")
 
     def save(self, *args, **kwargs):
-        # Avval objectni saqlaymiz (id hosil bo‘lishi uchun)
         super().save(*args, **kwargs)
-        # Endi Many-to-Many qo‘shilgandan keyin tekshiruvni chaqiramiz
         self.full_clean()
         super().save(*args, **kwargs)
 

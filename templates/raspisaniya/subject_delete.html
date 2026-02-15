@@ -1,0 +1,15 @@
+{% extends 'raspisaniya/base.html' %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-body">
+        <h4>Haqiqatan ham o‘chirmoqchimisiz?</h4>
+        <p>{{ student.name|default:subject.name }}</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Ha, o‘chirilsin</button>
+            <a href="{% if student %}{% url 'student_list' %}{% else %}{% url 'subject_list' %}{% endif %}" class="btn btn-secondary">Ortga</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
