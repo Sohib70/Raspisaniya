@@ -2,7 +2,12 @@
 {% load widget_tweaks %}
 {% block content %}
 
-<h2 class="mb-4">➕ O‘quvchi qo‘shish / tahrirlash</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>➕ O‘quvchi qo‘shish</h2>
+    <a href="{% url 'import_students' %}" class="btn btn-primary">
+        📂 Excel orqali import
+    </a>
+</div>
 
 <form method="post">
     {% csrf_token %}

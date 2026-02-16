@@ -1,21 +1,15 @@
 from django.shortcuts import render, redirect,get_object_or_404
 from django.contrib import messages
-from .forms import LessonForm, TeacherForm, StudentForm, SubjectForm
-from .models import Lesson,Student,Subject,Teacher
+from .forms import LessonForm, TeacherForm, StudentForm, SubjectForm,StudentImportForm
+from .models import Lesson,Student,Subject,Teacher,Group
 from django.core.exceptions import ValidationError
-from django import forms
-
 from .models import Lesson
-
+import openpyxl
 
 def lesson_list(request):
     lessons = Lesson.objects.all().order_by('start_time')
     return render(request, 'raspisaniya/lesson_list.html', {'lessons': lessons})
 
-from django import forms
-from django.core.exceptions import ValidationError
-from .models import Lesson
-from datetime import timedelta
 
 def lesson_create(request):
     if request.method == 'POST':
@@ -167,3 +161,65 @@ def subject_delete(request, pk):
         messages.success(request, "Fan muvaffaqiyatli o‘chirildi")
         return redirect('subject_list')
     return render(request, 'raspisaniya/subject_delete.html', {'subject': subject})
+
+
+
+
+def import_students(request):
+    if request.method == "POST":
+        form = StudentImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            file = request.FILES["file"]
+            workbook = openpyxl.load_workbook(file)
+            sheet = workbook.active
+
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+
+                if not row[0]:
+                    continue
+
+                # 1️⃣ Talaba (Ism Familiya)
+                full_name = str(row[0]).strip()
+                name_parts = full_name.split()
+
+                if len(name_parts) < 2:
+                    continue
+
+                first_name = name_parts[0]
+                last_name = " ".join(name_parts[1:])
+
+                # 2️⃣ Guruh
+                group_name = str(row[1]).strip() if row[1] else None
+                group = None
+
+                if group_name:
+                    group, _ = Group.objects.get_or_create(name=group_name)
+
+                student, _ = Student.objects.get_or_create(
+                    first_name=first_name,
+                    last_name=last_name,
+                    defaults={'group': group}
+                )
+
+                if group:
+                    student.group = group
+                    student.save()
+
+                # 3️⃣ Yiqilgan fanlar
+                subject_list = row[2]
+
+                if subject_list:
+                    subjects = str(subject_list).split(",")
+
+                    for subject_name in subjects:
+                        subject_name = subject_name.strip()
+                        if subject_name:
+                            subject, _ = Subject.objects.get_or_create(name=subject_name)
+                            student.debts.add(subject)
+
+            return redirect("student_list")
+
+    else:
+        form = StudentImportForm()
+
+    return render(request, "raspisaniya/import_students.html", {"form": form})

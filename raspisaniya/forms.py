@@ -12,31 +12,28 @@ class TeacherForm(forms.ModelForm):
     class Meta:
         model = Teacher
         fields = ['first_name', 'last_name', 'subjects']
+        widgets = {
+            'first_name': forms.TextInput(attrs={
+                'placeholder': 'Ismi'
+            }),
+            'last_name': forms.TextInput(attrs={
+                'placeholder': 'Familiya'
+            }),
+        }
 
 class StudentForm(forms.ModelForm):
     class Meta:
         model = Student
         fields = ['first_name', 'last_name', 'debts']
+        widgets = {
+            'first_name': forms.TextInput(attrs={
+                'placeholder': 'Ismi'
+            }),
+            'last_name': forms.TextInput(attrs={
+                'placeholder': 'Familiya'
+            }),
+        }
 
-
-# class LessonForm(forms.ModelForm):
-#     teachers = forms.ModelMultipleChoiceField(
-#         queryset=Teacher.objects.all(),
-#         widget=forms.SelectMultiple(attrs={'class': 'form-select'})
-#     )
-#     students = forms.ModelMultipleChoiceField(
-#         queryset=Student.objects.all(),
-#         widget=forms.SelectMultiple(attrs={'class': 'form-select'})
-#     )
-#
-#     class Meta:
-#         model = Lesson
-#         fields = ['subject', 'teachers', 'students', 'start_time', 'duration_minutes']
-#         widgets = {
-#             'subject': forms.Select(attrs={'class': 'form-select'}),
-#             'start_time': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
-#             'duration_minutes': forms.NumberInput(attrs={'class': 'form-control'}),
-#         }
 
 class LessonForm(forms.ModelForm):
 
@@ -105,3 +102,8 @@ class LessonForm(forms.ModelForm):
                         )
 
         return cleaned_data
+
+
+
+class StudentImportForm(forms.Form):
+    file = forms.FileField(label="Excel fayl yuklang")
