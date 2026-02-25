@@ -1,0 +1,18 @@
+<h2>Ba'zi studentlar qo‘shilmadi</h2>
+
+<table border="1" cellpadding="8">
+    <tr>
+        <th>Student</th>
+        <th>Sabab</th>
+    </tr>
+
+    {% for item in rejected_students %}
+        <tr>
+            <td>{{ item.student }}</td>
+            <td>{{ item.reason }}</td>
+        </tr>
+    {% endfor %}
+</table>
+
+<br>
+<a href="{% url 'lesson_list' %}">Ortga qaytish</a>

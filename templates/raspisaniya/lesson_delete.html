@@ -1,0 +1,47 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <h4 class="text-danger mb-3">
+                ⚠️ Haqiqatan ham bu darsni o‘chirmoqchimisiz?
+            </h4>
+
+            <p>
+                <strong>Fan:</strong>
+                {{ group.lesson.subject.name }}
+            </p>
+
+            <p>
+                <strong>O‘qituvchi:</strong>
+                {{ group.teacher.first_name }}
+                {{ group.teacher.last_name }}
+            </p>
+
+            <p>
+                <strong>Boshlanish vaqti:</strong>
+                {{ group.start_time }}
+            </p>
+
+            <p>
+                <strong>Studentlar soni:</strong>
+                {{ group.students.count }}
+            </p>
+
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">
+                    🗑️ Ha, o‘chirilsin
+                </button>
+                <a href="{% url 'lesson_list' %}" class="btn btn-secondary">
+                    Ortga
+                </a>
+            </form>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}

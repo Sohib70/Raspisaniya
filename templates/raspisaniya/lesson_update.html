@@ -1,0 +1,55 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <h3>Darsni tahrirlash</h3>
+
+            <form method="post">
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label">Fan</label>
+                    <input type="text"
+                           class="form-control"
+                           value="{{ group.lesson.subject.name }}"
+                           disabled>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">O‘qituvchi</label>
+                    <select name="teacher" class="form-select">
+                        {% for t in teachers %}
+                            <option value="{{ t.id }}"
+                                {% if t.id == group.teacher.id %}selected{% endif %}>
+                                {{ t }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Boshlanish vaqti</label>
+                    <input type="datetime-local"
+                           name="start_time"
+                           class="form-control"
+                           value="{{ group.start_time|date:'Y-m-d\\TH:i' }}">
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Saqlash
+                </button>
+
+                <a href="{% url 'lesson_list' %}" class="btn btn-secondary">
+                    Ortga
+                </a>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}

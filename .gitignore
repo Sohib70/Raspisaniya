@@ -1,0 +1,19 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Collected static
+staticfiles/

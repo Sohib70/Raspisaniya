@@ -1,0 +1,110 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="container mt-4">
+    <div class="card shadow-lg">
+        <div class="card-body">
+
+            <h2 class="mb-4 text-primary">➕ Dars qo‘shish</h2>
+
+            <form method="post">
+                {% csrf_token %}
+
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-danger">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                {# ================= STEP 1 ================= #}
+                {% if not step2 %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Fan tanlang</label>
+                        <select name="subject" class="form-select" required>
+                            <option value="">Tanlang</option>
+                            {% for s in subjects %}
+                                <option value="{{ s.id }}">{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">
+                        Davom etish
+                    </button>
+
+                {# ================= STEP 2 ================= #}
+                {% else %}
+
+                    <input type="hidden" name="subject_id" value="{{ subject.id }}">
+
+                    <div class="alert alert-info">
+                        <b>{{ subject }}</b> fanidan
+                        {{ groups|length }} ta guruh hosil bo‘ldi
+                    </div>
+
+                    {% for group in groups %}
+
+                        <div class="border rounded p-3 mb-4 bg-light">
+
+                            <h5 class="text-secondary">
+                                {{ forloop.counter }}-Guruh
+                                ({{ group|length }} ta student)
+                            </h5>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">
+                                    O‘qituvchi tanlang
+                                </label>
+                                <select name="teacher_{{ forloop.counter0 }}"
+                                        class="form-select"
+                                        required>
+                                    <option value="">Tanlang</option>
+                                    {% for t in teachers %}
+                                        <option value="{{ t.id }}">{{ t }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">
+                                    Dars vaqti
+                                </label>
+                                <input type="datetime-local"
+                                       name="start_time_{{ forloop.counter0 }}"
+                                       class="form-control"
+                                       required>
+                            </div>
+
+                            <div>
+                                <small class="text-muted">
+                                    Studentlar:
+                                </small>
+                                <ul>
+                                    {% for student in group %}
+                                        <li>{{ student }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+
+                        </div>
+
+                    {% endfor %}
+
+                    <button type="submit"
+                            name="final_submit"
+                            class="btn btn-success w-100">
+                        💾 Barcha guruhlarni saqlash
+                    </button>
+
+                {% endif %}
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}

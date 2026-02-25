@@ -1,0 +1,63 @@
+{% extends 'raspisaniya/base.html' %}
+{% load widget_tweaks %}
+{% block content %}
+
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-body">
+
+            <h2 class="mb-4 text-primary">
+                ➕ O‘quvchi qo‘shish / tahrirlash
+            </h2>
+
+            <form method="post">
+                {% csrf_token %}
+
+                {% for field in form %}
+
+                    <div class="mb-3">
+
+                        <label class="form-label fw-bold">
+                            {{ field.label }}
+                        </label>
+
+                        {% if field.name == "debts" %}
+                            <div class="border rounded p-3 bg-light">
+                                {% for checkbox in field %}
+                                    <div class="form-check">
+                                        {{ checkbox.tag }}
+                                        <label class="form-check-label">
+                                            {{ checkbox.choice_label }}
+                                        </label>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            {{ field|add_class:"form-control" }}
+                        {% endif %}
+
+                        {% if field.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ field.errors }}
+                            </div>
+                        {% endif %}
+
+                    </div>
+
+                {% endfor %}
+
+                <button type="submit" class="btn btn-success">
+                    💾 Saqlash
+                </button>
+
+                <a href="{% url 'student_list' %}" class="btn btn-secondary">
+                    Ortga
+                </a>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}

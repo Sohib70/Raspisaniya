@@ -1,0 +1,27 @@
+  {% extends 'raspisaniya/base.html' %}
+{% load widget_tweaks %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>➕ O‘quvchi qo‘shish</h2>
+    <a href="{% url 'import_students' %}" class="btn btn-primary">
+        📂 Excel orqali import
+    </a>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% for field in form %}
+        <div class="mb-3">
+            <label class="form-label">{{ field.label }}</label>
+            {{ field|add_class:"form-control" }}
+            {% if field.errors %}
+                <div class="text-danger small">{{ field.errors }}</div>
+            {% endif %}
+        </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-success">Saqlash</button>
+    <a href="{% url 'student_list' %}" class="btn btn-secondary">Ortga</a>
+</form>
+
+{% endblock %}
