@@ -28,6 +28,9 @@ class Student(models.Model):
 
     debts = models.ManyToManyField(Subject, related_name='debt_students')
 
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+
 
 class Teacher(models.Model):
     first_name = models.CharField(max_length=50)
@@ -60,12 +63,16 @@ class LessonGroup(models.Model):
         new_start = self.start_time
         new_end = self.end_time()
 
-        teacher_conflict = LessonGroup.objects.filter(
+        conflicts = LessonGroup.objects.filter(
             teacher=self.teacher,
             start_time__lt=new_end
-        ).exclude(id=self.id)
+        ).exclude(pk=self.pk)
 
-        for lesson in teacher_conflict:
+        for lesson in conflicts:
             if lesson.end_time() > new_start:
                 raise ValidationError("O‘qituvchi bu vaqtda band")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # 🔥 majburiy tekshiruv
+        super().save(*args, **kwargs)
 

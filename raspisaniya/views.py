@@ -7,7 +7,10 @@ from django import forms
 from django.utils import timezone
 from .models import Lesson
 from openpyxl import load_workbook
-
+from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 def lesson_list(request):
     groups = LessonGroup.objects.select_related("lesson", "teacher").order_by("start_time")
@@ -59,7 +62,6 @@ def lesson_create(request):
 
         groups = list(chunk_students(students, 30))
 
-        # faqat shu fanni o‘qita oladigan teacherlar
         teachers = Teacher.objects.filter(subjects=subject)
 
         return render(request, "raspisaniya/lesson_create.html", {
@@ -72,63 +74,87 @@ def lesson_create(request):
     # ================= FINAL SAVE =================
     if request.method == "POST" and "final_submit" in request.POST:
 
-        subject_id = request.POST.get("subject_id")
-        subject = Subject.objects.get(id=subject_id)
+        try:
+            subject_id = request.POST.get("subject_id")
+            subject = Subject.objects.get(id=subject_id)
 
-        failed_students = Student.objects.filter(
-            debts=subject
-        ).distinct()
+            failed_students = Student.objects.filter(
+                debts=subject
+            ).distinct()
 
-        students = list(failed_students)
+            students = list(failed_students)
 
-        lesson = Lesson.objects.create(subject=subject)
+            lesson = Lesson.objects.create(subject=subject)
 
-        groups = list(chunk_students(students, 30))
+            groups = list(chunk_students(students, 30))
 
-        for index, group_students in enumerate(groups):
+            for index, group_students in enumerate(groups):
 
-            teacher_id = request.POST.get(f"teacher_{index}")
-            start_time_raw = request.POST.get(f"start_time_{index}")
+                teacher_id = request.POST.get(f"teacher_{index}")
+                start_time_raw = request.POST.get(f"start_time_{index}")
 
-            if not teacher_id or not start_time_raw:
-                raise ValidationError("Teacher yoki vaqt tanlanmagan")
+                if not teacher_id or not start_time_raw:
+                    messages.error(request, "Teacher yoki vaqt tanlanmagan")
+                    return redirect("lesson_create")
 
-            teacher = Teacher.objects.get(id=teacher_id)
+                teacher = Teacher.objects.get(id=teacher_id)
 
-            # teacher shu fanni o‘qita olishini tekshir
-            if subject not in teacher.subjects.all():
-                raise ValidationError("Teacher bu fanni o‘qita olmaydi")
+                if subject not in teacher.subjects.all():
+                    messages.error(request, f"{teacher} bu fanni o‘qita olmaydi")
+                    return redirect("lesson_create")
 
-            start_time = parse_datetime(start_time_raw)
-            if not start_time:
-                raise ValidationError("Vaqt noto‘g‘ri formatda")
+                start_time = parse_datetime(start_time_raw)
+                if not start_time:
+                    messages.error(request, "Vaqt noto‘g‘ri formatda")
+                    return redirect("lesson_create")
 
-            if timezone.is_naive(start_time):
-                start_time = timezone.make_aware(start_time)
+                if timezone.is_naive(start_time):
+                    start_time = timezone.make_aware(start_time)
 
-            group = LessonGroup.objects.create(
-                lesson=lesson,
-                teacher=teacher,
-                start_time=start_time,
-                duration_minutes=80
-            )
+                # ================= TEACHER CONFLICT =================
+                new_end = start_time + timezone.timedelta(minutes=80)
+                teacher_conflicts = LessonGroup.objects.filter(
+                    teacher=teacher,
+                    start_time__lt=new_end
+                ).exclude(lesson=lesson)
 
-            # Student konflikt tekshir
-            for student in group_students:
+                conflict_found = False
+                for conflict in teacher_conflicts:
+                    if conflict.end_time() > start_time:
+                        conflict_found = True
+                        break
 
-                conflict = LessonGroup.objects.filter(
-                    students=student,
-                    start_time__lt=group.end_time()
-                ).exclude(id=group.id)
+                if conflict_found:
+                    messages.error(request, f"{teacher} shu vaqtda boshqa guruhda band")
+                    return redirect("lesson_create")
 
-                if not any(l.end_time() > group.start_time for l in conflict):
-                    group.students.add(student)
+                # ================= GROUP YARATISH =================
+                group = LessonGroup.objects.create(
+                    lesson=lesson,
+                    teacher=teacher,
+                    start_time=start_time,
+                    duration_minutes=80
+                )
 
-                    # qarzni o‘chirish
-                    student.debts.remove(subject)
+                # ================= STUDENT KONFLIKT =================
+                for student in group_students:
 
-        messages.success(request, "Darslar muvaffaqiyatli yaratildi")
-        return redirect("lesson_list")
+                    conflict = LessonGroup.objects.filter(
+                        students=student,
+                        start_time__lt=group.end_time()
+                    ).exclude(id=group.id)
+
+                    if not any(l.end_time() > group.start_time for l in conflict):
+                        group.students.add(student)
+                        student.debts.remove(subject)
+
+            messages.success(request, "Darslar muvaffaqiyatli yaratildi")
+            return redirect("lesson_list")
+
+        except ValidationError as e:
+            for msg in e.messages:  # e.messages list sifatida keladi
+                messages.error(request, msg)
+            return redirect("lesson_create")
 
 
 
