@@ -1,60 +1,49 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4>Darslar ro'yxati</h4>
+        <a href="{% url 'lesson_create' %}" class="btn btn-primary">+ Yangi dars</a>
+    </div>
 
-<h2 class="mb-4">📘 Darslar ro‘yxati</h2>
-<a href="{% url 'lesson_create' %}" class="btn btn-success mb-3">➕ Dars qo‘shish</a>
-
-{% if groups %}
-<table class="table table-striped table-hover">
-    <thead class="table-dark">
-        <tr>
-            <th>#</th>
-            <th>Fan</th>
-            <th>O‘qituvchi</th>
-            <th>O‘quvchilar</th>
-            <th>Boshlanish vaqti</th>
-            <th>Tugash vaqti</th>
-            <th>Amallar</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for group in groups %}
-        <tr>
-            <td>{{ forloop.counter }}</td>
-
-            <td>{{ group.lesson.subject.name }}</td>
-
-            <td>
-                <span class="badge bg-info">
-                    {{ group.teacher.first_name }}
-                    {{ group.teacher.last_name }}
-                </span>
-            </td>
-
-            <td>
-                {% for student in group.students.all %}
-                    <span class="badge bg-secondary">
-                        {{ student.first_name }}
-                        {{ student.last_name }}
-                    </span>
-                {% empty %}
-                    <span class="text-muted">Yo‘q</span>
-                {% endfor %}
-            </td>
-
-            <td>{{ group.start_time }}</td>
-            <td>{{ group.end_time }}</td>
-
-            <td>
-                <a href="{% url 'lesson_update' group.pk %}" class="btn btn-sm btn-warning">✏️</a>
-                <a href="{% url 'lesson_delete' group.pk %}" class="btn btn-sm btn-danger">🗑️</a>
-            </td>
-        </tr>
+    {% if messages %}
+        {% for msg in messages %}
+            <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
         {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<div class="alert alert-info">Hozircha darslar mavjud emas.</div>
-{% endif %}
+    {% endif %}
 
+    {% if lessons %}
+    <table class="table table-bordered table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>#</th>
+                <th>Fan</th>
+                <th>O'qituvchi</th>
+                <th>Boshlanish sanasi</th>
+                <th>Vaqt</th>
+                <th>O'quvchilar</th>
+                <th>Amallar</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lesson in lessons %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td>{{ lesson.subject }}</td>
+                <td>{{ lesson.teacher }}</td>
+                <td>{{ lesson.start_date|date:"d.m.Y" }}</td>
+                <td>{{ lesson.start_time|time:"H:i" }}</td>
+                <td>{{ lesson.students.count }} nafar</td>
+                <td>
+                    <a href="{% url 'lesson_schedule' lesson.pk %}" class="btn btn-sm btn-info">Jadval</a>
+                    <a href="{% url 'lesson_delete' lesson.pk %}" class="btn btn-sm btn-danger">O'chirish</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <p class="text-muted">Hali dars yo'q.</p>
+    {% endif %}
+</div>
 {% endblock %}

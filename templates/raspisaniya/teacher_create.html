@@ -1,19 +1,61 @@
 {% extends 'raspisaniya/base.html' %}
 {% load widget_tweaks %}
 {% block content %}
-<h2>➕ O‘qituvchi qo‘shish / tahrirlash</h2>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 style="color: #000000;">➕ O'qituvchi qo'shish</h2>
+    <a href="{% url 'teacher_import' %}" class="btn btn-primary">
+        📂 Excel orqali import
+    </a>
+</div>
+
 <form method="post">
     {% csrf_token %}
-    {% for field in form %}
-        <div class="mb-3">
-            <label class="form-label">{{ field.label }}</label>
-            {{ field|add_class:"form-control" }}
-            {% if field.errors %}
-                <div class="text-danger small">{{ field.errors }}</div>
-            {% endif %}
+
+    <div class="mb-3">
+        <label class="form-label" style="color: #000000;">Ism</label>
+        <input type="text" name="first_name" class="form-control"
+               value="{{ form.first_name.value|default:'' }}" required
+               style="color: #000000;">
+        {% if form.first_name.errors %}
+            <div class="text-danger small">{{ form.first_name.errors }}</div>
+        {% endif %}
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" style="color: #000000;">Familiya</label>
+        <input type="text" name="last_name" class="form-control"
+               value="{{ form.last_name.value|default:'' }}" required
+               style="color: #000000;">
+        {% if form.last_name.errors %}
+            <div class="text-danger small">{{ form.last_name.errors }}</div>
+        {% endif %}
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" style="color: #000000;">Fanlar</label>
+        <div class="border rounded p-3">
+            {% for subj in subjects %}
+                <div class="form-check">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           name="subjects"
+                           value="{{ subj.id }}"
+                           id="subj_{{ subj.id }}"
+                           {% if subj.id in selected_subjects %}checked{% endif %}>
+                    <label class="form-check-label" for="subj_{{ subj.id }}"
+                           style="color: #000000;">
+                        {{ subj.name }}
+                    </label>
+                </div>
+            {% empty %}
+                <span class="text-muted">Fan yo'q — avval fan qo'shing</span>
+            {% endfor %}
         </div>
-    {% endfor %}
+    </div>
+
     <button type="submit" class="btn btn-success">Saqlash</button>
     <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Ortga</a>
 </form>
+
 {% endblock %}

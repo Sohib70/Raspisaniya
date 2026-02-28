@@ -1,0 +1,28 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h4>O'qituvchilarni Excel orqali import qilish</h4>
+
+    {% if messages %}
+        {% for msg in messages %}
+            <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-info">
+        <strong>Excel format:</strong><br>
+        A ustun — I.F.Sh (masalan: <code>Karimov Ali Vali</code>)<br>
+        B ustun — Fanlar, vergul bilan (masalan: <code>Matematika,Fizika</code>)
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label">Excel fayl</label>
+            {{ form.file }}
+        </div>
+        <button type="submit" class="btn btn-primary">Import qilish</button>
+        <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Bekor</a>
+    </form>
+</div>
+{% endblock %}

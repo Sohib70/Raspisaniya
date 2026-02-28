@@ -1,5 +1,4 @@
 from django.db import models
-from django.core.exceptions import ValidationError
 from datetime import timedelta
 
 
@@ -9,24 +8,19 @@ class Subject(models.Model):
     def __str__(self):
         return self.name
 
+
 class Group(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
     def __str__(self):
         return self.name
 
+
 class Student(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-
-    group = models.ForeignKey(
-        Group,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-
-    debts = models.ManyToManyField(Subject, related_name='debt_students')
+    group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
+    debts = models.ManyToManyField(Subject, related_name='debt_students', blank=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
@@ -35,44 +29,39 @@ class Student(models.Model):
 class Teacher(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-    subjects = models.ManyToManyField(Subject,related_name='students')
+    subjects = models.ManyToManyField(Subject, related_name='teachers', blank=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
 
 class Lesson(models.Model):
-    subject = models.ForeignKey('Subject', on_delete=models.CASCADE)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    start_date = models.DateField(default='2025-01-01')
+    start_time = models.TimeField(default='09:00')
+    DURATION_MINUTES = 80
 
     def __str__(self):
-        return f"{self.subject} darsi"
+        return f"{self.subject} ({self.start_date})"
 
 
 class LessonGroup(models.Model):
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='groups')
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
-    students = models.ManyToManyField(Student)
+    students = models.ManyToManyField(Student, blank=True)
+    group_number = models.PositiveIntegerField(default=1)
 
-    start_time = models.DateTimeField()
-    duration_minutes = models.PositiveIntegerField(default=80)
+    def __str__(self):
+        return f"{self.lesson} — {self.group_number}-guruh"
 
-    def end_time(self):
-        return self.start_time + timedelta(minutes=self.duration_minutes)
 
-    def clean(self):
-        new_start = self.start_time
-        new_end = self.end_time()
+class LessonSchedule(models.Model):
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='schedule')
+    date = models.DateField()
+    lesson_number = models.PositiveIntegerField()
 
-        conflicts = LessonGroup.objects.filter(
-            teacher=self.teacher,
-            start_time__lt=new_end
-        ).exclude(pk=self.pk)
+    class Meta:
+        ordering = ['date']
 
-        for lesson in conflicts:
-            if lesson.end_time() > new_start:
-                raise ValidationError("O‘qituvchi bu vaqtda band")
-
-    def save(self, *args, **kwargs):
-        self.full_clean()  # 🔥 majburiy tekshiruv
-        super().save(*args, **kwargs)
-
+    def __str__(self):
+        return f"{self.lesson} — {self.date}"

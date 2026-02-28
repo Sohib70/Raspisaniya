@@ -1,110 +1,127 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
-
 <div class="container mt-4">
-    <div class="card shadow-lg">
-        <div class="card-body">
+<div class="card shadow-lg">
+<div class="card-body">
 
-            <h2 class="mb-4 text-primary">➕ Dars qo‘shish</h2>
+<h2 class="mb-4 text-primary">➕ Dars qo'shish</h2>
 
-            <form method="post">
-                {% csrf_token %}
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-danger">{{ message }}</div>
+    {% endfor %}
+{% endif %}
 
-                {% if messages %}
-                    {% for message in messages %}
-                        <div class="alert alert-danger">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
+{# ================= STEP 1 ================= #}
+{% if step == 1 %}
 
-                {# ================= STEP 1 ================= #}
-                {% if not step2 %}
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="2">
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Fan tanlang</label>
-                        <select name="subject" class="form-select" required>
-                            <option value="">Tanlang</option>
-                            {% for s in subjects %}
-                                <option value="{{ s.id }}">{{ s }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+    <div class="mb-3">
+        <label class="form-label fw-bold">Fan tanlang</label>
+        <select name="subject" class="form-select" required>
+            <option value="">— tanlang —</option>
+            {% for s in subjects %}
+                <option value="{{ s.id }}">{{ s }}</option>
+            {% endfor %}
+        </select>
+    </div>
 
-                    <button type="submit" class="btn btn-primary w-100">
-                        Davom etish
-                    </button>
+    <button type="submit" class="btn btn-primary w-100">Davom etish →</button>
+</form>
 
-                {# ================= STEP 2 ================= #}
-                {% else %}
+{# ================= STEP 2 ================= #}
+{% elif step == 2 %}
 
-                    <input type="hidden" name="subject_id" value="{{ subject.id }}">
+<form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="3">
+    <input type="hidden" name="subject_id" value="{{ subject.id }}">
+    <input type="hidden" name="groups_count" value="{{ groups_count }}">
 
-                    <div class="alert alert-info">
-                        <b>{{ subject }}</b> fanidan
-                        {{ groups|length }} ta guruh hosil bo‘ldi
-                    </div>
+    <div class="alert alert-info">
+        <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh,
+        jami <b>{% for g in groups %}{{ g|length }}{% if not forloop.last %} + {% endif %}{% endfor %}</b> ta o'quvchi
+    </div>
 
-                    {% for group in groups %}
-
-                        <div class="border rounded p-3 mb-4 bg-light">
-
-                            <h5 class="text-secondary">
-                                {{ forloop.counter }}-Guruh
-                                ({{ group|length }} ta student)
-                            </h5>
-
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">
-                                    O‘qituvchi tanlang
-                                </label>
-                                <select name="teacher_{{ forloop.counter0 }}"
-                                        class="form-select"
-                                        required>
-                                    <option value="">Tanlang</option>
-                                    {% for t in teachers %}
-                                        <option value="{{ t.id }}">{{ t }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-
-                            <div class="mb-3">
-                                <label class="form-label fw-bold">
-                                    Dars vaqti
-                                </label>
-                                <input type="datetime-local"
-                                       name="start_time_{{ forloop.counter0 }}"
-                                       class="form-control"
-                                       required>
-                            </div>
-
-                            <div>
-                                <small class="text-muted">
-                                    Studentlar:
-                                </small>
-                                <ul>
-                                    {% for student in group %}
-                                        <li>{{ student }}</li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-
-                        </div>
-
-                    {% endfor %}
-
-                    <button type="submit"
-                            name="final_submit"
-                            class="btn btn-success w-100">
-                        💾 Barcha guruhlarni saqlash
-                    </button>
-
-                {% endif %}
-
-            </form>
-
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Boshlanish sanasi</label>
+            <input type="date" name="start_date" class="form-control" required
+                   value="{{ start_date|default:'' }}">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label fw-bold">Boshlanish vaqti</label>
+            <input type="time" name="start_time" class="form-control" required
+                   value="{{ start_time|default:'' }}">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="alert alert-secondary mb-0 w-100 text-center">
+                ⏱ Davomiyligi: <b>80 daqiqa</b>
+            </div>
         </div>
     </div>
-</div>
 
+    {% for group in groups %}
+    <div class="border rounded p-3 mb-4 bg-light">
+
+        <h5 class="text-secondary">
+            {{ forloop.counter }}-Guruh
+            <span class="badge bg-primary">{{ group|length }} ta o'quvchi</span>
+        </h5>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">O'qituvchi tanlang</label>
+            {% for t in teachers %}
+            <div class="form-check">
+                <input class="form-check-input" type="radio"
+                       name="teacher_{{ forloop.parentloop.counter0 }}"
+                       value="{{ t.id }}"
+                       id="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}"
+                       {% if selected_teachers %}
+                           {% if selected_teachers|default_if_none:'' %}
+                               {% for k, v in selected_teachers.items %}
+                                   {% if k == forloop.parentloop.counter0 and v == t.id %}checked{% endif %}
+                               {% endfor %}
+                           {% endif %}
+                       {% endif %}
+                       required>
+                <label class="form-check-label" for="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}">
+                    {{ t }}
+                </label>
+            </div>
+            {% empty %}
+            <div class="alert alert-warning">Bu fanning o'qituvchisi yo'q</div>
+            {% endfor %}
+        </div>
+
+        <div>
+            <small class="fw-bold text-muted">O'quvchilar:</small>
+            <ul class="list-unstyled mt-1">
+                {% for student in group %}
+                <li>
+                    <i class="text-success">✓</i> {{ student }}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+    </div>
+    {% endfor %}
+
+    <div class="d-flex gap-2">
+        <a href="{% url 'lesson_create' %}" class="btn btn-secondary">← Orqaga</a>
+        <button type="submit" class="btn btn-success w-100">
+            💾 Saqlash
+        </button>
+    </div>
+</form>
+
+{% endif %}
+
+</div>
+</div>
+</div>
 {% endblock %}
