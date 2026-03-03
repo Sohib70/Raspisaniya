@@ -64,6 +64,9 @@ def check_conflicts(lesson_dates, start_time, teacher, students, exclude_lesson_
     if exclude_lesson_pk:
         schedules = schedules.exclude(lesson__pk=exclude_lesson_pk)
 
+    teacher_conflict_added = set()
+    student_conflict_added = set()
+
     for sched in schedules:
         ex_start = datetime.combine(sched.date, sched.lesson.start_time)
         ex_end = ex_start + duration
@@ -74,24 +77,29 @@ def check_conflicts(lesson_dates, start_time, teacher, students, exclude_lesson_
         if not overlap:
             continue
 
-        day_str = f"{sched.date.strftime('%d.%m.%Y')} ({WEEKDAYS[sched.date.weekday()]})"
+        lesson_id = sched.lesson.id
 
-        # O'qituvchi conflict — LessonGroup orqali
-        if sched.lesson.groups.filter(teacher=teacher).exists():
-            errors['teacher'].append(
-                f"{day_str} — '{sched.lesson.subject}' darsi "
-                f"{sched.lesson.start_time.strftime('%H:%M')} da band"
-            )
-
-        # O'quvchi conflict — LessonGroup orqali
-        for st in students:
-            if sched.lesson.groups.filter(students=st).exists():
-                if st not in errors['students']:
-                    errors['students'][st] = []
-                errors['students'][st].append(
-                    f"{day_str} — '{sched.lesson.subject}' darsi "
+        # O'qituvchi — faqat bir marta
+        if lesson_id not in teacher_conflict_added:
+            if sched.lesson.groups.filter(teacher=teacher).exists():
+                teacher_conflict_added.add(lesson_id)
+                errors['teacher'].append(
+                    f"'{sched.lesson.subject}' darsi "
                     f"{sched.lesson.start_time.strftime('%H:%M')} da band"
                 )
+
+        # O'quvchi — faqat bir marta
+        for st in students:
+            key = (st.id, lesson_id)
+            if key not in student_conflict_added:
+                if sched.lesson.groups.filter(students=st).exists():
+                    student_conflict_added.add(key)
+                    if st not in errors['students']:
+                        errors['students'][st] = []
+                    errors['students'][st].append(
+                        f"'{sched.lesson.subject}' darsi "
+                        f"{sched.lesson.start_time.strftime('%H:%M')} da band"
+                    )
 
     return errors
 
@@ -198,8 +206,6 @@ def lesson_create(request):
         if all_errors:
             # Xatoliklar bilan step2 ga qaytish
             teachers = Teacher.objects.filter(subjects=subject)
-            for err in all_errors:
-                messages.error(request, err)
             return render(request, "raspisaniya/lesson_create.html", {
                 "step": 2,
                 "subject": subject,
@@ -210,6 +216,7 @@ def lesson_create(request):
                 "start_time": start_time_raw,
                 "selected_teachers": {i: t.id for i, t in enumerate(group_teachers)},
                 "enumerate": enumerate,
+                "all_errors": all_errors,
             })
 
         # ── Saqlash ──

@@ -6,12 +6,11 @@
 
 <h2 class="mb-4 text-primary">➕ Dars qo'shish</h2>
 
-{% if messages %}
-    {% for message in messages %}
-        <div class="alert alert-danger">{{ message }}</div>
+{% if all_errors %}
+    {% for err in all_errors %}
+        <div class="alert alert-danger">{{ err }}</div>
     {% endfor %}
 {% endif %}
-
 {# ================= STEP 1 ================= #}
 {% if step == 1 %}
 
