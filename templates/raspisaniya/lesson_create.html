@@ -11,6 +11,7 @@
         <div class="alert alert-danger">{{ err }}</div>
     {% endfor %}
 {% endif %}
+
 {# ================= STEP 1 ================= #}
 {% if step == 1 %}
 
@@ -80,11 +81,9 @@
                        value="{{ t.id }}"
                        id="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}"
                        {% if selected_teachers %}
-                           {% if selected_teachers|default_if_none:'' %}
-                               {% for k, v in selected_teachers.items %}
-                                   {% if k == forloop.parentloop.counter0 and v == t.id %}checked{% endif %}
-                               {% endfor %}
-                           {% endif %}
+                           {% for k, v in selected_teachers.items %}
+                               {% if k == forloop.parentloop.counter0 and v == t.id %}checked{% endif %}
+                           {% endfor %}
                        {% endif %}
                        required>
                 <label class="form-check-label" for="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}">
@@ -97,14 +96,29 @@
         </div>
 
         <div>
-            <small class="fw-bold text-muted">O'quvchilar:</small>
-            <ul class="list-unstyled mt-1">
-                {% for student in group %}
-                <li>
-                    <i class="text-success">✓</i> {{ student }}
-                </li>
-                {% endfor %}
-            </ul>
+            <label class="fw-bold mb-2 d-block">
+                O'quvchilar
+                <small class="text-muted fw-normal">(belgini olib tashlash — guruhdan chiqarish)</small>
+            </label>
+            {% for student in group %}
+            <div class="form-check">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="students_{{ forloop.parentloop.counter0 }}"
+                       value="{{ student.id }}"
+                       id="st_{{ forloop.parentloop.counter0 }}_{{ student.id }}"
+                       checked>
+                <label class="form-check-label"
+                       for="st_{{ forloop.parentloop.counter0 }}_{{ student.id }}">
+                    {{ student }}
+                    {% for sid, msg in student_error_msgs.items %}
+                        {% if sid == student.id|stringformat:"s" %}
+                            <span class="badge bg-danger ms-2">⚠ {{ msg }}</span>
+                        {% endif %}
+                    {% endfor %}
+                </label>
+            </div>
+            {% endfor %}
         </div>
 
     </div>

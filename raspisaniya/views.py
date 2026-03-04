@@ -204,8 +204,14 @@ def lesson_create(request):
                     all_errors.append(f"❌ O'quvchi {st} ({i+1}-guruh): {msg}")
 
         if all_errors:
-            # Xatoliklar bilan step2 ga qaytish
             teachers = Teacher.objects.filter(subjects=subject)
+
+            student_error_msgs = {}
+            for i, (g_students, teacher) in enumerate(zip(groups_data, group_teachers)):
+                conflicts = check_conflicts(lesson_dates, start_time, teacher, g_students)
+                for st, msgs in conflicts['students'].items():
+                    student_error_msgs[str(st.id)] = msgs[0]
+
             return render(request, "raspisaniya/lesson_create.html", {
                 "step": 2,
                 "subject": subject,
@@ -217,6 +223,7 @@ def lesson_create(request):
                 "selected_teachers": {i: t.id for i, t in enumerate(group_teachers)},
                 "enumerate": enumerate,
                 "all_errors": all_errors,
+                "student_error_msgs": student_error_msgs,
             })
 
         # ── Saqlash ──
@@ -229,15 +236,22 @@ def lesson_create(request):
 
             for i, (g_students, teacher) in enumerate(zip(groups_data, group_teachers)):
                 from .models import LessonGroup
+
+                # Faqat belgilangan o'quvchilarni olish
+                selected_ids = request.POST.getlist(f"students_{i}")
+                selected_students = [s for s in g_students if str(s.id) in selected_ids]
+
+                if not selected_students:
+                    continue  # Hech kim tanlanmagan guruhni o'tkazib yuborish
+
                 group = LessonGroup.objects.create(
                     lesson=lesson,
                     teacher=teacher,
                     group_number=i + 1,
                 )
-                group.students.set(g_students)
+                group.students.set(selected_students)
 
-                # Qarzni o'chirish
-                for st in g_students:
+                for st in selected_students:
                     st.debts.remove(subject)
 
             for idx, ld in enumerate(lesson_dates, 1):
