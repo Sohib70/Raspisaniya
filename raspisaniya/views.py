@@ -433,8 +433,22 @@ def teacher_import(request):
 # STUDENT
 # ─────────────────────────────────────────
 def student_list(request):
-    students = Student.objects.all().order_by('last_name')
-    return render(request, 'raspisaniya/student_list.html', {'students': students})
+    students = Student.objects.prefetch_related('debts').order_by('last_name')
+    from .models import LessonGroup
+
+    students_data = []
+    for student in students:
+        completed = list(Subject.objects.filter(
+            lesson__groups__students=student
+        ).distinct())
+        students_data.append({
+            'student': student,
+            'completed': completed,
+        })
+
+    return render(request, 'raspisaniya/student_list.html', {
+        'students_data': students_data,
+    })
 
 
 def student_create(request):
@@ -562,3 +576,38 @@ def subject_delete(request, pk):
         messages.success(request, "Fan o'chirildi")
         return redirect('subject_list')
     return render(request, 'raspisaniya/subject_delete.html', {'subject': subject})
+
+
+def subject_students(request, pk):
+    subject = get_object_or_404(Subject, pk=pk)
+    students = Student.objects.filter(debts=subject).order_by('last_name')
+    return render(request, 'raspisaniya/subject_students.html', {
+        'subject': subject,
+        'students': students,
+    })
+
+
+def subject_students_excel(request, pk):
+    subject = get_object_or_404(Subject, pk=pk)
+    students = Student.objects.filter(debts=subject).order_by('last_name')
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = subject.name
+
+    ws.append(["#", "Familiya", "Ism Sharif", "Guruh"])
+
+    for i, student in enumerate(students, 1):
+        ws.append([
+            i,
+            student.last_name,
+            student.first_name,
+            str(student.group) if student.group else "—",
+        ])
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = f'attachment; filename="{subject.name}_qarzdorlar.xlsx"'
+    wb.save(response)
+    return response

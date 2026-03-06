@@ -29,4 +29,6 @@ urlpatterns = [
     path('subject/create/', views.subject_create, name='subject_create'),
     path('subject/<int:pk>/update/', views.subject_update, name='subject_update'),
     path('subject/<int:pk>/delete/', views.subject_delete, name='subject_delete'),
+    path('subject/<int:pk>/students/', views.subject_students, name='subject_students'),
+    path('subject/<int:pk>/students/excel/', views.subject_students_excel, name='subject_students_excel'),
 ]

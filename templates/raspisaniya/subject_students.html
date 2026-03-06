@@ -1,0 +1,39 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4>📚 {{ subject.name }} — qarzdor o'quvchilar</h4>
+    <div class="d-flex gap-2">
+        <a href="{% url 'subject_students_excel' subject.pk %}" class="btn btn-success">
+            ⬇ Excel
+        </a>
+        <a href="{% url 'subject_list' %}" class="btn btn-secondary">← Orqaga</a>
+    </div>
+</div>
+
+{% if students %}
+<table class="table table-bordered table-hover">
+    <thead class="table-dark">
+        <tr>
+            <th>T/R</th>
+            <th>Ism Sharif</th>
+            <th>Familiya</th>
+            <th>Guruh</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for student in students %}
+        <tr>
+            <td>{{ forloop.counter }}</td>
+            <td>{{ student.last_name }}</td>
+            <td>{{ student.first_name }}</td>
+            <td>{{ student.group|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="alert alert-info">Bu fandan qarzdor o'quvchi yo'q.</div>
+{% endif %}
+
+{% endblock %}
