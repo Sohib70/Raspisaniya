@@ -473,6 +473,17 @@ def lesson_schedule(request, pk):
     groups = course.groups.prefetch_related('students', 'schedule').select_related('teacher')
     duration = timedelta(minutes=80)
 
+    # Barcha guruhlardagi talabalar ID lari
+    all_group_student_ids = set()
+    for grp in groups:
+        for s in grp.students.all():
+            all_group_student_ids.add(s.id)
+
+    # Shu fandan qolgan, hech qaysi guruhga qo'shilmagan talabalar
+    addable_students = Student.objects.filter(
+        debts=course.subject
+    ).exclude(id__in=all_group_student_ids)
+
     groups_data = []
     for grp in groups:
         schedule_list = []
@@ -493,6 +504,7 @@ def lesson_schedule(request, pk):
         groups_data.append({
             "group": grp,
             "schedule_list": schedule_list,
+            "addable_students": addable_students,
         })
 
     return render(request, "raspisaniya/lesson_schedule.html", {
@@ -500,6 +512,18 @@ def lesson_schedule(request, pk):
         "groups_data": groups_data,
     })
 
+
+
+def add_student_to_group(request, group_pk):
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    if request.method == "POST":
+        student_id = request.POST.get("student_id")
+        if student_id:
+            student = get_object_or_404(Student, pk=student_id)
+            group.students.add(student)
+            student.debts.remove(group.course.subject)
+            messages.success(request, f"{student} guruhga qo'shildi.")
+    return redirect("lesson_schedule", pk=group.course.pk)
 
 def lesson_schedule_excel(request, pk):
     lesson = get_object_or_404(Lesson, pk=pk)
@@ -554,9 +578,10 @@ def remove_student_from_group(request, group_pk, student_pk):
     student = get_object_or_404(Student, pk=student_pk)
     if request.method == "POST":
         group.students.remove(student)
-        messages.success(request, f"{student} guruhdan o'chirildi")
-    return redirect("lesson_schedule", pk=group.lesson.pk)
-
+        # Talabani qayta qarzlar ro'yxatiga qo'shish
+        student.debts.add(group.course.subject)
+        messages.success(request, f"{student} guruhdan o'chirildi va qayta ro'yxatga qo'shildi")
+    return redirect("lesson_schedule", pk=group.course.pk)
 
 # ─────────────────────────────────────────
 # TEACHER

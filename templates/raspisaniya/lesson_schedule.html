@@ -20,27 +20,17 @@
         {% endfor %}
     {% endif %}
 
-    {# ── Kurs ma'lumotlari ── #}
     <div class="card mb-4">
         <div class="card-body">
             <div class="row">
-                <div class="col-md-3">
-                    <b>Fan:</b> {{ course.subject }}
-                </div>
-                <div class="col-md-3">
-                    <b>Boshlanish:</b> {{ course.start_date|date:"d.m.Y" }}
-                </div>
-                <div class="col-md-3">
-                    <b>Tugash:</b> {{ course.end_date|date:"d.m.Y" }}
-                </div>
-                <div class="col-md-3">
-                    <b>Jami dars:</b> {{ course.total_lessons }} para
-                </div>
+                <div class="col-md-3"><b>Fan:</b> {{ course.subject }}</div>
+                <div class="col-md-3"><b>Boshlanish:</b> {{ course.start_date|date:"d.m.Y" }}</div>
+                <div class="col-md-3"><b>Tugash:</b> {{ course.end_date|date:"d.m.Y" }}</div>
+                <div class="col-md-3"><b>Jami dars:</b> {{ course.total_lessons }} para</div>
             </div>
         </div>
     </div>
 
-    {# ── Guruhlar ── #}
     {% for item in groups_data %}
     <div class="mb-4">
         <h5 class="mb-3">
@@ -58,15 +48,14 @@
             {# O'quvchilar #}
             <div class="col-md-5 mb-3">
                 <div class="card h-100">
-                    <div class="card-header bg-primary text-white d-flex justify-content-between">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                         <span>O'quvchilar</span>
-                        <span class="badge bg-light text-dark">
-                            {{ item.group.students.count }} ta
-                        </span>
+                        <span class="badge bg-light text-dark">{{ item.group.students.count }} ta</span>
                     </div>
                     <div class="card-body p-0">
                         <p class="px-3 pt-2 mb-1"><b>O'qituvchi:</b> {{ item.group.teacher }}</p>
                         <p class="px-3 mb-2"><b>Vaqt:</b> {{ item.group.start_time|time:"H:i" }} — 80 daqiqa</p>
+
                         <table class="table table-sm table-bordered mb-0">
                             <thead class="table-light">
                                 <tr>
@@ -96,6 +85,23 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+
+                        {# Talaba qo'shish #}
+                        {% if item.addable_students %}
+                        <div class="px-3 py-2 border-top">
+                            <label class="fw-bold mb-1 text-success">➕ Talaba qo'shish</label>
+                            <form method="post" action="{% url 'add_student_to_group' item.group.pk %}" class="d-flex gap-2">
+                                {% csrf_token %}
+                                <select name="student_id" class="form-select form-select-sm">
+                                    <option value="">— tanlang —</option>
+                                    {% for st in item.addable_students %}
+                                    <option value="{{ st.id }}">{{ st }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-success">Qo'sh</button>
+                            </form>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -103,9 +109,7 @@
             {# Jadval #}
             <div class="col-md-7 mb-3">
                 <div class="card h-100">
-                    <div class="card-header bg-dark text-white">
-                        🗓 Dars jadvali
-                    </div>
+                    <div class="card-header bg-dark text-white">🗓 Dars jadvali</div>
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead class="table-dark">
