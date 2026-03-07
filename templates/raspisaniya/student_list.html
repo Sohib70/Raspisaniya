@@ -8,9 +8,10 @@
 <table class="table table-striped table-hover">
     <thead class="table-dark">
         <tr>
-            <th>#</th>
+            <th>T/R</th>
             <th>Ism Sharif</th>
             <th>Familiya</th>
+            <th>Ta'lim tili</th>
             <th>Qarzdor fanlar</th>
             <th>Amallar</th>
         </tr>
@@ -21,6 +22,19 @@
             <td>{{ forloop.counter }}</td>
             <td>{{ item.student.last_name }}</td>
             <td>{{ item.student.first_name }}</td>
+            <td>
+                {% if item.student.language == 'uz' %}
+                    <span class="badge bg-primary">O'zbek</span>
+                {% elif item.student.language == 'ru' %}
+                    <span class="badge bg-info text-dark">Rus</span>
+                {% elif item.student.language == 'qq' %}
+                    <span class="badge bg-warning text-dark">Qoraqalpoq</span>
+                {% elif item.student.language == 'en' %}
+                    <span class="badge bg-secondary">Ingliz</span>
+                {% else %}
+                    <span class="badge bg-secondary">{{ item.student.language }}</span>
+                {% endif %}
+            </td>
             <td>
                 {% for debt in item.student.debts.all %}
                     <span class="badge bg-danger">{{ debt.name }}</span>

@@ -3,9 +3,9 @@
 <div class="container mt-4">
 
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="text-primary">📅 {{ lesson.subject }} — Dars jadvali</h4>
+        <h4 class="text-primary">📅 {{ course.subject }} — Dars jadvali</h4>
         <div class="d-flex gap-2">
-            <a href="{% url 'lesson_schedule_excel' lesson.pk %}" class="btn btn-success">
+            <a href="{% url 'lesson_schedule_excel' course.pk %}" class="btn btn-success">
                 ⬇ Excel
             </a>
             <a href="{% url 'lesson_list' %}" class="btn btn-secondary">
@@ -20,110 +20,131 @@
         {% endfor %}
     {% endif %}
 
-    {# ── Dars ma'lumotlari ── #}
+    {# ── Kurs ma'lumotlari ── #}
     <div class="card mb-4">
         <div class="card-body">
             <div class="row">
-                <div class="col-md-4">
-                    <b>Fan:</b> {{ lesson.subject }}
+                <div class="col-md-3">
+                    <b>Fan:</b> {{ course.subject }}
                 </div>
-                <div class="col-md-4">
-                    <b>Boshlanish sanasi:</b> {{ lesson.start_date|date:"d.m.Y" }}
+                <div class="col-md-3">
+                    <b>Boshlanish:</b> {{ course.start_date|date:"d.m.Y" }}
                 </div>
-                <div class="col-md-4">
-                    <b>Vaqt:</b> {{ lesson.start_time|time:"H:i" }} — 80 daqiqa
+                <div class="col-md-3">
+                    <b>Tugash:</b> {{ course.end_date|date:"d.m.Y" }}
+                </div>
+                <div class="col-md-3">
+                    <b>Jami dars:</b> {{ course.total_lessons }} para
                 </div>
             </div>
         </div>
     </div>
 
     {# ── Guruhlar ── #}
-    <h5 class="mb-3">👥 Guruhlar</h5>
-    <div class="row mb-4">
-        {% for group in groups %}
-        <div class="col-md-6 mb-3">
-            <div class="card h-100">
-                <div class="card-header bg-primary text-white d-flex justify-content-between">
-                    <span>{{ group.group_number }}-Guruh</span>
-                    <span class="badge bg-light text-dark">
-                        {{ group.students.count }} ta o'quvchi
-                    </span>
+    {% for item in groups_data %}
+    <div class="mb-4">
+        <h5 class="mb-3">
+            👥 {{ item.group.group_number }}-Guruh
+            <span class="badge bg-info text-dark">
+                {% if item.group.language == 'uz' %}O'zbek
+                {% elif item.group.language == 'ru' %}Rus
+                {% elif item.group.language == 'qq' %}Qoraqalpoq
+                {% elif item.group.language == 'en' %}Ingliz
+                {% else %}{{ item.group.language }}{% endif %}
+            </span>
+        </h5>
+
+        <div class="row">
+            {# O'quvchilar #}
+            <div class="col-md-5 mb-3">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between">
+                        <span>O'quvchilar</span>
+                        <span class="badge bg-light text-dark">
+                            {{ item.group.students.count }} ta
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <p class="px-3 pt-2 mb-1"><b>O'qituvchi:</b> {{ item.group.teacher }}</p>
+                        <p class="px-3 mb-2"><b>Vaqt:</b> {{ item.group.start_time|time:"H:i" }} — 80 daqiqa</p>
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>O'quvchi</th>
+                                    <th>O'chirish</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for student in item.group.students.all %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ student }}</td>
+                                    <td>
+                                        <form method="post"
+                                              action="{% url 'remove_student_from_group' item.group.pk student.pk %}"
+                                              onsubmit="return confirm('{{ student }} ni guruhdan o\'chirasizmi?')">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-muted text-center">O'quvchi yo'q</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <p><b>O'qituvchi:</b> {{ group.teacher }}</p>
-                    <table class="table table-sm table-bordered mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>#</th>
-                                <th>O'quvchi</th>
-                                <th>O'chirish</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for student in group.students.all %}
-                            <tr>
-                                <td>{{ forloop.counter }}</td>
-                                <td>{{ student }}</td>
-                                <td>
-                                    <form method="post"
-                                          action="{% url 'remove_student_from_group' group.pk student.pk %}"
-                                          onsubmit="return confirm('{{ student }} ni guruhdan o\'chirasizmi?')">
-                                        {% csrf_token %}
-                                        <button type="submit" class="btn btn-sm btn-danger">
-                                            ✕
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="3" class="text-muted text-center">
-                                    O'quvchi yo'q
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            </div>
+
+            {# Jadval #}
+            <div class="col-md-7 mb-3">
+                <div class="card h-100">
+                    <div class="card-header bg-dark text-white">
+                        🗓 Dars jadvali
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Sana</th>
+                                    <th>Hafta kuni</th>
+                                    <th>Boshlanish</th>
+                                    <th>Tugash</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sched_item in item.schedule_list %}
+                                <tr>
+                                    <td>{{ sched_item.sched.lesson_number }}</td>
+                                    <td>{{ sched_item.sched.date|date:"d.m.Y" }}</td>
+                                    <td>
+                                        {% if sched_item.weekday == "Dushanba" or sched_item.weekday == "Chorshanba" or sched_item.weekday == "Juma" %}
+                                            <span class="badge bg-primary">{{ sched_item.weekday }}</span>
+                                        {% else %}
+                                            <span class="badge bg-success">{{ sched_item.weekday }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ item.group.start_time|time:"H:i" }}</td>
+                                    <td>{{ sched_item.end_time }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-muted text-center">Jadval yo'q</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-        {% endfor %}
     </div>
-
-    {# ── Dars jadvali ── #}
-    <h5 class="mb-3">🗓 15 ta dars jadvali</h5>
-    <div class="card">
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover mb-0">
-                <thead class="table-dark">
-                    <tr>
-                        <th>#</th>
-                        <th>Sana</th>
-                        <th>Hafta kuni</th>
-                        <th>Boshlanish</th>
-                        <th>Tugash</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in schedule_list %}
-                    <tr>
-                        <td>{{ item.sched.lesson_number }}</td>
-                        <td>{{ item.sched.date|date:"d.m.Y" }}</td>
-                        <td>
-                            {% if item.weekday == "Dushanba" or item.weekday == "Chorshanba" or item.weekday == "Juma" %}
-                                <span class="badge bg-primary">{{ item.weekday }}</span>
-                            {% else %}
-                                <span class="badge bg-success">{{ item.weekday }}</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ lesson.start_time|time:"H:i" }}</td>
-                        <td>{{ item.end_time }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
+    {% endfor %}
 
 </div>
 {% endblock %}

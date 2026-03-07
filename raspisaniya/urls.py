@@ -2,7 +2,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Lesson
+    # Course (Dars)
     path('', views.lesson_list, name='lesson_list'),
     path('lesson/create/', views.lesson_create, name='lesson_create'),
     path('lesson/<int:pk>/schedule/', views.lesson_schedule, name='lesson_schedule'),

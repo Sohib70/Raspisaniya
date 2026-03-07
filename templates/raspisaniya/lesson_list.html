@@ -12,31 +12,31 @@
         {% endfor %}
     {% endif %}
 
-    {% if lessons %}
+    {% if courses %}
     <table class="table table-bordered table-hover">
         <thead class="table-dark">
             <tr>
                 <th>#</th>
                 <th>Fan</th>
-                <th>O'qituvchi</th>
-                <th>Boshlanish sanasi</th>
-                <th>Vaqt</th>
-                <th>O'quvchilar</th>
+                <th>Guruhlar</th>
+                <th>Jami dars</th>
+                <th>Boshlanish</th>
+                <th>Tugash</th>
                 <th>Amallar</th>
             </tr>
         </thead>
         <tbody>
-            {% for lesson in lessons %}
+            {% for course in courses %}
             <tr>
                 <td>{{ forloop.counter }}</td>
-                <td>{{ lesson.subject }}</td>
-                <td>{{ lesson.teacher }}</td>
-                <td>{{ lesson.start_date|date:"d.m.Y" }}</td>
-                <td>{{ lesson.start_time|time:"H:i" }}</td>
-                <td>{{ lesson.students.count }} nafar</td>
+                <td>{{ course.subject }}</td>
+                <td>{{ course.groups.count }} ta guruh</td>
+                <td>{{ course.total_lessons }} para</td>
+                <td>{{ course.start_date|date:"d.m.Y" }}</td>
+                <td>{{ course.end_date|date:"d.m.Y" }}</td>
                 <td>
-                    <a href="{% url 'lesson_schedule' lesson.pk %}" class="btn btn-sm btn-info">Jadval</a>
-                    <a href="{% url 'lesson_delete' lesson.pk %}" class="btn btn-sm btn-danger">O'chirish</a>
+                    <a href="{% url 'lesson_schedule' course.pk %}" class="btn btn-sm btn-info">Jadval</a>
+                    <a href="{% url 'lesson_delete' course.pk %}" class="btn btn-sm btn-danger">O'chirish</a>
                 </td>
             </tr>
             {% endfor %}

@@ -29,108 +29,330 @@
         </select>
     </div>
 
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Boshlanish sanasi</label>
+            <input type="date" name="start_date" class="form-control" required>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Tugash sanasi</label>
+            <input type="date" name="end_date" class="form-control" required>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Jami necha para dars</label>
+            <input type="number" name="total_lessons" class="form-control" min="1" required>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label fw-bold">Haftada necha marta</label>
+            <input type="number" name="lessons_per_week" class="form-control" min="1" max="6" required>
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary w-100">Davom etish →</button>
 </form>
 
 {# ================= STEP 2 ================= #}
 {% elif step == 2 %}
 
-<form method="post">
+<script>
+const GROUPS_COUNT = {{ groups_count }};
+</script>
+
+<form method="post" id="mainForm">
     {% csrf_token %}
     <input type="hidden" name="step" value="3">
     <input type="hidden" name="subject_id" value="{{ subject.id }}">
     <input type="hidden" name="groups_count" value="{{ groups_count }}">
+    <input type="hidden" name="start_date" value="{{ start_date }}">
+    <input type="hidden" name="end_date" value="{{ end_date }}">
+    <input type="hidden" name="total_lessons" value="{{ total_lessons }}">
+    <input type="hidden" name="lessons_per_week" value="{{ lessons_per_week }}">
 
     <div class="alert alert-info">
-        <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh,
-        jami <b>{% for g in groups %}{{ g|length }}{% if not forloop.last %} + {% endif %}{% endfor %}</b> ta o'quvchi
+        <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh —
+        jami <b>{{ total_lessons }}</b> para dars, haftada <b>{{ lessons_per_week }}</b> marta.
+        <br>
+        <small class="text-muted">🤖 Tizim dars kunlari va vaqtlarini avtomatik joylastiradi</small>
     </div>
 
-    <div class="row mb-3">
-        <div class="col-md-4">
-            <label class="form-label fw-bold">Boshlanish sanasi</label>
-            <input type="date" name="start_date" class="form-control" required
-                   value="{{ start_date|default:'' }}">
+    {% if skipped_langs %}
+        {% for msg in skipped_langs %}
+            <div class="alert alert-warning">⚠ {{ msg }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {# Tayinlanmagan talabalar paneli #}
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning bg-opacity-25 fw-bold">
+            📋 Hech qaysi guruhga tayinlanmagan talabalar
+            <span class="badge bg-warning text-dark ms-1" id="unassigned_count">{{ unassigned_students|length }}</span>
         </div>
-        <div class="col-md-4">
-            <label class="form-label fw-bold">Boshlanish vaqti</label>
-            <input type="time" name="start_time" class="form-control" required
-                   value="{{ start_time|default:'' }}">
-        </div>
-        <div class="col-md-4 d-flex align-items-end">
-            <div class="alert alert-secondary mb-0 w-100 text-center">
-                ⏱ Davomiyligi: <b>80 daqiqa</b>
-            </div>
+        <div class="card-body" id="unassigned_list">
+            {% if unassigned_students %}
+                {% for st in unassigned_students %}
+                <span class="badge bg-light text-dark border me-1 mb-1 p-2" id="unassigned_badge_{{ st.id }}">
+                    {{ st }}
+                    <button type="button" class="btn-close ms-1" style="font-size:0.6em;"
+                            title="Eng kam talabali guruhga qo'shish"
+                            onclick="autoAssign({{ st.id }}, '{{ st }}')"></button>
+                </span>
+                {% endfor %}
+            {% else %}
+                <span class="text-muted" id="no_unassigned_msg">Hammasi guruhlarga taqsimlangan ✅</span>
+            {% endif %}
         </div>
     </div>
 
-    {% for group in groups %}
-    <div class="border rounded p-3 mb-4 bg-light">
+    {# Guruhlar #}
+    {% for gdata in all_groups %}
+    {% with group_idx=forloop.counter0 student_count=gdata.students|length %}
+    <div class="border rounded p-3 mb-4 {% if student_count < 8 %}border-danger bg-danger bg-opacity-10{% else %}bg-light{% endif %}"
+         id="group_card_{{ group_idx }}">
 
-        <h5 class="text-secondary">
+        <h5 id="group_title_{{ group_idx }}" class="{% if student_count < 8 %}text-danger{% else %}text-secondary{% endif %}">
             {{ forloop.counter }}-Guruh
-            <span class="badge bg-primary">{{ group|length }} ta o'quvchi</span>
+            <span class="badge {% if student_count < 8 %}bg-danger{% else %}bg-primary{% endif %}" id="badge_{{ group_idx }}">
+                {{ student_count }} ta o'quvchi
+            </span>
+            <span class="badge bg-info text-dark">{{ gdata.lang_name }}</span>
+            <span class="badge bg-danger" id="warn_{{ group_idx }}" {% if student_count >= 8 %}style="display:none;"{% endif %}>⚠ 8 tadan kam!</span>
         </h5>
 
+        {# O'qituvchi #}
         <div class="mb-3">
             <label class="form-label fw-bold">O'qituvchi tanlang</label>
             {% for t in teachers %}
             <div class="form-check">
                 <input class="form-check-input" type="radio"
-                       name="teacher_{{ forloop.parentloop.counter0 }}"
+                       name="teacher_{{ group_idx }}"
                        value="{{ t.id }}"
-                       id="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}"
+                       id="t_{{ group_idx }}_{{ t.id }}"
                        {% if selected_teachers %}
                            {% for k, v in selected_teachers.items %}
-                               {% if k == forloop.parentloop.counter0 and v == t.id %}checked{% endif %}
+                               {% if k == group_idx and v == t.id %}checked{% endif %}
                            {% endfor %}
                        {% endif %}
                        required>
-                <label class="form-check-label" for="t_{{ forloop.parentloop.counter0 }}_{{ t.id }}">
-                    {{ t }}
-                </label>
+                <label class="form-check-label" for="t_{{ group_idx }}_{{ t.id }}">{{ t }}</label>
             </div>
             {% empty %}
             <div class="alert alert-warning">Bu fanning o'qituvchisi yo'q</div>
             {% endfor %}
         </div>
 
+        {# Talabalar #}
         <div>
             <label class="fw-bold mb-2 d-block">
                 O'quvchilar
-                <small class="text-muted fw-normal">(belgini olib tashlash — guruhdan chiqarish)</small>
+                <small class="text-muted fw-normal">(✕ — guruhdan chiqarish)</small>
             </label>
-            {% for student in group %}
-            <div class="form-check">
-                <input class="form-check-input"
-                       type="checkbox"
-                       name="students_{{ forloop.parentloop.counter0 }}"
-                       value="{{ student.id }}"
-                       id="st_{{ forloop.parentloop.counter0 }}_{{ student.id }}"
-                       checked>
-                <label class="form-check-label"
-                       for="st_{{ forloop.parentloop.counter0 }}_{{ student.id }}">
-                    {{ student }}
-                    {% for sid, msg in student_error_msgs.items %}
-                        {% if sid == student.id|stringformat:"s" %}
-                            <span class="badge bg-danger ms-2">⚠ {{ msg }}</span>
-                        {% endif %}
-                    {% endfor %}
-                </label>
+            <div id="students_list_{{ group_idx }}">
+                {% for student in gdata.students %}
+                <div class="d-flex align-items-center mb-1 py-1 border-bottom"
+                     id="row_{{ group_idx }}_{{ student.id }}">
+                    <input type="hidden" name="students_{{ group_idx }}" value="{{ student.id }}">
+                    <span class="me-2 text-muted">{{ forloop.counter }}.</span>
+                    <span>{{ student }}</span>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger ms-auto px-2 py-0"
+                            onclick="removeStudent({{ group_idx }}, {{ student.id }}, '{{ student }}')">✕</button>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
+
+            {# Qo'shish #}
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-success"
+                        onclick="toggleAddPanel({{ group_idx }})">
+                    ➕ Talaba qo'shish
+                </button>
+                <div id="add_panel_{{ group_idx }}" style="display:none;" class="mt-2 d-flex gap-2 flex-wrap">
+                    <select class="form-select form-select-sm" id="add_select_{{ group_idx }}" style="max-width:320px;">
+                        <option value="">— tanlang —</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-success"
+                            onclick="addStudentToGroup({{ group_idx }})">Qo'shish</button>
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            onclick="toggleAddPanel({{ group_idx }})">Bekor</button>
+                </div>
+            </div>
         </div>
 
     </div>
+    {% endwith %}
     {% endfor %}
 
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 mt-3">
         <a href="{% url 'lesson_create' %}" class="btn btn-secondary">← Orqaga</a>
         <button type="submit" class="btn btn-success w-100">
-            💾 Saqlash
+            🤖 Avtomatik joylashtirish va saqlash
         </button>
     </div>
 </form>
+
+<script>
+// Add panel toggle
+function toggleAddPanel(groupIdx) {
+    const panel = document.getElementById(`add_panel_${groupIdx}`);
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+}
+
+// Guruhdan talabani o'chirish
+function removeStudent(groupIdx, studentId, studentName) {
+    const row = document.getElementById(`row_${groupIdx}_${studentId}`);
+    if (!row) return;
+    row.remove();
+    updateGroupUI(groupIdx);
+    renumberGroup(groupIdx);
+
+    // Tayinlanmagan panelga qo'shish
+    addToUnassignedPanel(studentId, studentName);
+
+    // Barcha guruhlarning selectiga qo'shish
+    for (let i = 0; i < GROUPS_COUNT; i++) {
+        const sel = document.getElementById(`add_select_${i}`);
+        if (sel && !Array.from(sel.options).some(o => o.value == studentId)) {
+            const opt = new Option(studentName, studentId);
+            sel.appendChild(opt);
+        }
+    }
+}
+
+// Tayinlanmagan panelga badge qo'shish
+function addToUnassignedPanel(studentId, studentName) {
+    const list = document.getElementById('unassigned_list');
+    if (document.getElementById(`unassigned_badge_${studentId}`)) return;
+
+    // "Hammasi taqsimlangan" xabarini yashirish
+    const noMsg = document.getElementById('no_unassigned_msg');
+    if (noMsg) noMsg.style.display = 'none';
+
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border me-1 mb-1 p-2';
+    span.id = `unassigned_badge_${studentId}`;
+    span.innerHTML = `${studentName} <button type="button" class="btn-close ms-1" style="font-size:0.6em;" title="Eng kam talabali guruhga qo'shish" onclick="autoAssign(${studentId}, '${studentName}')"></button>`;
+    list.appendChild(span);
+    refreshUnassignedCount();
+}
+
+// Avtomatik eng kam talabali guruhga qo'shish
+function autoAssign(studentId, studentName) {
+    let minCount = Infinity;
+    let minGroupIdx = 0;
+    for (let i = 0; i < GROUPS_COUNT; i++) {
+        const list = document.getElementById(`students_list_${i}`);
+        if (!list) continue;
+        const count = list.querySelectorAll('[id^="row_"]').length;
+        if (count < minCount) {
+            minCount = count;
+            minGroupIdx = i;
+        }
+    }
+    addStudentDirectly(minGroupIdx, studentId, studentName);
+}
+
+// Select orqali qo'shish
+function addStudentToGroup(groupIdx) {
+    const sel = document.getElementById(`add_select_${groupIdx}`);
+    const studentId = sel.value;
+    const studentName = sel.options[sel.selectedIndex]?.textContent?.trim();
+    if (!studentId) return;
+    addStudentDirectly(groupIdx, studentId, studentName);
+    sel.value = '';
+}
+
+// Asosiy qo'shish funksiyasi
+function addStudentDirectly(groupIdx, studentId, studentName) {
+    // Boshqa guruhlardan o'chirish
+    for (let i = 0; i < GROUPS_COUNT; i++) {
+        const existRow = document.getElementById(`row_${i}_${studentId}`);
+        if (existRow) {
+            existRow.remove();
+            updateGroupUI(i);
+            renumberGroup(i);
+        }
+    }
+
+    // Barcha selectlardan o'chirish
+    for (let i = 0; i < GROUPS_COUNT; i++) {
+        const sel = document.getElementById(`add_select_${i}`);
+        if (sel) Array.from(sel.options).filter(o => o.value == studentId).forEach(o => o.remove());
+    }
+
+    // Tayinlanmagan paneldan o'chirish
+    const badge = document.getElementById(`unassigned_badge_${studentId}`);
+    if (badge) badge.remove();
+    refreshUnassignedCount();
+
+    // Guruhga qo'shish
+    const list = document.getElementById(`students_list_${groupIdx}`);
+    const num = list.querySelectorAll('[id^="row_"]').length + 1;
+    const div = document.createElement('div');
+    div.className = 'd-flex align-items-center mb-1 py-1 border-bottom';
+    div.id = `row_${groupIdx}_${studentId}`;
+    div.innerHTML = `
+        <input type="hidden" name="students_${groupIdx}" value="${studentId}">
+        <span class="me-2 text-muted">${num}.</span>
+        <span>${studentName}</span>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto px-2 py-0"
+                onclick="removeStudent(${groupIdx}, ${studentId}, '${studentName}')">✕</button>
+    `;
+    list.appendChild(div);
+    updateGroupUI(groupIdx);
+}
+
+// Guruh UI ni yangilash (badge, rang)
+function updateGroupUI(groupIdx) {
+    const list = document.getElementById(`students_list_${groupIdx}`);
+    if (!list) return;
+    const count = list.querySelectorAll('[id^="row_"]').length;
+    const badge = document.getElementById(`badge_${groupIdx}`);
+    const warn = document.getElementById(`warn_${groupIdx}`);
+    const card = document.getElementById(`group_card_${groupIdx}`);
+
+    if (badge) badge.textContent = `${count} ta o'quvchi`;
+
+    if (count < 8) {
+        if (badge) badge.className = 'badge bg-danger';
+        if (warn) warn.style.display = '';
+        if (card) {
+            card.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+            card.classList.remove('bg-light');
+        }
+    } else {
+        if (badge) badge.className = 'badge bg-primary';
+        if (warn) warn.style.display = 'none';
+        if (card) {
+            card.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10');
+            card.classList.add('bg-light');
+        }
+    }
+}
+
+// Raqamlarni tartiblab chiqish
+function renumberGroup(groupIdx) {
+    const list = document.getElementById(`students_list_${groupIdx}`);
+    if (!list) return;
+    list.querySelectorAll('[id^="row_"]').forEach((row, i) => {
+        const numSpan = row.querySelector('span.text-muted');
+        if (numSpan) numSpan.textContent = `${i + 1}.`;
+    });
+}
+
+// Tayinlanmagan son
+function refreshUnassignedCount() {
+    const list = document.getElementById('unassigned_list');
+    const countBadge = document.getElementById('unassigned_count');
+    const badges = list.querySelectorAll('[id^="unassigned_badge_"]');
+    if (countBadge) countBadge.textContent = badges.length;
+
+    const noMsg = document.getElementById('no_unassigned_msg');
+    if (noMsg) noMsg.style.display = badges.length === 0 ? '' : 'none';
+}
+</script>
 
 {% endif %}
 
