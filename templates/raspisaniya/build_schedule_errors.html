@@ -1,0 +1,89 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-lg">
+        <div class="card-body">
+            <h2 class="mb-4 text-danger">⚠ Jadval tuzishda xatoliklar</h2>
+
+            {% if success_count %}
+            <div class="alert alert-success">
+                ✅ {{ success_count }} ta guruh uchun jadval muvaffaqiyatli tuzildi.
+            </div>
+            {% endif %}
+
+            <div class="alert alert-warning">
+                Quyidagi guruhlar uchun bo'sh vaqt topilmadi. Talabalarni boshqa guruhga ko'chiring.
+            </div>
+
+            {% for detail in error_details %}
+            <div class="card border-danger mb-4">
+                <div class="card-header bg-danger text-white">
+                    ❌ {{ detail.course.subject }} — {{ detail.group.group_number }}-guruh
+                    ({{ detail.group.get_language_display }})
+                    | O'qituvchi: {{ detail.group.teacher }}
+                    | {{ detail.group.students.count }} ta talaba
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-2">
+                        Bu guruh uchun {{ detail.course.start_date|date:"d.m.Y" }} —
+                        {{ detail.course.end_date|date:"d.m.Y" }} oralig'ida
+                        bo'sh vaqt topilmadi.
+                    </p>
+
+                    <h6 class="fw-bold">Bu fandan boshqa guruhlar:</h6>
+                    {% if detail.other_groups %}
+                    <table class="table table-sm table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Guruh</th>
+                                <th>O'qituvchi</th>
+                                <th>Vaqt</th>
+                                <th>Talabalar</th>
+                                <th>Amal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for og in detail.other_groups %}
+                            <tr>
+                                <td>{{ og.group_number }}-guruh ({{ og.get_language_display }})</td>
+                                <td>{{ og.teacher }}</td>
+                                <td>
+                                    {% if og.start_time %}
+                                        {{ og.start_time|time:"H:i" }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>{{ og.students.count }} ta</td>
+                                <td>
+                                    <a href="{% url 'move_students' detail.group.pk og.pk %}"
+                                       class="btn btn-sm btn-outline-primary">
+                                        Bu guruhga ko'chirish →
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-muted">Boshqa guruh yo'q.</p>
+                    {% endif %}
+
+                    <div class="mt-2">
+                        <form method="post" action="{% url 'delete_unscheduled_group' detail.group.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Guruhni o\'chirasizmi? Talabalar qayta yiqilgan ro\'yxatiga qaytadi.')">
+                                🗑 Guruhni o'chirish
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

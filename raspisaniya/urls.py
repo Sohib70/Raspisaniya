@@ -31,4 +31,13 @@ urlpatterns = [
     path('subject/<int:pk>/delete/', views.subject_delete, name='subject_delete'),
     path('subject/<int:pk>/students/', views.subject_students, name='subject_students'),
     path('subject/<int:pk>/students/excel/', views.subject_students_excel, name='subject_students_excel'),
+
+
+    path('build-schedule/', views.build_schedule, name='build_schedule'),
+    path('move-students/<int:from_group_pk>/<int:to_group_pk>/', views.move_students, name='move_students'),
+    path('group/<int:pk>/delete-unscheduled/', views.delete_unscheduled_group, name='delete_unscheduled_group'),
+    path('course/<int:pk>/update/', views.course_update, name='course_update'),
+
+    path('weekly-schedule/', views.weekly_schedule_view, name='weekly_schedule'),
+    path('weekly-schedule/excel/', views.weekly_schedule_excel, name='weekly_schedule_excel'),
 ]

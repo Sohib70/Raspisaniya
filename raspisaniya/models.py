@@ -64,13 +64,13 @@ class CourseGroup(models.Model):
     teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
     students = models.ManyToManyField(Student, blank=True)
     group_number = models.PositiveIntegerField(default=1)
-    start_time = models.TimeField(null=True, blank=True)
-    weekdays = models.JSONField(default=list)
+    start_time = models.TimeField(null=True, blank=True)  # jadval tuzilganda to'ldiriladi
+    weekdays = models.JSONField(default=list, blank=True)
     language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
+    is_scheduled = models.BooleanField(default=False)  # jadval tuzildimi
 
     def __str__(self):
         return f"{self.course.subject} — {self.group_number}-guruh"
-
 
 class GroupSchedule(models.Model):
     group = models.ForeignKey(CourseGroup, on_delete=models.CASCADE, related_name='schedule')

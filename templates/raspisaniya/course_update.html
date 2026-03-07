@@ -1,0 +1,57 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container mt-4">
+<div class="card shadow-lg" style="max-width:500px; margin:auto;">
+<div class="card-body">
+
+    <h4 class="mb-4 text-primary">✏️ Kursni tahrirlash</h4>
+
+    <div class="alert alert-warning">
+        ⚠ Sana yoki dars sonini o'zgartirsangiz, bu kursning barcha jadval ma'lumotlari
+        o'chirilib, qayta jadval tuzishingiz kerak bo'ladi.
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">Fan</label>
+            <input type="text" class="form-control" value="{{ course.subject }}" disabled>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Boshlanish sanasi</label>
+                <input type="date" name="start_date" class="form-control"
+                       value="{{ course.start_date|date:'Y-m-d' }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Tugash sanasi</label>
+                <input type="date" name="end_date" class="form-control"
+                       value="{{ course.end_date|date:'Y-m-d' }}" required>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Jami necha para dars</label>
+                <input type="number" name="total_lessons" class="form-control"
+                       value="{{ course.total_lessons }}" min="1" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Haftada necha marta</label>
+                <input type="number" name="lessons_per_week" class="form-control"
+                       value="{{ course.lessons_per_week }}" min="1" max="6" required>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
+            <button type="submit" class="btn btn-primary w-100">💾 Saqlash</button>
+        </div>
+    </form>
+
+</div>
+</div>
+</div>
+{% endblock %}

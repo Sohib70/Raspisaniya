@@ -1,0 +1,90 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-lg">
+        <div class="card-body">
+
+            <h2 class="mb-4 text-primary">🔄 Talabalarni ko'chirish</h2>
+
+            <div class="row mb-4">
+                <div class="col-md-5">
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white fw-bold">
+                            ❌ Manba guruh (jadval tuzilmagan)
+                        </div>
+                        <div class="card-body">
+                            <p><b>Fan:</b> {{ from_group.course.subject }}</p>
+                            <p><b>Guruh:</b> {{ from_group.group_number }}-guruh ({{ from_group.get_language_display }})</p>
+                            <p><b>O'qituvchi:</b> {{ from_group.teacher }}</p>
+                            <p><b>Talabalar:</b> {{ from_group.students.count }} ta</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 d-flex align-items-center justify-content-center">
+                    <span style="font-size:2rem;">→</span>
+                </div>
+                <div class="col-md-5">
+                    <div class="card border-success">
+                        <div class="card-header bg-success text-white fw-bold">
+                            ✅ Maqsad guruh (jadval tuzilgan)
+                        </div>
+                        <div class="card-body">
+                            <p><b>Fan:</b> {{ to_group.course.subject }}</p>
+                            <p><b>Guruh:</b> {{ to_group.group_number }}-guruh ({{ to_group.get_language_display }})</p>
+                            <p><b>O'qituvchi:</b> {{ to_group.teacher }}</p>
+                            <p><b>Vaqt:</b>
+                                {% if to_group.start_time %}
+                                    {{ to_group.start_time|time:"H:i" }}
+                                {% else %}—{% endif %}
+                            </p>
+                            <p><b>Hozirgi talabalar:</b> {{ to_group.students.count }} ta</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+
+                <h5 class="fw-bold mb-3">Ko'chiriladigan talabalarni tanlang:</h5>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="toggleAll(true)">Hammasini belgilash</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
+                            onclick="toggleAll(false)">Hammasini olib tashlash</button>
+                </div>
+
+                <div class="border rounded p-3 mb-4" style="max-height:400px; overflow-y:auto;">
+                    {% for student in students %}
+                    <div class="form-check py-1 border-bottom">
+                        <input class="form-check-input student-check" type="checkbox"
+                               name="student_ids" value="{{ student.id }}"
+                               id="st_{{ student.id }}" checked>
+                        <label class="form-check-label" for="st_{{ student.id }}">
+                            {{ forloop.counter }}. {{ student }}
+                        </label>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted">Bu guruhda talaba yo'q.</p>
+                    {% endfor %}
+                </div>
+
+                <div class="d-flex gap-2">
+                    <a href="{% url 'build_schedule' %}" class="btn btn-secondary">← Orqaga</a>
+                    <button type="submit" class="btn btn-primary w-100">
+                        🔄 Tanlangan talabalarni ko'chirish
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAll(checked) {
+    document.querySelectorAll('.student-check').forEach(cb => cb.checked = checked);
+}
+</script>
+{% endblock %}

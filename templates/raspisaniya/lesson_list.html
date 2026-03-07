@@ -3,7 +3,11 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4>Darslar ro'yxati</h4>
-        <a href="{% url 'lesson_create' %}" class="btn btn-primary">+ Yangi dars</a>
+        <div class="d-flex gap-2">
+            <a href="{% url 'build_schedule' %}" class="btn btn-warning">🗓 Jadval tuzish</a>
+            <a href="{% url 'lesson_create' %}" class="btn btn-primary">+ Yangi dars</a>
+            <a href="{% url 'weekly_schedule' %}" class="btn btn-info">📅 Haftalik jadval</a>
+        </div>
     </div>
 
     {% if messages %}
@@ -12,13 +16,14 @@
         {% endfor %}
     {% endif %}
 
-    {% if courses %}
+    {% if courses_data %}
     <table class="table table-bordered table-hover">
         <thead class="table-dark">
             <tr>
-                <th>#</th>
+                <th>T/R</th>
                 <th>Fan</th>
                 <th>Guruhlar</th>
+                <th>Jadval holati</th>
                 <th>Jami dars</th>
                 <th>Boshlanish</th>
                 <th>Tugash</th>
@@ -26,17 +31,27 @@
             </tr>
         </thead>
         <tbody>
-            {% for course in courses %}
+            {% for item in courses_data %}
             <tr>
                 <td>{{ forloop.counter }}</td>
-                <td>{{ course.subject }}</td>
-                <td>{{ course.groups.count }} ta guruh</td>
-                <td>{{ course.total_lessons }} para</td>
-                <td>{{ course.start_date|date:"d.m.Y" }}</td>
-                <td>{{ course.end_date|date:"d.m.Y" }}</td>
+                <td>{{ item.course.subject }}</td>
+                <td>{{ item.total_groups }} ta guruh</td>
                 <td>
-                    <a href="{% url 'lesson_schedule' course.pk %}" class="btn btn-sm btn-info">Jadval</a>
-                    <a href="{% url 'lesson_delete' course.pk %}" class="btn btn-sm btn-danger">O'chirish</a>
+                    {% if item.scheduled_groups == item.total_groups and item.total_groups > 0 %}
+                        <span class="badge bg-success">✅ Tayyor</span>
+                    {% elif item.scheduled_groups == 0 %}
+                        <span class="badge bg-danger">⏳ Jadval tuzilmagan</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">⚠ {{ item.scheduled_groups }}/{{ item.total_groups }} tuzilgan</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.course.total_lessons }} para</td>
+                <td>{{ item.course.start_date|date:"d.m.Y" }}</td>
+                <td>{{ item.course.end_date|date:"d.m.Y" }}</td>
+                <td>
+                    <a href="{% url 'lesson_schedule' item.course.pk %}" class="btn btn-sm btn-info">Jadval</a>
+                    <a href="{% url 'course_update' item.course.pk %}" class="btn btn-sm btn-warning">✏️</a>
+                    <a href="{% url 'lesson_delete' item.course.pk %}" class="btn btn-sm btn-danger">O'chirish</a>
                 </td>
             </tr>
             {% endfor %}
