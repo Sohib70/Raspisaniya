@@ -53,7 +53,25 @@
                         <span class="badge bg-light text-dark">{{ item.group.students.count }} ta</span>
                     </div>
                     <div class="card-body p-0">
-                        <p class="px-3 pt-2 mb-1"><b>O'qituvchi:</b> {{ item.group.teacher }}</p>
+                        <p class="px-3 pt-2 mb-1">
+                            <b>O'qituvchi:</b> {{ item.group.teacher }}
+                            <button class="btn btn-sm btn-outline-warning ms-2"
+                                onclick="this.closest('p').nextElementSibling.style.display = this.closest('p').nextElementSibling.style.display === 'none' ? 'flex' : 'none'">
+                                ✏️
+                            </button>
+                        </p>
+                        <div style="display:none;" class="px-3 mb-2 gap-2">
+                            <form method="post" action="{% url 'change_teacher' item.group.pk %}" class="d-flex gap-2 w-100">
+                                {% csrf_token %}
+                                <select name="teacher_id" class="form-select form-select-sm">
+                                    <option value="">— tanlang —</option>
+                                    {% for t in teachers %}
+                                    <option value="{{ t.pk }}" {% if t.pk == item.group.teacher.pk %}selected{% endif %}>{{ t }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-warning">Saqlash</button>
+                            </form>
+                        </div>
                         <p class="px-3 mb-2"><b>Vaqt:</b> {{ item.group.start_time|time:"H:i" }} — 80 daqiqa</p>
 
                         <table class="table table-sm table-bordered mb-0">

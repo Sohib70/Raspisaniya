@@ -535,6 +535,7 @@ def lesson_schedule(request, pk):
     return render(request, "raspisaniya/lesson_schedule.html", {
         "course": course,
         "groups_data": groups_data,
+        "teachers": Teacher.objects.filter(subjects=course.subject),
     })
 
 
@@ -590,6 +591,19 @@ def lesson_schedule_excel(request, pk):
     response["Content-Disposition"] = f'attachment; filename="jadval_{course.pk}.xlsx"'
     wb.save(response)
     return response
+
+
+@login_required
+def change_teacher(request, group_pk):
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    if request.method == "POST":
+        teacher_id = request.POST.get("teacher_id")
+        if teacher_id:
+            teacher = get_object_or_404(Teacher, pk=teacher_id)
+            group.teacher = teacher
+            group.save()
+            messages.success(request, f"O'qituvchi {teacher} ga o'zgartirildi")
+    return redirect("lesson_schedule", pk=group.course.pk)
 
 
 @login_required

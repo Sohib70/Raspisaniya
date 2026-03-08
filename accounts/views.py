@@ -36,6 +36,27 @@ def login_view(request):
 
     return render(request, "accounts/login.html")
 
+@login_required
+def change_password(request):
+    if request.method == "POST":
+        old_password = request.POST.get("old_password")
+        new_password = request.POST.get("new_password")
+        confirm_password = request.POST.get("confirm_password")
+
+        if not request.user.check_password(old_password):
+            messages.error(request, "Eski parol noto'g'ri")
+        elif new_password != confirm_password:
+            messages.error(request, "Yangi parollar mos kelmadi")
+        elif len(new_password) < 4:
+            messages.error(request, "Parol kamida 4 ta belgi bo'lishi kerak")
+        else:
+            request.user.set_password(new_password)
+            request.user.save()
+            messages.success(request, "Parol muvaffaqiyatli o'zgartirildi! Qayta kiring.")
+            return redirect('login')
+
+    return render(request, "accounts/change_password.html")
+
 
 def logout_view(request):
     logout(request)
@@ -52,68 +73,71 @@ def student_dashboard(request):
 
     from datetime import datetime, timedelta, date as dt_date
 
-    my_groups = CourseGroup.objects.filter(
-        students=student,
-        is_scheduled=True,
-    ).select_related('course__subject', 'teacher').prefetch_related('schedule')
+    week_str = request.GET.get('week')
+    if week_str:
+        try:
+            week_start = dt_date.fromisoformat(week_str)
+            week_start = week_start - timedelta(days=week_start.weekday())
+        except:
+            week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
+    else:
+        week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
+    week_end = week_start + timedelta(days=5)
 
-    PARA_TIMES_WEEKLY = [
+    PARA_TIMES_LIST = [
         ("08:30", "09:50"), ("10:00", "11:20"), ("12:00", "13:20"),
         ("13:30", "14:50"), ("15:00", "16:20"), ("16:30", "17:50"),
     ]
     WEEKDAY_LIST = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
 
-    # Grid: {(weekday, para_idx): [entries]}
+    my_groups = CourseGroup.objects.filter(
+        students=student,
+        is_scheduled=True,
+    ).select_related('course__subject', 'teacher').prefetch_related('schedule')
+
+    # Grid: {(weekday, para_idx): {'subject', 'teacher'}}
     grid = {}
     for grp in my_groups:
-        if not grp.start_time:
-            continue
-        start_str = grp.start_time.strftime("%H:%M")
-        para_idx = next((i for i, (s, e) in enumerate(PARA_TIMES_WEEKLY) if s == start_str), None)
-        if para_idx is None:
-            continue
-        end_dt = datetime.combine(dt_date.today(), grp.start_time) + timedelta(minutes=80)
-        end_str = end_dt.strftime("%H:%M")
-
-        for sched in grp.schedule.all():
+        for sched in grp.schedule.filter(date__gte=week_start, date__lte=week_end):
             wd = sched.date.weekday()
             if wd > 5:
                 continue
+            st = sched.start_time or grp.start_time
+            if not st:
+                continue
+            start_str = st.strftime("%H:%M")
+            para_idx = next((i for i, (s, e) in enumerate(PARA_TIMES_LIST) if s == start_str), None)
+            if para_idx is None:
+                continue
             key = (wd, para_idx)
             if key not in grid:
-                grid[key] = []
-            if not any(x['subject'] == str(grp.course.subject) for x in grid[key]):
-                grid[key].append({
-                    'subject': str(grp.course.subject),
-                    'teacher': str(grp.teacher),
-                    'start': start_str,
-                    'end': end_str,
-                })
+                grid[key] = {'subject': str(grp.course.subject), 'teacher': str(grp.teacher)}
 
-    # Har kun uchun nechta para bor — rowspan hisoblash
+    # Table data — haftalik jadval formatida
     table_data = []
     for day_idx, day_name in enumerate(WEEKDAY_LIST):
-        day_rows = []
-        for para_idx, (start, end) in enumerate(PARA_TIMES_WEEKLY):
+        for para_idx, (start, end) in enumerate(PARA_TIMES_LIST):
             key = (day_idx, para_idx)
-            entries = grid.get(key, [])
-            if entries:
-                day_rows.append({
-                    'time': f"{start} - {end}",
-                    'entries': entries,
-                })
+            info = grid.get(key)
+            table_data.append({
+                'day': day_name,
+                'time': f"{start} - {end}",
+                'info': info,
+                'show_day': para_idx == 0,
+                'para_count': len(PARA_TIMES_LIST),
+            })
 
-        if day_rows:
-            for i, row in enumerate(day_rows):
-                row['show_day'] = (i == 0)
-                row['day'] = day_name
-                row['day_rowspan'] = len(day_rows)
-                table_data.append(row)
+    prev_week = (week_start - timedelta(weeks=1)).isoformat()
+    next_week = (week_start + timedelta(weeks=1)).isoformat()
 
     return render(request, "accounts/student_dashboard.html", {
         "student": student,
         "my_groups": my_groups,
         "table_data": table_data,
+        "week_start_str": week_start.strftime("%d.%m.%Y"),
+        "week_end_str": week_end.strftime("%d.%m.%Y"),
+        "prev_week": prev_week,
+        "next_week": next_week,
     })
 
 

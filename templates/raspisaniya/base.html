@@ -148,6 +148,11 @@
                         </span>
                         {{ user.get_full_name|default:user.username }}
                     </div>
+                    <!-- Parol o'zgartirish -->
+                    <a href="{% url 'change_password' %}" class="logout-chip" style="background:#fff8e1; color:#b8860b; border-color:#b8860b;">
+                        <span class="material-icons-round">lock</span>
+                        Parol
+                    </a>
                     <!-- Chiqish -->
                     <a href="{% url 'logout' %}" class="logout-chip">
                         <span class="material-icons-round">logout</span>

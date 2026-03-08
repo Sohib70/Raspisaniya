@@ -24,6 +24,7 @@
             border-radius: 12px 12px 0 0;
             padding: 12px 20px;
             font-weight: 700;
+            font-size: 1rem;
         }
         .day-cell {
             background: #2c3e50;
@@ -35,21 +36,37 @@
             writing-mode: vertical-lr;
             transform: rotate(180deg);
             padding: 8px 4px;
-            min-width: 36px;
+            min-width: 40px;
         }
         .time-cell {
             background: #5d6d7e;
             color: white;
             text-align: center;
             vertical-align: middle;
-            font-size: 0.78rem;
-            padding: 6px 8px;
+            font-size: 0.75rem;
+            padding: 4px 6px;
             white-space: nowrap;
+            min-width: 90px;
         }
-        .subject-cell { vertical-align: middle; padding: 8px 12px; }
-        .subject-name { font-weight: 700; color: #1a5c2a; font-size: 0.88rem; }
-        .teacher-name { color: #555; font-size: 0.75rem; }
-        .no-groups { text-align: center; padding: 60px 20px; color: #888; }
+        .subject-cell {
+            background: #eafbea;
+            vertical-align: middle;
+            text-align: center;
+            padding: 6px 8px;
+        }
+        .subject-name { font-weight: 700; color: #1a5c2a; font-size: 0.82rem; }
+        .teacher-name { color: #444; font-size: 0.72rem; }
+        .empty-cell { background: #fafafa; }
+        .week-nav {
+            background: #1a252f;
+            color: white;
+            border-radius: 8px;
+            padding: 8px 20px;
+            font-weight: 700;
+            min-width: 260px;
+            text-align: center;
+            font-size: 0.95rem;
+        }
     </style>
 </head>
 <body>
@@ -58,13 +75,14 @@
     <h5>📚 O'quvchi kabineti</h5>
     <div class="d-flex align-items-center gap-3">
         <span>👤 {{ student.first_name }} {{ student.last_name }}</span>
+        <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
 </div>
 
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
 
-    <div class="card info-card mb-4 p-3">
+    <div class="card info-card mb-3 p-3">
         <div class="row text-center">
             <div class="col-md-3">
                 <div class="text-muted small">Guruh</div>
@@ -85,49 +103,49 @@
         </div>
     </div>
 
-    {% if table_data %}
     <div class="card info-card mb-4">
         <div class="schedule-header">🗓 Haftalik jadvalim</div>
+
+        <div class="d-flex align-items-center justify-content-center gap-3 py-3">
+            <a href="?week={{ prev_week }}" class="btn btn-outline-primary btn-sm">← Oldingi hafta</a>
+            <div class="week-nav">📅 {{ week_start_str }} — {{ week_end_str }}</div>
+            <a href="?week={{ next_week }}" class="btn btn-outline-primary btn-sm">Keyingi hafta →</a>
+        </div>
+
         <div class="table-responsive">
-            <table class="table table-bordered mb-0" style="font-size:0.85rem;">
+            <table class="table table-bordered mb-0" style="font-size:0.82rem;">
                 <thead>
-                    <tr style="background:#1a237e; color:white;">
-                        <th class="text-center" style="width:40px;">Kun</th>
-                        <th class="text-center" style="width:130px;">Vaqt</th>
-                        <th>Fan</th>
-                        <th>O'qituvchi</th>
+                    <tr style="background:#1a252f; color:white;">
+                        <th class="text-center" style="width:42px;">Kun</th>
+                        <th class="text-center" style="width:95px;">Vaqt</th>
+                        <th class="text-center">Fan</th>
+                        <th class="text-center">O'qituvchi</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in table_data %}
                     <tr>
                         {% if row.show_day %}
-                        <td class="day-cell" rowspan="{{ row.day_rowspan }}">{{ row.day }}</td>
+                        <td class="day-cell" rowspan="{{ row.para_count }}">{{ row.day }}</td>
                         {% endif %}
                         <td class="time-cell">{{ row.time }}</td>
+                        {% if row.info %}
                         <td class="subject-cell">
-                            {% for entry in row.entries %}
-                            <div class="subject-name">{{ entry.subject }}</div>
-                            {% endfor %}
+                            <div class="subject-name">{{ row.info.subject }}</div>
                         </td>
-                        <td class="subject-cell">
-                            {% for entry in row.entries %}
-                            <div class="teacher-name">{{ entry.teacher }}</div>
-                            {% endfor %}
+                        <td class="subject-cell" style="background:#f0f8f0;">
+                            <div class="teacher-name">{{ row.info.teacher }}</div>
                         </td>
+                        {% else %}
+                        <td class="empty-cell"></td>
+                        <td class="empty-cell"></td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
-    {% else %}
-    <div class="no-groups">
-        <div style="font-size:3rem;">📭</div>
-        <h5 class="mt-3">Hozircha dars yo'q</h5>
-        <p>Siz hali hech qaysi guruhga qo'shilmagansiz.</p>
-    </div>
-    {% endif %}
 
 </div>
 </body>
