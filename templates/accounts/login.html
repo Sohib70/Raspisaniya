@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tizimga kirish</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-logo h2 {
+            color: #1a237e;
+            font-weight: 700;
+            font-size: 1.6rem;
+        }
+        .login-logo p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .form-control {
+            border-radius: 8px;
+            padding: 12px 15px;
+            border: 1.5px solid #ddd;
+            font-size: 0.95rem;
+        }
+        .form-control:focus {
+            border-color: #1a237e;
+            box-shadow: 0 0 0 3px rgba(26,35,126,0.1);
+        }
+        .btn-login {
+            background: linear-gradient(135deg, #1a237e, #1565c0);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+            transition: opacity 0.2s;
+        }
+        .btn-login:hover {
+            opacity: 0.9;
+            color: white;
+        }
+        .role-badges {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+        }
+        .role-badge {
+            background: #f0f4ff;
+            color: #1a237e;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <h2>📚 Dars jadvali</h2>
+            <p>Tizimga kirish uchun ID va parolni kiriting</p>
+        </div>
+
+        {% if messages %}
+            {% for msg in messages %}
+                <div class="alert alert-danger py-2">{{ msg }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label fw-semibold">ID raqam</label>
+                <input type="text" name="user_id" class="form-control"
+                       placeholder="Masalan: S-12345 yoki T-001"
+                       autofocus required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Parol</label>
+                <input type="password" name="password" class="form-control"
+                       placeholder="Parolni kiriting" required>
+            </div>
+            <button type="submit" class="btn-login btn">Kirish →</button>
+        </form>
+
+        <div class="role-badges">
+            <span class="role-badge">👨‍💼 Admin</span>
+            <span class="role-badge">👨‍🏫 O'qituvchi</span>
+            <span class="role-badge">👨‍🎓 O'quvchi</span>
+        </div>
+    </div>
+</body>
+</html>

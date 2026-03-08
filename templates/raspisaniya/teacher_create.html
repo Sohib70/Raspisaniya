@@ -12,39 +12,54 @@
 <form method="post">
     {% csrf_token %}
 
-    <div class="mb-3">
-        <label class="form-label" style="color: #000000;">Ism</label>
-        <input type="text" name="first_name" class="form-control"
-               value="{{ form.first_name.value|default:'' }}" required
-               style="color: #000000;">
-        {% if form.first_name.errors %}
-            <div class="text-danger small">{{ form.first_name.errors }}</div>
-        {% endif %}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">Ism</label>
+            <input type="text" name="first_name" class="form-control"
+                   value="{{ form.first_name.value|default:'' }}" required>
+            {% if form.first_name.errors %}
+                <div class="text-danger small">{{ form.first_name.errors }}</div>
+            {% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">Familiya</label>
+            <input type="text" name="last_name" class="form-control"
+                   value="{{ form.last_name.value|default:'' }}" required>
+            {% if form.last_name.errors %}
+                <div class="text-danger small">{{ form.last_name.errors }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">
+                Teacher ID <span class="text-danger">*</span>
+                <small class="text-muted fw-normal">(tizimga kirish uchun)</small>
+            </label>
+            <input type="text" name="teacher_id" class="form-control"
+                   placeholder="Masalan: T-001" required>
+            <div class="form-text">Bu ID bilan tizimga kiradi</div>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">
+                Parol
+                <small class="text-muted fw-normal">(bo'sh qolsa ID parol bo'ladi)</small>
+            </label>
+            <input type="text" name="password" class="form-control"
+                   placeholder="Bo'sh qoldirsa ID parol bo'ladi">
+        </div>
     </div>
 
     <div class="mb-3">
-        <label class="form-label" style="color: #000000;">Familiya</label>
-        <input type="text" name="last_name" class="form-control"
-               value="{{ form.last_name.value|default:'' }}" required
-               style="color: #000000;">
-        {% if form.last_name.errors %}
-            <div class="text-danger small">{{ form.last_name.errors }}</div>
-        {% endif %}
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label" style="color: #000000;">Fanlar</label>
+        <label class="form-label fw-bold">Fanlar</label>
         <div class="border rounded p-3">
             {% for subj in subjects %}
                 <div class="form-check">
-                    <input class="form-check-input"
-                           type="checkbox"
-                           name="subjects"
-                           value="{{ subj.id }}"
-                           id="subj_{{ subj.id }}"
+                    <input class="form-check-input" type="checkbox"
+                           name="subjects" value="{{ subj.id }}" id="subj_{{ subj.id }}"
                            {% if subj.id in selected_subjects %}checked{% endif %}>
-                    <label class="form-check-label" for="subj_{{ subj.id }}"
-                           style="color: #000000;">
+                    <label class="form-check-label" for="subj_{{ subj.id }}">
                         {{ subj.name }}
                     </label>
                 </div>
@@ -54,7 +69,7 @@
         </div>
     </div>
 
-    <button type="submit" class="btn btn-success">Saqlash</button>
+    <button type="submit" class="btn btn-success">💾 Saqlash</button>
     <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Ortga</a>
 </form>
 

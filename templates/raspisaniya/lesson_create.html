@@ -34,10 +34,6 @@
             <label class="form-label fw-bold">Boshlanish sanasi</label>
             <input type="date" name="start_date" class="form-control" required>
         </div>
-        <div class="col-md-6">
-            <label class="form-label fw-bold">Tugash sanasi</label>
-            <input type="date" name="end_date" class="form-control" required>
-        </div>
     </div>
 
     <div class="row mb-3">
@@ -51,8 +47,30 @@
         </div>
     </div>
 
+    <div id="end_date_info" class="alert alert-info py-2 mb-3" style="display:none;">
+        📅 Taxminiy tugash sanasi: <strong id="end_date_text"></strong>
+    </div>
+
     <button type="submit" class="btn btn-primary w-100">Davom etish →</button>
 </form>
+
+<script>
+function calcEndDate() {
+    const start = document.querySelector('[name=start_date]').value;
+    const total = parseInt(document.querySelector('[name=total_lessons]').value);
+    const perWeek = parseInt(document.querySelector('[name=lessons_per_week]').value);
+    if (start && total && perWeek) {
+        const weeks = Math.ceil(total / perWeek);
+        const end = new Date(start);
+        end.setDate(end.getDate() + weeks * 7);
+        document.getElementById('end_date_info').style.display = 'block';
+        document.getElementById('end_date_text').textContent = end.toLocaleDateString('uz-UZ');
+    }
+}
+document.querySelector('[name=start_date]').addEventListener('change', calcEndDate);
+document.querySelector('[name=total_lessons]').addEventListener('input', calcEndDate);
+document.querySelector('[name=lessons_per_week]').addEventListener('input', calcEndDate);
+</script>
 
 {# ================= STEP 2 ================= #}
 {% elif step == 2 %}

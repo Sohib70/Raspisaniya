@@ -1,0 +1,192 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>O'qituvchi kabineti</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f4ff; }
+        .topbar {
+            background: linear-gradient(135deg, #1b5e20, #2e7d32);
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .topbar h5 { margin: 0; font-weight: 700; }
+        .card-group {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        .group-header {
+            background: linear-gradient(135deg, #1b5e20, #388e3c);
+            color: white;
+            border-radius: 12px 12px 0 0;
+            padding: 14px 20px;
+        }
+        .badge-lang {
+            background: rgba(255,255,255,0.25);
+            color: white;
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 0.8em;
+        }
+        .nav-tabs .nav-link { color: #1b5e20; }
+        .nav-tabs .nav-link.active {
+            color: #1b5e20;
+            font-weight: bold;
+            border-bottom: 2px solid #1b5e20;
+        }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h5>👨‍🏫 O'qituvchi kabineti</h5>
+    <div class="d-flex align-items-center gap-3">
+        <span>{{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
+    </div>
+</div>
+
+<div class="container mt-4">
+
+    <div class="row mb-3">
+        <div class="col">
+            <div class="card border-0 shadow-sm p-3" style="border-radius:12px;">
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="text-muted small">Fanlar</div>
+                        <div class="fw-bold">{{ teacher.subjects.count }} ta</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Guruhlar</div>
+                        <div class="fw-bold">{{ my_groups|length }} ta</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-muted small">Jami o'quvchi</div>
+                        <div class="fw-bold">
+                            {% with total=0 %}
+                                {% for grp in my_groups %}{{ grp.students.count }}{% if not forloop.last %}+{% endif %}{% endfor %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if my_groups %}
+        {% for grp in my_groups %}
+        <div class="card card-group">
+            <div class="group-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold">{{ grp.course.subject }}</h6>
+                        <small>{{ grp.group_number }}-guruh | {{ grp.students.count }} ta o'quvchi</small>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center">
+                        <span class="badge-lang">{{ grp.get_language_display }}</span>
+                        {% if grp.start_time %}
+                        <span class="badge bg-warning text-dark">{{ grp.start_time|time:"H:i" }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-3" id="tab_{{ grp.pk }}" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab"
+                                data-bs-target="#jadval_{{ grp.pk }}">🗓 Jadval</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab"
+                                data-bs-target="#students_{{ grp.pk }}">👥 O'quvchilar</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    {# Jadval #}
+                    <div class="tab-pane fade show active" id="jadval_{{ grp.pk }}">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Sana</th>
+                                    <th>Hafta kuni</th>
+                                    <th>Vaqt</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sched in grp.schedule.all %}
+                                {% with wd=sched.date.weekday %}
+                                <tr>
+                                    <td>{{ sched.lesson_number }}</td>
+                                    <td>{{ sched.date|date:"d.m.Y" }}</td>
+                                    <td>
+                                        {% if wd == 0 %}Dushanba
+                                        {% elif wd == 1 %}Seshanba
+                                        {% elif wd == 2 %}Chorshanba
+                                        {% elif wd == 3 %}Payshanba
+                                        {% elif wd == 4 %}Juma
+                                        {% elif wd == 5 %}Shanba
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ grp.start_time|time:"H:i" }}</td>
+                                </tr>
+                                {% endwith %}
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">Jadval yo'q</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {# O'quvchilar #}
+                    <div class="tab-pane fade" id="students_{{ grp.pk }}">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>F.I.O</th>
+                                    <th>Guruh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for st in grp.students.all %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ st }}</td>
+                                    <td>{{ st.group|default:"—" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">O'quvchi yo'q</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="text-center py-5 text-muted">
+            <div style="font-size:3rem;">📭</div>
+            <h5 class="mt-3">Hozircha guruh yo'q</h5>
+        </div>
+    {% endif %}
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

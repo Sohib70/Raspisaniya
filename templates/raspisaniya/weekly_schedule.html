@@ -1,64 +1,62 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4>📅 Haftalik dars jadvali</h4>
-        <div class="d-flex gap-2">
-            <a href="{% url 'weekly_schedule_excel' %}" class="btn btn-success">
-                📥 Excel yuklab olish
-            </a>
-            <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
-        </div>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="text-primary">📅 Haftalik jadval</h4>
+    <div class="d-flex gap-2">
+        <a href="{% url 'weekly_schedule_excel' %}?week={{ week_start|date:'Y-m-d' }}" class="btn btn-success">⬇ Excel</a>
+        <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
     </div>
+</div>
 
-    {% if groups_data %}
-    <div style="overflow-x: auto;">
-        <table class="table table-bordered mb-0" style="min-width: 1200px; font-size: 0.78em;">
-            <thead>
-                <tr style="background:#2E4053; color:white;">
-                    <th style="width:80px; text-align:center; vertical-align:middle;">Kun</th>
-                    <th style="width:90px; text-align:center; vertical-align:middle;">Vaqt</th>
-                    {% for gdata in groups_data %}
-                    <th style="text-align:center; vertical-align:middle; min-width:130px;">
-                        {{ gdata.label }}<br>
-                        <small style="font-weight:normal; font-size:0.85em;">{{ gdata.teacher }}</small>
-                    </th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in table_data %}
-                <tr>
-                    {% if row.para_idx == 0 %}
-                    <td rowspan="6"
-                        style="background:#34495E; color:white; font-weight:bold;
-                               text-align:center; vertical-align:middle; writing-mode:vertical-lr;
-                               transform:rotate(180deg); font-size:0.9em;">
-                        {{ row.day }}
-                    </td>
-                    {% endif %}
-                    <td style="background:#5D6D7E; color:white; text-align:center;
-                               vertical-align:middle; font-size:0.85em; white-space:nowrap;">
-                        {{ row.time }}
-                    </td>
-                    {% for cell in row.cells %}
-                    <td style="background:#{{ cell.color }}; text-align:center;
-                               vertical-align:middle; padding:4px;
-                               {% if cell.filled %}font-weight:500;{% endif %}">
-                        {% if cell.filled %}
-                            {{ cell.subject }}
-                        {% endif %}
-                    </td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<div class="d-flex align-items-center justify-content-center gap-3 mb-3">
+    <a href="?week={{ prev_week }}" class="btn btn-outline-primary btn-sm">← Oldingi hafta</a>
+    <div class="border rounded px-4 py-2 fw-bold" style="background:#1a252f; color:white; min-width:280px; text-align:center;">
+        📅 {{ week_start_str }} — {{ week_end_str }}
     </div>
-    {% else %}
-        <div class="alert alert-warning">
-            Hali jadval tuzilmagan. Avval "Jadval tuzish" tugmasini bosing.
-        </div>
-    {% endif %}
+    <a href="?week={{ next_week }}" class="btn btn-outline-primary btn-sm">Keyingi hafta →</a>
+</div>
+
+<div class="table-responsive">
+<table class="table table-bordered table-sm mb-0" style="font-size:0.8rem;">
+    <thead>
+        <tr style="background:#1a252f; color:white;">
+            <th class="text-center" style="width:90px;">Kun</th>
+            <th class="text-center" style="width:120px;">Vaqt</th>
+            {% for gnum in group_numbers %}
+            <th class="text-center">{{ gnum }}-guruh</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in table_data %}
+        <tr>
+            {% if row.show_day %}
+            <td class="text-center fw-bold text-white"
+                rowspan="{{ row.para_count }}"
+                style="background:#2c3e50; vertical-align:middle; writing-mode:vertical-lr; transform:rotate(180deg); padding:8px 4px;">
+                {{ row.day }}
+            </td>
+            {% endif %}
+
+            <td class="text-center text-white"
+                style="background:#5d6d7e; vertical-align:middle; font-size:0.72rem; padding:4px;">
+                {{ row.time }}
+            </td>
+
+            {% for cell in row.cells %}
+            <td class="text-center" style="vertical-align:middle; padding:4px;
+                {% if cell.filled %}background:#eafbea;{% else %}background:#fafafa;{% endif %}">
+                {% if cell.filled %}
+                    <div class="fw-bold" style="font-size:0.78rem; color:#1a5c2a;">{{ cell.subject }}</div>
+                    {% if cell.teacher %}
+                    <div class="text-muted" style="font-size:0.68rem;">{{ cell.teacher }}</div>
+                    {% endif %}
+                {% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 </div>
 {% endblock %}
