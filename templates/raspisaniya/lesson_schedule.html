@@ -151,7 +151,7 @@
                                             <span class="badge bg-success">{{ sched_item.weekday }}</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ item.group.start_time|time:"H:i" }}</td>
+                                    <td>{{ sched_item.start_time }}</td>
                                     <td>{{ sched_item.end_time }}</td>
                                 </tr>
                                 {% empty %}

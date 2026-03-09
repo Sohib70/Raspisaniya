@@ -93,23 +93,17 @@ def get_lesson_dates(start_date, weekdays, total):
         cur += timedelta(days=1)
     return result
 
-def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students):
+def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1):
     """
-    Darslarni Du-Sha kunlariga teng tarqatib joylashtiradi.
-    Bir kunda bir nechta dars bo'lsa — ketma-ket paralarda bo'ladi (oraliq yo'q).
-    O'quvchi va o'qituvchi conflict tekshiriladi.
+    1-haftada qaysi kunlar va paralar belgilansa — keyingi haftalar ham xuddi shunday.
+    Dars soatlari tugagach to'xtaydi.
     """
-    import random
-
     student_ids = [s.id for s in students]
-
     teacher_id = teacher.id
 
     def get_busy_para_indices(date):
-        """O'sha kunda talabalar va o'qituvchi band bo'lgan para indekslari"""
         busy = set()
-
-        # O'qituvchi band bo'lgan paralar
+        # O'qituvchi band paralar
         for sched in GroupSchedule.objects.filter(
             date=date,
             group__teacher_id=teacher_id,
@@ -120,11 +114,10 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                     if ps == st:
                         busy.add(i)
             else:
-                # start_time aniqlanmagan — barcha paralarni band deb belgilaymiz
                 for i in range(len(PARA_TIMES)):
                     busy.add(i)
 
-        # Talabalar band bo'lgan paralar
+        # Talabalar band paralar
         if student_ids:
             for sched in GroupSchedule.objects.filter(
                 date=date,
@@ -136,79 +129,104 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                         if ps == st:
                             busy.add(i)
 
+        # Joriy guruh raqami bilan bir xil kun+parada boshqa fan bo'lmasin
+        for sched in GroupSchedule.objects.filter(
+            date=date,
+            group__group_number=group_number,
+        ).select_related('group'):
+            st = sched.start_time or sched.group.start_time
+            if st:
+                for i, (ps, pe) in enumerate(PARA_TIMES):
+                    if ps == st:
+                        busy.add(i)
+
         return busy
 
-    def find_best_para(date, already_placed_today):
-        """
-        O'sha kunda allaqachon joylashtirilgan paralar (already_placed_today — set of indices)
-        ni hisobga olib, ketma-ket bo'lgan bo'sh para indeksini qaytaradi.
-        """
+    def find_free_para(date, exclude_paras=None):
         busy = get_busy_para_indices(date)
-        all_used = busy | already_placed_today
-
-        if not already_placed_today:
-            # Bugun hali dars yo'q — ixtiyoriy bo'sh para
-            for i in range(len(PARA_TIMES)):
-                if i not in all_used:
-                    return i
-            return None
-
-        # Bugun dars bor — band + yangi paralarning yoniga ketma-ket joylashtir
-        occupied = sorted(already_placed_today)
-        # Eng kichik band indeksdan oldin, yoki eng katta indeksdan keyin
-        # Barchasi ketma-ket bo'lishi uchun: min-1 yoki max+1
-        min_idx = min(occupied)
-        max_idx = max(occupied)
-
-        # Avval max+1 ni sinab ko'r (keyin qo'shish)
-        if max_idx + 1 < len(PARA_TIMES) and (max_idx + 1) not in all_used:
-            return max_idx + 1
-        # Keyin min-1 ni sinab ko'r (oldiniga qo'shish)
-        if min_idx - 1 >= 0 and (min_idx - 1) not in all_used:
-            return min_idx - 1
-        # Ketma-ket joy yo'q — ixtiyoriy bo'sh para
+        if exclude_paras:
+            busy = busy | set(exclude_paras)
         for i in range(len(PARA_TIMES)):
-            if i not in all_used:
+            if i not in busy:
                 return i
         return None
 
-    # Haftalar bo'yicha guruhlash
-    weeks = defaultdict(list)
-    cur = start_date
-    while cur <= end_date:
-        if cur.weekday() <= 5:  # Du-Sha
-            year, week_num, _ = cur.isocalendar()
-            weeks[(year, week_num)].append(cur)
-        cur += timedelta(days=1)
+    # ── 1-HAFTA: qaysi weekday va para tanlash ──
+    # start_date dan boshlab dushanba topamiz
+    first_monday = start_date - timedelta(days=start_date.weekday())
+    if first_monday < start_date:
+        first_monday = start_date
 
-    if not weeks:
+    import random
+    WEEKDAYS = list(range(6))
+    random.shuffle(WEEKDAYS)
+    chosen_slots = []  # [(weekday, para_idx), ...]
+
+    # 1-haftadagi kunlarni topish
+    first_week_dates = {}
+    for wd in WEEKDAYS:
+        d = first_monday + timedelta(days=wd)
+        if d >= start_date:
+            first_week_dates[wd] = d
+
+    for wd in WEEKDAYS:
+        if len(chosen_slots) >= lessons_per_week:
+            break
+        if wd not in first_week_dates:
+            continue
+        d = first_week_dates[wd]
+        # Bu kunda allaqachon tanlangan paralarni ham busy qilish
+        already_used = [p for (w, p) in chosen_slots if w == wd]
+        para_idx = find_free_para(d, exclude_paras=already_used)
+        if para_idx is not None:
+            chosen_slots.append((wd, para_idx))
+
+    if not chosen_slots:
         return None
 
-    result = []
-    # Sana -> o'sha kunda joylashtirilgan para indekslari (result ichidagi)
-    day_paras = defaultdict(set)
+    # Agar yetarli slot topilmagan bo'lsa — keyingi haftalardan qo'shimcha kun qidirish
+    if len(chosen_slots) < lessons_per_week:
+        second_monday = first_monday + timedelta(weeks=1)
+        second_week_dates = {}
+        for wd in WEEKDAYS:
+            d = second_monday + timedelta(days=wd)
+            if d <= end_date:
+                second_week_dates[wd] = d
 
-    for week_key in sorted(weeks.keys()):
-        if len(result) >= total_lessons:
+        already_used_wds = {w for w, p in chosen_slots}
+        for wd in WEEKDAYS:
+            if len(chosen_slots) >= lessons_per_week:
+                break
+            if wd in already_used_wds or wd not in second_week_dates:
+                continue
+            d = second_week_dates[wd]
+            already_used = [p for (w, p) in chosen_slots if w == wd]
+            para_idx = find_free_para(d, exclude_paras=already_used)
+            if para_idx is not None:
+                chosen_slots.append((wd, para_idx))
+
+    if not chosen_slots:
+        return None
+
+    # ── BARCHA HAFTALAR: chosen_slots bo'yicha sanalarni yaratish ──
+    result = []
+    cur_monday = first_monday
+
+    while len(result) < total_lessons:
+        cur_monday_end = cur_monday + timedelta(days=5)
+        if cur_monday > end_date:
             break
 
-        week_days = weeks[week_key][:]
-        random.shuffle(week_days)
-
-        remaining = total_lessons - len(result)
-        needed_this_week = min(lessons_per_week, remaining)
-        placed_this_week = 0
-
-        for day in week_days:
-            if placed_this_week >= needed_this_week:
+        for wd, para_idx in chosen_slots:
+            if len(result) >= total_lessons:
                 break
+            d = cur_monday + timedelta(days=wd)
+            if d < start_date or d > end_date:
+                continue
+            p_start, p_end = PARA_TIMES[para_idx]
+            result.append((d, p_start, p_end))
 
-            para_idx = find_best_para(day, day_paras[day])
-            if para_idx is not None:
-                p_start, p_end = PARA_TIMES[para_idx]
-                result.append((day, p_start, p_end))
-                day_paras[day].add(para_idx)
-                placed_this_week += 1
+        cur_monday += timedelta(weeks=1)
 
     return result if len(result) >= total_lessons else None
 
@@ -261,23 +279,32 @@ def get_weekly_schedule_data(week_start=None):
             weekday = sched.date.weekday()
             if weekday > 5:
                 continue
-
             st = sched.start_time or grp.start_time
             if not st:
                 continue
-
             start_str = st.strftime("%H:%M")
             para_idx = next(
                 (i for i, (s, e) in enumerate(PARA_TIMES_WEEKLY) if s == start_str), None
             )
             if para_idx is None:
                 continue
+            # Agar bu kun+para+guruh band bo'lsa — guruh raqamini oshirib yangi slot top
+            slot_gnum = gnum
+            while (weekday, para_idx, slot_gnum) in grid:
+                slot_gnum += 1
+            key = (weekday, para_idx, slot_gnum)
+            if slot_gnum > max_group:
+                max_group = slot_gnum
+            grid[key] = {'subject': subject_name, 'teacher': teacher_name}
 
-            key = (weekday, para_idx, gnum)
-            if key not in grid:
-                grid[key] = {'subject': subject_name, 'teacher': teacher_name}
-
-    return {'max_group': max_group, 'grid': grid, 'week_start': week_start, 'week_end': week_end}
+    return {
+        'max_group': max_group,
+        'grid': grid,
+        'columns': [],
+        'column_pks': [],
+        'week_start': week_start,
+        'week_end': week_end,
+    }
 
 
     results = []
@@ -391,7 +418,19 @@ def lesson_create(request):
                     'lang': lang,
                     'lang_name': dict(LANGUAGE_CHOICES).get(lang, lang),
                     'students': g,
+                    'is_small': False,
                 })
+            # 8 dan kam bo'lsa ham ko'rsatish — qizil
+            for g in invalid_groups:
+                all_groups.append({
+                    'lang': lang,
+                    'lang_name': dict(LANGUAGE_CHOICES).get(lang, lang),
+                    'students': g,
+                    'is_small': True,
+                })
+
+        # Faqat to'liq guruhlarni saqlash — kichik guruhlar unassigned ga tushadi
+        all_groups = [g for g in all_groups if not g['is_small']]
 
         if not all_groups:
             messages.error(request, "Hech bir tilda yetarli o'quvchi yo'q (kamida 8 ta kerak)")
@@ -401,8 +440,9 @@ def lesson_create(request):
 
         assigned_ids = set()
         for g in all_groups:
-            for s in g['students']:
-                assigned_ids.add(s.id)
+            if not g['is_small']:
+                for s in g['students']:
+                    assigned_ids.add(s.id)
         unassigned_students = [s for s in all_students if s.id not in assigned_ids]
 
         return render(request, "raspisaniya/lesson_create.html", {
@@ -446,13 +486,7 @@ def lesson_create(request):
                 if len(g) >= 8:
                     all_groups_data.append({'lang': lang, 'students': g})
 
-        group_teachers = []
-        for i in range(groups_count):
-            tid = request.POST.get(f"teacher_{i}")
-            if not tid:
-                messages.error(request, f"{i+1}-guruh uchun o'qituvchi tanlanmagan")
-                return redirect("lesson_create")
-            group_teachers.append(get_object_or_404(Teacher, id=tid))
+        group_teachers = []  # endi ishlatilmaydi — teacher har guruh uchun alohida olinadi
 
         with transaction.atomic():
             course = Course.objects.create(
@@ -464,14 +498,20 @@ def lesson_create(request):
                 lesson_duration=80,
             )
 
-            for i, (gdata, teacher) in enumerate(zip(all_groups_data, group_teachers)):
+            for i in range(groups_count):
+                tid = request.POST.get(f"teacher_{i}")
+                if not tid:
+                    continue
+                teacher = get_object_or_404(Teacher, id=tid)
                 selected_ids = request.POST.getlist(f"students_{i}")
-                g_students = gdata['students']
-                selected_students = [s for s in g_students if str(s.id) in selected_ids] \
-                                    if selected_ids else g_students
-
+                if not selected_ids:
+                    continue
+                selected_students = list(Student.objects.filter(id__in=selected_ids))
                 if not selected_students:
                     continue
+
+                # Guruh tilini birinchi talabadan olish
+                lang = selected_students[0].language if selected_students else 'uz'
 
                 cgroup = CourseGroup.objects.create(
                     course=course,
@@ -479,7 +519,7 @@ def lesson_create(request):
                     group_number=i + 1,
                     start_time=None,
                     weekdays=[],
-                    language=gdata['lang'],
+                    language=lang,
                     is_scheduled=False,
                 )
                 cgroup.students.set(selected_students)
@@ -512,14 +552,15 @@ def lesson_schedule(request, pk):
     groups_data = []
     for grp in groups:
         schedule_list = []
-        for s in grp.schedule.all():
-            if grp.start_time:
-                end_t = (datetime.combine(s.date, grp.start_time) + duration).time()
+        for s in grp.schedule.all().order_by('lesson_number'):
+            st = s.start_time or grp.start_time
+            if st:
+                end_t = (datetime.combine(s.date, st) + duration).time()
+                start_str = st.strftime("%H:%M")
                 end_str = end_t.strftime("%H:%M")
-                start_str = grp.start_time.strftime("%H:%M")
             else:
-                end_str = "—"
                 start_str = "—"
+                end_str = "—"
             schedule_list.append({
                 "sched": s,
                 "weekday": WEEKDAY_NAMES.get(s.date.weekday(), ""),
@@ -1005,38 +1046,51 @@ def build_schedule(request):
     errors = []
     success_count = 0
 
-    # Barcha guruhlarni oldindan yuklash — transaksiya ichida to'g'ri ishlashi uchun
     unscheduled_list = list(
         unscheduled_groups.prefetch_related('students').select_related('course', 'teacher')
+        .order_by('group_number', 'pk')
     )
 
     for grp in unscheduled_list:
-            course = grp.course
-            students = list(grp.students.all())
+        course = grp.course
+        students = list(grp.students.all())
 
-            schedule = find_schedule_for_group(
-                course.start_date, course.end_date,
-                course.total_lessons, course.lessons_per_week,
-                grp.teacher, students,
-            )
+        schedule = find_schedule_for_group(
+            course.start_date, course.end_date,
+            course.total_lessons, course.lessons_per_week,
+            grp.teacher, students,
+            group_number=grp.group_number,
+        )
 
-            if schedule is None:
-                errors.append({'group': grp, 'course': course})
-            else:
-                from collections import Counter
-                para_counter = Counter(p_start for _, p_start, _ in schedule)
-                most_common_para = para_counter.most_common(1)[0][0]
-                grp.start_time = most_common_para
-                grp.weekdays = list({d.weekday() for d, _, _ in schedule})
-                grp.is_scheduled = True
-                grp.save()
+        if schedule is None:
+            errors.append({'group': grp, 'course': course})
+        else:
+            from collections import Counter
+            para_counter = Counter(p_start for _, p_start, _ in schedule)
+            most_common_para = para_counter.most_common(1)[0][0]
+            grp.start_time = most_common_para
+            grp.weekdays = list({d.weekday() for d, _, _ in schedule})
+            grp.is_scheduled = True
 
-                # Darhol DB ga saqlash — keyingi guruh conflict ko'rsin
-                for idx, (ld, p_start, p_end) in enumerate(schedule, 1):
-                    GroupSchedule.objects.create(
-                        group=grp, date=ld, lesson_number=idx, start_time=p_start
-                    )
-                success_count += 1
+            # Bitta transaction ichida saqlash
+            import time
+            for attempt in range(5):
+                try:
+                    with transaction.atomic():
+                        grp.save()
+                        GroupSchedule.objects.bulk_create([
+                            GroupSchedule(
+                                group=grp, date=ld,
+                                lesson_number=idx, start_time=p_start
+                            )
+                            for idx, (ld, p_start, p_end) in enumerate(schedule, 1)
+                        ])
+                    break
+                except Exception:
+                    time.sleep(0.5)
+                    continue
+
+            success_count += 1
 
     if errors:
         error_details = []
@@ -1139,10 +1193,12 @@ def weekly_schedule_view(request):
         week_start = None
 
     data = get_weekly_schedule_data(week_start)
-    max_group = data['max_group']
+    columns = data['columns']
+    column_pks = data['column_pks']
     grid = data['grid']
     week_start = data['week_start']
     week_end = data['week_end']
+    max_group = data['max_group']
 
     prev_week = (week_start - timedelta(weeks=1)).isoformat()
     next_week = (week_start + timedelta(weeks=1)).isoformat()
@@ -1222,13 +1278,11 @@ def weekly_schedule_excel(request):
         "C8D8F4", "F4D4C8", "D4F4D4", "F4F4C8",
     ]
 
-    # Ustun kengliklari
     ws.column_dimensions['A'].width = 13
     ws.column_dimensions['B'].width = 14
     for i in range(len(group_numbers)):
         ws.column_dimensions[get_column_letter(i + 3)].width = 22
 
-    # 1-qator: sarlavhalar
     ws.row_dimensions[1].height = 30
     for col, val in enumerate(["Kun", "Vaqt"], 1):
         c = ws.cell(1, col, val)
@@ -1244,8 +1298,6 @@ def weekly_schedule_excel(request):
         c.alignment = center
         c.border = border
 
-    # Ma'lumotlar
-    # Fan nomlari uchun rang map
     subject_color_map = {}
     color_counter = [0]
 
@@ -1261,14 +1313,12 @@ def weekly_schedule_excel(request):
         for para_idx, (start, end) in enumerate(PARA_TIMES_WEEKLY):
             ws.row_dimensions[row].height = 45
 
-            # Vaqt ustuni
             tc = ws.cell(row, 2, f"{start} - {end}")
             tc.font = time_font
             tc.fill = time_fill
             tc.alignment = center
             tc.border = border
 
-            # Guruhlar
             for i, gnum in enumerate(group_numbers):
                 col = i + 3
                 key = (day_idx, para_idx, gnum)
@@ -1287,7 +1337,6 @@ def weekly_schedule_excel(request):
 
             row += 1
 
-        # Kun nomini merge qilish
         if row - day_start_row > 1:
             ws.merge_cells(
                 start_row=day_start_row, start_column=1,

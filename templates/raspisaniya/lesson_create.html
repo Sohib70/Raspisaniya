@@ -76,21 +76,49 @@ document.querySelector('[name=lessons_per_week]').addEventListener('input', calc
 {% elif step == 2 %}
 
 <script>
-const GROUPS_COUNT = {{ groups_count }};
+const GROUPS_COUNT = {{ all_groups|length }};
+
+const ALL_STUDENTS = [
+    {% for gdata in all_groups %}{% for st in gdata.students %}{id: {{ st.id }}, name: "{{ st }}"},
+    {% endfor %}{% endfor %}
+    {% for st in unassigned_students %}{id: {{ st.id }}, name: "{{ st }}"},
+    {% endfor %}
+];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Faqat unassigned (hech bir guruhda yo'q) talabalar selectga tushsin
+    for (let i = 0; i < GROUPS_COUNT; i++) {
+        const sel = document.getElementById('add_select_' + i);
+        if (!sel) continue;
+        ALL_STUDENTS.forEach(st => {
+            let inAnyGroup = false;
+            for (let j = 0; j < GROUPS_COUNT; j++) {
+                if (document.getElementById('row_' + j + '_' + st.id)) {
+                    inAnyGroup = true;
+                    break;
+                }
+            }
+            if (!inAnyGroup) {
+                const opt = new Option(st.name, st.id);
+                sel.appendChild(opt);
+            }
+        });
+    }
+});
 </script>
 
 <form method="post" id="mainForm">
     {% csrf_token %}
     <input type="hidden" name="step" value="3">
     <input type="hidden" name="subject_id" value="{{ subject.id }}">
-    <input type="hidden" name="groups_count" value="{{ groups_count }}">
+    <input type="hidden" name="groups_count" value="{{ all_groups|length }}">
     <input type="hidden" name="start_date" value="{{ start_date }}">
     <input type="hidden" name="end_date" value="{{ end_date }}">
     <input type="hidden" name="total_lessons" value="{{ total_lessons }}">
     <input type="hidden" name="lessons_per_week" value="{{ lessons_per_week }}">
 
     <div class="alert alert-info">
-        <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh —
+        <b>{{ subject }}</b> fanidan <b>{{ all_groups|length }}</b> ta guruh —
         jami <b>{{ total_lessons }}</b> para dars, haftada <b>{{ lessons_per_week }}</b> marta.
         <br>
         <small class="text-muted">🤖 Tizim dars kunlari va vaqtlarini avtomatik joylastiradi</small>
