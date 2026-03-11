@@ -14,11 +14,7 @@
         </div>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
+    {% comment %}messages base.html da ko'rsatiladi{% endcomment %}
 
     <div class="card mb-4">
         <div class="card-body">
@@ -137,6 +133,7 @@
                                     <th>Hafta kuni</th>
                                     <th>Boshlanish</th>
                                     <th>Tugash</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -153,10 +150,38 @@
                                     </td>
                                     <td>{{ sched_item.start_time }}</td>
                                     <td>{{ sched_item.end_time }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-warning px-2 py-0"
+                                            onclick="toggleTimeEdit({{ sched_item.sched.pk }})">✏️</button>
+                                        <div id="time-edit-{{ sched_item.sched.pk }}" style="display:none; margin-top:4px;">
+                                            <form method="post" action="{% url 'change_lesson_time' sched_item.sched.pk %}" class="d-flex flex-column gap-1">
+                                                {% csrf_token %}
+                                                <div class="d-flex gap-1 align-items-center">
+                                                    <small class="text-muted" style="width:40px;">Kun:</small>
+                                                    <input type="date" name="date"
+                                                        value="{{ sched_item.sched.date|date:'Y-m-d' }}"
+                                                        class="form-control form-control-sm"
+                                                        style="width:140px;">
+                                                </div>
+                                                <div class="d-flex gap-1 align-items-center">
+                                                    <small class="text-muted" style="width:40px;">Para:</small>
+                                                    <select name="start_time" class="form-select form-select-sm" style="width:160px;">
+                                                        <option value="08:30" {% if sched_item.start_time == "08:30" %}selected{% endif %}>1-para — 08:30–09:50</option>
+                                                        <option value="10:00" {% if sched_item.start_time == "10:00" %}selected{% endif %}>2-para — 10:00–11:20</option>
+                                                        <option value="12:00" {% if sched_item.start_time == "12:00" %}selected{% endif %}>3-para — 12:00–13:20</option>
+                                                        <option value="13:30" {% if sched_item.start_time == "13:30" %}selected{% endif %}>4-para — 13:30–14:50</option>
+                                                        <option value="15:00" {% if sched_item.start_time == "15:00" %}selected{% endif %}>5-para — 15:00–16:20</option>
+                                                        <option value="16:30" {% if sched_item.start_time == "16:30" %}selected{% endif %}>6-para — 16:30–17:50</option>
+                                                    </select>
+                                                </div>
+                                                <button type="submit" class="btn btn-sm btn-warning mt-1">💾 Saqlash</button>
+                                            </form>
+                                        </div>
+                                    </td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="5" class="text-muted text-center">Jadval yo'q</td>
+                                    <td colspan="6" class="text-muted text-center">Jadval yo'q</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -169,4 +194,11 @@
     {% endfor %}
 
 </div>
+
+<script>
+function toggleTimeEdit(pk) {
+    const el = document.getElementById('time-edit-' + pk);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
 {% endblock %}

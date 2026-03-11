@@ -635,6 +635,66 @@ def lesson_schedule_excel(request, pk):
 
 
 @login_required
+def change_lesson_time(request, sched_pk):
+    sched = get_object_or_404(GroupSchedule, pk=sched_pk)
+    if request.method == "POST":
+        new_time = request.POST.get("start_time")
+        new_date = request.POST.get("date")
+        from datetime import time as dtime
+        from django.utils.dateparse import parse_date as pd
+
+        new_date_val = pd(new_date) if new_date else sched.date
+        if new_time:
+            h, m = map(int, new_time.split(":"))
+            new_time_val = dtime(h, m)
+        else:
+            new_time_val = sched.start_time
+
+        group_number = sched.group.group_number
+        teacher_id = sched.group.teacher_id
+        student_ids = list(sched.group.students.values_list('id', flat=True))
+
+        # Guruh raqami conflict
+        conflict = GroupSchedule.objects.filter(
+            date=new_date_val, start_time=new_time_val,
+            group__group_number=group_number,
+        ).exclude(pk=sched_pk).select_related('group__course__subject').first()
+        if conflict:
+            messages.error(request,
+                f"{new_date_val} kuni {new_time} parada {group_number}-guruhda "
+                f"'{conflict.group.course.subject}' darsi bor!")
+            return redirect("lesson_schedule", pk=sched.group.course.pk)
+
+        # O'qituvchi conflict
+        conflict = GroupSchedule.objects.filter(
+            date=new_date_val, start_time=new_time_val,
+            group__teacher_id=teacher_id,
+        ).exclude(pk=sched_pk).select_related('group__course__subject').first()
+        if conflict:
+            messages.error(request,
+                f"O'qituvchi {new_date_val} kuni {new_time} parada "
+                f"'{conflict.group.course.subject}' darsida band!")
+            return redirect("lesson_schedule", pk=sched.group.course.pk)
+
+        # Talabalar conflict
+        if student_ids:
+            conflict = GroupSchedule.objects.filter(
+                date=new_date_val, start_time=new_time_val,
+                group__students__id__in=student_ids,
+            ).exclude(pk=sched_pk).select_related('group__course__subject').first()
+            if conflict:
+                messages.error(request,
+                    f"Ba'zi talabalar {new_date_val} kuni {new_time} parada "
+                    f"'{conflict.group.course.subject}' darsida band!")
+                return redirect("lesson_schedule", pk=sched.group.course.pk)
+
+        sched.date = new_date_val
+        sched.start_time = new_time_val
+        sched.save()
+        messages.success(request, f"{new_date_val} dars vaqti o'zgartirildi")
+    return redirect("lesson_schedule", pk=sched.group.course.pk)
+
+@login_required
 def change_teacher(request, group_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk)
     if request.method == "POST":

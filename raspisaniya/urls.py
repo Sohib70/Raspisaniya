@@ -42,4 +42,5 @@ urlpatterns = [
     path('weekly-schedule/excel/', views.weekly_schedule_excel, name='weekly_schedule_excel'),
     path('group/<int:group_pk>/add-student/', views.add_student_to_group, name='add_student_to_group'),
     path('group/<int:group_pk>/change-teacher/', views.change_teacher, name='change_teacher'),
+    path('schedule/<int:sched_pk>/change-time/', views.change_lesson_time, name='change_lesson_time'),
 ]
