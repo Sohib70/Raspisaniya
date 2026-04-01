@@ -93,9 +93,8 @@ def student_dashboard(request):
     my_groups = CourseGroup.objects.filter(
         students=student,
         is_scheduled=True,
-    ).select_related('course__subject', 'teacher').prefetch_related('schedule')
+    ).select_related('course__subject', 'teacher', 'room').prefetch_related('schedule')
 
-    # Grid: {(weekday, para_idx): {'subject', 'teacher'}}
     grid = {}
     for grp in my_groups:
         for sched in grp.schedule.filter(date__gte=week_start, date__lte=week_end):
@@ -111,9 +110,12 @@ def student_dashboard(request):
                 continue
             key = (wd, para_idx)
             if key not in grid:
-                grid[key] = {'subject': str(grp.course.subject), 'teacher': str(grp.teacher)}
+                grid[key] = {
+                    'subject': str(grp.course.subject),
+                    'teacher': str(grp.teacher),
+                    'room': str(grp.room) if grp.room else '',
+                }
 
-    # Table data — haftalik jadval formatida
     table_data = []
     for day_idx, day_name in enumerate(WEEKDAY_LIST):
         for para_idx, (start, end) in enumerate(PARA_TIMES_LIST):
@@ -149,12 +151,73 @@ def teacher_dashboard(request):
         messages.error(request, "Siz o'qituvchi emassiz")
         return redirect('login')
 
+    from datetime import timedelta, date as dt_date
+
+    week_str = request.GET.get('week')
+    if week_str:
+        try:
+            week_start = dt_date.fromisoformat(week_str)
+            week_start = week_start - timedelta(days=week_start.weekday())
+        except:
+            week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
+    else:
+        week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
+    week_end = week_start + timedelta(days=5)
+
+    PARA_TIMES_LIST = [
+        ("08:30", "09:50"), ("10:00", "11:20"), ("12:00", "13:20"),
+        ("13:30", "14:50"), ("15:00", "16:20"), ("16:30", "17:50"),
+    ]
+    WEEKDAY_LIST = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
+
     my_groups = CourseGroup.objects.filter(
         teacher=teacher,
         is_scheduled=True,
-    ).select_related('course__subject').prefetch_related('schedule', 'students')
+    ).select_related('course__subject', 'room').prefetch_related('schedule', 'students')
+
+    grid = {}
+    for grp in my_groups:
+        for sched in grp.schedule.filter(date__gte=week_start, date__lte=week_end):
+            wd = sched.date.weekday()
+            if wd > 5:
+                continue
+            st = sched.start_time or grp.start_time
+            if not st:
+                continue
+            start_str = st.strftime("%H:%M")
+            para_idx = next((i for i, (s, e) in enumerate(PARA_TIMES_LIST) if s == start_str), None)
+            if para_idx is None:
+                continue
+            key = (wd, para_idx)
+            if key not in grid:
+                grid[key] = {
+                    'subject': str(grp.course.subject),
+                    'students_count': grp.students.count(),
+                    'room': str(grp.room) if grp.room else '',
+                }
+
+    table_data = []
+    for day_idx, day_name in enumerate(WEEKDAY_LIST):
+        for para_idx, (start, end) in enumerate(PARA_TIMES_LIST):
+            key = (day_idx, para_idx)
+            info = grid.get(key)
+            table_data.append({
+                'day': day_name,
+                'time': f"{start} - {end}",
+                'info': info,
+                'show_day': para_idx == 0,
+                'para_count': len(PARA_TIMES_LIST),
+            })
+
+    prev_week = (week_start - timedelta(weeks=1)).isoformat()
+    next_week = (week_start + timedelta(weeks=1)).isoformat()
 
     return render(request, "accounts/teacher_dashboard.html", {
         "teacher": teacher,
         "my_groups": my_groups,
+        "table_data": table_data,
+        "week_start_str": week_start.strftime("%d.%m.%Y"),
+        "week_end_str": week_end.strftime("%d.%m.%Y"),
+        "prev_week": prev_week,
+        "next_week": next_week,
     })

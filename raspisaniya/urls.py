@@ -23,6 +23,8 @@ urlpatterns = [
     path('student/<int:pk>/update/', views.student_update, name='student_update'),
     path('student/<int:pk>/delete/', views.student_delete, name='student_delete'),
     path('student/import/', views.import_students, name='import_students'),
+    path('student/<int:pk>/change-password/', views.admin_change_student_password, name='admin_change_student_password'),
+
 
     # Subject
     path('subjects/', views.subject_list, name='subject_list'),
@@ -43,4 +45,13 @@ urlpatterns = [
     path('group/<int:group_pk>/add-student/', views.add_student_to_group, name='add_student_to_group'),
     path('group/<int:group_pk>/change-teacher/', views.change_teacher, name='change_teacher'),
     path('schedule/<int:sched_pk>/change-time/', views.change_lesson_time, name='change_lesson_time'),
+
+    path('rooms/', views.room_list, name='room_list'),
+    path('rooms/create/', views.room_create, name='room_create'),
+    path('rooms/<int:pk>/delete/', views.room_delete, name='room_delete'),
+    path('group/<int:group_pk>/assign-room/', views.assign_room, name='assign_room'),
+
+    path('api/stats/', views.stats_api, name='stats_api'),
+    path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
+
 ]

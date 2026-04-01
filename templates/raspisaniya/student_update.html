@@ -2,62 +2,167 @@
 {% load widget_tweaks %}
 {% block content %}
 
-<div class="container mt-4">
-    <div class="card shadow-sm">
-        <div class="card-body">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+.form-page { font-family: 'Outfit', sans-serif; max-width: 780px; margin: 0 auto; padding: 0 16px 60px; }
+.form-title { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; display: flex; align-items: center; gap: 10px; margin-bottom: 28px; padding-bottom: 18px; border-bottom: 2px solid #f0f0f0; }
+.form-title .icon { width: 38px; height: 38px; background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.form-card { background: white; border-radius: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); overflow: hidden; }
+.form-section { padding: 24px 28px; border-bottom: 1px solid #f5f5f5; }
+.section-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #9ca3af; margin-bottom: 16px; }
+.field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.field label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.field input, .field select { width: 100%; padding: 10px 13px; border: 1.5px solid #e5e7eb; border-radius: 10px; font-family: 'Outfit', sans-serif; font-size: 0.88rem; color: #1f2937; background: #fafafa; transition: all 0.2s; outline: none; }
+.field input:focus, .field select:focus { border-color: #667eea; background: white; box-shadow: 0 0 0 3px rgba(102,126,234,0.12); }
+.subjects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.subject-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; background: #fafafa; }
+.subject-item:hover { border-color: #667eea; background: #f5f3ff; }
+.subject-item input[type="checkbox"] { display: none; }
+.check-box { width: 17px; height: 17px; border: 2px solid #d1d5db; border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-size: 0.65rem; color: white; }
+.subject-item input:checked ~ .check-box { background: #667eea; border-color: #667eea; }
+.subject-item input:checked ~ .check-box::after { content: '✓'; }
+.subj-name { font-size: 0.83rem; color: #374151; font-weight: 500; }
+.form-actions { padding: 20px 28px; display: flex; gap: 10px; background: #fafafa; border-top: 1px solid #f0f0f0; }
+.btn-save { background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; padding: 11px 26px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(102,126,234,0.35); }
+.btn-save:hover { transform: translateY(-1px); }
+.btn-back { background: white; color: #6b7280; border: 1.5px solid #e5e7eb; padding: 11px 20px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; text-decoration: none; transition: all 0.2s; }
+.pwd-box { background: #f8f9fa; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pwd-value { font-family: monospace; font-size: 1rem; color: #374151; letter-spacing: 0.05em; }
+.btn-eye { background: none; border: 1.5px solid #e5e7eb; border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+.btn-eye:hover { border-color: #667eea; background: #f5f3ff; }
+</style>
 
-            <h2 class="mb-4 text-primary">
-                ➕ O‘quvchi qo‘shish / tahrirlash
-            </h2>
+<div class="form-page">
+    <div class="form-title">
+        <div class="icon">✏️</div>
+        O'quvchini tahrirlash
+    </div>
 
-            <form method="post">
-                {% csrf_token %}
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %} mb-3">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
 
-                {% for field in form %}
+    <div class="form-card">
+        <form method="post">
+            {% csrf_token %}
 
-                    <div class="mb-3">
-
-                        <label class="form-label fw-bold">
-                            {{ field.label }}
-                        </label>
-
-                        {% if field.name == "debts" %}
-                            <div class="border rounded p-3 bg-light">
-                                {% for checkbox in field %}
-                                    <div class="form-check">
-                                        {{ checkbox.tag }}
-                                        <label class="form-check-label">
-                                            {{ checkbox.choice_label }}
-                                        </label>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        {% else %}
-                            {{ field|add_class:"form-control" }}
-                        {% endif %}
-
-                        {% if field.errors %}
-                            <div class="text-danger small mt-1">
-                                {{ field.errors }}
-                            </div>
-                        {% endif %}
-
+            <!-- Shaxsiy -->
+            <div class="form-section">
+                <div class="section-label">Shaxsiy ma'lumotlar</div>
+                <div class="field-group">
+                    <div class="field">
+                        <label>Familiya *</label>
+                        <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" required>
                     </div>
+                    <div class="field">
+                        <label>Ism *</label>
+                        <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" required>
+                    </div>
+                </div>
+            </div>
 
-                {% endfor %}
+            <!-- Ta'lim -->
+            <div class="form-section">
+                <div class="section-label">Ta'lim ma'lumotlari</div>
+                <div class="field-group">
+                    <div class="field">
+                        <label>Guruh</label>
+                        <select name="group">
+                            <option value="">— tanlang —</option>
+                            {% for g in form.group.field.queryset %}
+                            <option value="{{ g.id }}" {% if form.group.value|stringformat:"s" == g.id|stringformat:"s" %}selected{% endif %}>{{ g.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Ta'lim tili</label>
+                        <select name="language">
+                            <option value="uz" {% if form.language.value == 'uz' %}selected{% endif %}>O'zbek</option>
+                            <option value="ru" {% if form.language.value == 'ru' %}selected{% endif %}>Rus</option>
+                            <option value="qq" {% if form.language.value == 'qq' %}selected{% endif %}>Qoraqalpoq</option>
+                            <option value="en" {% if form.language.value == 'en' %}selected{% endif %}>Ingliz</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
 
-                <button type="submit" class="btn btn-success">
-                    💾 Saqlash
-                </button>
+            <!-- Parol -->
+            <div class="form-section">
+                <div class="section-label">Tizim ma'lumotlari</div>
+                <div class="field-group">
+                    <div class="field">
+                        <label>Student ID</label>
+                        <input type="text" value="{{ student.student_id|default:'—' }}" disabled style="background:#f3f4f6; color:#9ca3af;">
+                    </div>
+                    <div class="field">
+                        <label>Parol</label>
+                        <div class="pwd-box">
+                            <span class="pwd-value" id="pwd-shown" style="display:none;">{{ student.student_id|default:"—" }}</span>
+                            <span class="pwd-value" id="pwd-hidden">••••••••</span>
+                            <button type="button" class="btn-eye" onclick="togglePwd()">👁 Ko'rish</button>
+                        </div>
+                    </div>
+                </div>
 
-                <a href="{% url 'student_list' %}" class="btn btn-secondary">
-                    Ortga
-                </a>
+                <!-- Parol o'zgartirish -->
+                <div class="mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-warning"
+                        onclick="document.getElementById('pwd-change').style.display='block'; this.style.display='none'">
+                        🔑 Parolni o'zgartirish
+                    </button>
+                    <div id="pwd-change" style="display:none;" class="mt-2">
+                        <div class="field-group">
+                            <div class="field">
+                                <label>Yangi parol</label>
+                                <input type="text" name="new_password" placeholder="Yangi parol kiriting" id="new_pwd_input">
+                            </div>
+                        </div>
+                        <small class="text-muted">Bo'sh qoldirsangiz parol o'zgarmaydi</small>
+                    </div>
+                </div>
+            </div>
 
-            </form>
+            <!-- Fanlar -->
+            <div class="form-section">
+                <div class="section-label">Qarzdor fanlar</div>
+                {% if form.debts.field.queryset %}
+                <div class="subjects-grid">
+                    {% for subj in form.debts.field.queryset %}
+                    <label class="subject-item">
+                        <input type="checkbox" name="debts" value="{{ subj.id }}"
+                            {% if subj.id in form.debts.value %}checked{% endif %}>
+                        <div class="check-box"></div>
+                        <span class="subj-name">{{ subj.name }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fan yo'q</p>
+                {% endif %}
+            </div>
 
-        </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-save">💾 Saqlash</button>
+                <a href="{% url 'student_list' %}" class="btn-back">← Ortga</a>
+            </div>
+        </form>
     </div>
 </div>
+
+<script>
+function togglePwd() {
+    const shown = document.getElementById('pwd-shown');
+    const hidden = document.getElementById('pwd-hidden');
+    if (shown.style.display === 'none') {
+        shown.style.display = 'inline';
+        hidden.style.display = 'none';
+    } else {
+        shown.style.display = 'none';
+        hidden.style.display = 'inline';
+    }
+}
+</script>
 
 {% endblock %}

@@ -8,65 +8,18 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f4ff; }
-        .topbar {
-            background: linear-gradient(135deg, #1a237e, #1565c0);
-            color: white;
-            padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
         .topbar h5 { margin: 0; font-weight: 700; }
         .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        .schedule-header {
-            background: linear-gradient(135deg, #1a237e, #1565c0);
-            color: white;
-            border-radius: 12px 12px 0 0;
-            padding: 12px 20px;
-            font-weight: 700;
-            font-size: 1rem;
-        }
-        .day-cell {
-            background: #2c3e50;
-            color: white;
-            font-weight: 700;
-            text-align: center;
-            vertical-align: middle;
-            font-size: 0.85rem;
-            writing-mode: vertical-lr;
-            transform: rotate(180deg);
-            padding: 8px 4px;
-            min-width: 40px;
-        }
-        .time-cell {
-            background: #5d6d7e;
-            color: white;
-            text-align: center;
-            vertical-align: middle;
-            font-size: 0.75rem;
-            padding: 4px 6px;
-            white-space: nowrap;
-            min-width: 90px;
-        }
-        .subject-cell {
-            background: #eafbea;
-            vertical-align: middle;
-            text-align: center;
-            padding: 6px 8px;
-        }
+        .schedule-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 12px 12px 0 0; padding: 12px 20px; font-weight: 700; font-size: 1rem; }
+        .day-cell { background: #2c3e50; color: white; font-weight: 700; text-align: center; vertical-align: middle; font-size: 0.85rem; writing-mode: vertical-lr; transform: rotate(180deg); padding: 8px 4px; min-width: 40px; }
+        .time-cell { background: #5d6d7e; color: white; text-align: center; vertical-align: middle; font-size: 0.75rem; padding: 4px 6px; white-space: nowrap; min-width: 90px; }
+        .subject-cell { background: #eafbea; vertical-align: middle; text-align: center; padding: 6px 8px; }
         .subject-name { font-weight: 700; color: #1a5c2a; font-size: 0.82rem; }
         .teacher-name { color: #444; font-size: 0.72rem; }
+        .room-name { color: #1565c0; font-size: 0.7rem; font-weight: 600; }
         .empty-cell { background: #fafafa; }
-        .week-nav {
-            background: #1a252f;
-            color: white;
-            border-radius: 8px;
-            padding: 8px 20px;
-            font-weight: 700;
-            min-width: 260px;
-            text-align: center;
-            font-size: 0.95rem;
-        }
+        .week-nav { background: #1a252f; color: white; border-radius: 8px; padding: 8px 20px; font-weight: 700; min-width: 260px; text-align: center; font-size: 0.95rem; }
     </style>
 </head>
 <body>
@@ -120,6 +73,7 @@
                         <th class="text-center" style="width:95px;">Vaqt</th>
                         <th class="text-center">Fan</th>
                         <th class="text-center">O'qituvchi</th>
+                        <th class="text-center">Xona</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -136,7 +90,15 @@
                         <td class="subject-cell" style="background:#f0f8f0;">
                             <div class="teacher-name">{{ row.info.teacher }}</div>
                         </td>
+                        <td class="subject-cell" style="background:#f0f4ff;">
+                            {% if row.info.room %}
+                            <div class="room-name">🏫 {{ row.info.room }}</div>
+                            {% else %}
+                            <div class="text-muted" style="font-size:0.7rem;">—</div>
+                            {% endif %}
+                        </td>
                         {% else %}
+                        <td class="empty-cell"></td>
                         <td class="empty-cell"></td>
                         <td class="empty-cell"></td>
                         {% endif %}

@@ -51,6 +51,15 @@
         📅 Taxminiy tugash sanasi: <strong id="end_date_text"></strong>
     </div>
 
+    <div class="mb-3">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="include_saturday" id="include_saturday" value="1">
+            <label class="form-check-label fw-bold" for="include_saturday">
+                📅 Shanba kuniga ham dars qo'yilsinmi?
+            </label>
+        </div>
+    </div>
+
     <button type="submit" class="btn btn-primary w-100">Davom etish →</button>
 </form>
 
@@ -116,6 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <input type="hidden" name="end_date" value="{{ end_date }}">
     <input type="hidden" name="total_lessons" value="{{ total_lessons }}">
     <input type="hidden" name="lessons_per_week" value="{{ lessons_per_week }}">
+    <input type="hidden" name="include_saturday" value="{{ include_saturday }}">
 
     <div class="alert alert-info">
         <b>{{ subject }}</b> fanidan <b>{{ all_groups|length }}</b> ta guruh —

@@ -10,6 +10,15 @@
         </div>
     </div>
 
+    <form method="get" class="mb-3">
+        <div class="input-group">
+            <input type="text" name="q" value="{{ q }}" class="form-control"
+                   placeholder="Fan nomi bo'yicha qidirish...">
+            <button type="submit" class="btn btn-primary">🔍 Qidirish</button>
+            {% if q %}<a href="{% url 'lesson_list' %}" class="btn btn-outline-secondary">✕</a>{% endif %}
+        </div>
+    </form>
+
     {% if messages %}
         {% for msg in messages %}
             <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
@@ -58,7 +67,7 @@
         </tbody>
     </table>
     {% else %}
-        <p class="text-muted">Hali dars yo'q.</p>
+        <p class="text-muted">{% if q %}"{{ q }}" bo'yicha hech narsa topilmadi.{% else %}Hali dars yo'q.{% endif %}</p>
     {% endif %}
 </div>
 {% endblock %}

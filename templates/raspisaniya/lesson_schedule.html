@@ -69,6 +69,32 @@
                             </form>
                         </div>
                         <p class="px-3 mb-2"><b>Vaqt:</b> {{ item.group.start_time|time:"H:i" }} — 80 daqiqa</p>
+                        <p class="px-3 mb-2">
+                            <b>Xona:</b>
+                            {% if item.group.room %}
+                                {{ item.group.room.name }}
+                            {% else %}
+                                <span class="text-muted">Biriktirilmagan</span>
+                            {% endif %}
+                            <button class="btn btn-sm btn-outline-info ms-2"
+                                onclick="this.closest('p').nextElementSibling.style.display = this.closest('p').nextElementSibling.style.display === 'none' ? 'flex' : 'none'">
+                                🏫
+                            </button>
+                        </p>
+                        <div style="display:none;" class="px-3 mb-2 gap-2">
+                            <form method="post" action="{% url 'assign_room' item.group.pk %}" class="d-flex gap-2 w-100">
+                                {% csrf_token %}
+                                <select name="room_id" class="form-select form-select-sm">
+                                    <option value="">— bo'shatish —</option>
+                                    {% for room in rooms %}
+                                    <option value="{{ room.pk }}" {% if item.group.room and item.group.room.pk == room.pk %}selected{% endif %}>
+                                        {{ room.name }} ({{ room.capacity }} kishi)
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-info">Saqlash</button>
+                            </form>
+                        </div>
 
                         <table class="table table-sm table-bordered mb-0">
                             <thead class="table-light">

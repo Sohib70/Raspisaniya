@@ -4,190 +4,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>O'qituvchi kabineti</title>
+    <title>O'quvchi kabineti</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f4ff; }
-        .topbar {
-            background: linear-gradient(135deg, #1b5e20, #2e7d32);
-            color: white;
-            padding: 12px 24px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
         .topbar h5 { margin: 0; font-weight: 700; }
-        .card-group {
-            border-radius: 12px;
-            border: none;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            margin-bottom: 20px;
-        }
-        .group-header {
-            background: linear-gradient(135deg, #1b5e20, #388e3c);
-            color: white;
-            border-radius: 12px 12px 0 0;
-            padding: 14px 20px;
-        }
-        .badge-lang {
-            background: rgba(255,255,255,0.25);
-            color: white;
-            border-radius: 20px;
-            padding: 3px 10px;
-            font-size: 0.8em;
-        }
-        .nav-tabs .nav-link { color: #1b5e20; }
-        .nav-tabs .nav-link.active {
-            color: #1b5e20;
-            font-weight: bold;
-            border-bottom: 2px solid #1b5e20;
-        }
+        .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .schedule-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 12px 12px 0 0; padding: 12px 20px; font-weight: 700; font-size: 1rem; }
+        .day-cell { background: #2c3e50; color: white; font-weight: 700; text-align: center; vertical-align: middle; font-size: 0.85rem; writing-mode: vertical-lr; transform: rotate(180deg); padding: 8px 4px; min-width: 40px; }
+        .time-cell { background: #5d6d7e; color: white; text-align: center; vertical-align: middle; font-size: 0.75rem; padding: 4px 6px; white-space: nowrap; min-width: 90px; }
+        .subject-cell { background: #eafbea; vertical-align: middle; text-align: center; padding: 6px 8px; }
+        .subject-name { font-weight: 700; color: #1a5c2a; font-size: 0.82rem; }
+        .teacher-name { color: #444; font-size: 0.72rem; }
+        .room-name { color: #1565c0; font-size: 0.7rem; font-weight: 600; }
+        .empty-cell { background: #fafafa; }
+        .week-nav { background: #1a252f; color: white; border-radius: 8px; padding: 8px 20px; font-weight: 700; min-width: 260px; text-align: center; font-size: 0.95rem; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <h5>👨‍🏫 O'qituvchi kabineti</h5>
+    <h5>📚 O'quvchi kabineti</h5>
     <div class="d-flex align-items-center gap-3">
-        <span>{{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <span>👤 {{ student.first_name }} {{ student.last_name }}</span>
         <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
 </div>
 
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
 
-    <div class="row mb-3">
-        <div class="col">
-            <div class="card border-0 shadow-sm p-3" style="border-radius:12px;">
-                <div class="row text-center">
-                    <div class="col-md-4">
-                        <div class="text-muted small">Fanlar</div>
-                        <div class="fw-bold">{{ teacher.subjects.count }} ta</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="text-muted small">Guruhlar</div>
-                        <div class="fw-bold">{{ my_groups|length }} ta</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="text-muted small">Jami o'quvchi</div>
-                        <div class="fw-bold">
-                            {% with total=0 %}
-                                {% for grp in my_groups %}{{ grp.students.count }}{% if not forloop.last %}+{% endif %}{% endfor %}
-                            {% endwith %}
-                        </div>
-                    </div>
-                </div>
+    <div class="card info-card mb-3 p-3">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <div class="text-muted small">Guruh</div>
+                <div class="fw-bold">{{ student.group|default:"—" }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Ta'lim tili</div>
+                <div class="fw-bold">{{ student.get_language_display }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Fanlar soni</div>
+                <div class="fw-bold">{{ my_groups|length }} ta</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">ID</div>
+                <div class="fw-bold">{{ student.student_id|default:"—" }}</div>
             </div>
         </div>
     </div>
 
-    {% if my_groups %}
-        {% for grp in my_groups %}
-        <div class="card card-group">
-            <div class="group-header">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-0 fw-bold">{{ grp.course.subject }}</h6>
-                        <small>{{ grp.group_number }}-guruh | {{ grp.students.count }} ta o'quvchi</small>
-                    </div>
-                    <div class="d-flex gap-2 align-items-center">
-                        <span class="badge-lang">{{ grp.get_language_display }}</span>
-                        {% if grp.start_time %}
-                        <span class="badge bg-warning text-dark">{{ grp.start_time|time:"H:i" }}</span>
+    <div class="card info-card mb-4">
+        <div class="schedule-header">🗓 Haftalik jadvalim</div>
+
+        <div class="d-flex align-items-center justify-content-center gap-3 py-3">
+            <a href="?week={{ prev_week }}" class="btn btn-outline-primary btn-sm">← Oldingi hafta</a>
+            <div class="week-nav">📅 {{ week_start_str }} — {{ week_end_str }}</div>
+            <a href="?week={{ next_week }}" class="btn btn-outline-primary btn-sm">Keyingi hafta →</a>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0" style="font-size:0.82rem;">
+                <thead>
+                    <tr style="background:#1a252f; color:white;">
+                        <th class="text-center" style="width:42px;">Kun</th>
+                        <th class="text-center" style="width:95px;">Vaqt</th>
+                        <th class="text-center">Fan</th>
+                        <th class="text-center">O'qituvchi</th>
+                        <th class="text-center">Xona</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_data %}
+                    <tr>
+                        {% if row.show_day %}
+                        <td class="day-cell" rowspan="{{ row.para_count }}">{{ row.day }}</td>
                         {% endif %}
-                    </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <ul class="nav nav-tabs mb-3" id="tab_{{ grp.pk }}" role="tablist">
-                    <li class="nav-item">
-                        <button class="nav-link active" data-bs-toggle="tab"
-                                data-bs-target="#jadval_{{ grp.pk }}">🗓 Jadval</button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab"
-                                data-bs-target="#students_{{ grp.pk }}">👥 O'quvchilar</button>
-                    </li>
-                </ul>
-
-                <div class="tab-content">
-                    {# Jadval #}
-                    <div class="tab-pane fade show active" id="jadval_{{ grp.pk }}">
-                        <table class="table table-sm table-bordered mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Sana</th>
-                                    <th>Hafta kuni</th>
-                                    <th>Vaqt</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for sched in grp.schedule.all %}
-                                {% with wd=sched.date.weekday %}
-                                <tr>
-                                    <td>{{ sched.lesson_number }}</td>
-                                    <td>{{ sched.date|date:"d.m.Y" }}</td>
-                                    <td>
-                                        {% if wd == 0 %}Dushanba
-                                        {% elif wd == 1 %}Seshanba
-                                        {% elif wd == 2 %}Chorshanba
-                                        {% elif wd == 3 %}Payshanba
-                                        {% elif wd == 4 %}Juma
-                                        {% elif wd == 5 %}Shanba
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ grp.start_time|time:"H:i" }}</td>
-                                </tr>
-                                {% endwith %}
-                                {% empty %}
-                                <tr>
-                                    <td colspan="4" class="text-center text-muted">Jadval yo'q</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {# O'quvchilar #}
-                    <div class="tab-pane fade" id="students_{{ grp.pk }}">
-                        <table class="table table-sm table-bordered mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>#</th>
-                                    <th>F.I.O</th>
-                                    <th>Guruh</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for st in grp.students.all %}
-                                <tr>
-                                    <td>{{ forloop.counter }}</td>
-                                    <td>{{ st }}</td>
-                                    <td>{{ st.group|default:"—" }}</td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">O'quvchi yo'q</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                        <td class="time-cell">{{ row.time }}</td>
+                        {% if row.info %}
+                        <td class="subject-cell">
+                            <div class="subject-name">{{ row.info.subject }}</div>
+                        </td>
+                        <td class="subject-cell" style="background:#f0f8f0;">
+                            <div class="teacher-name">{{ row.info.teacher }}</div>
+                        </td>
+                        <td class="subject-cell" style="background:#f0f4ff;">
+                            {% if row.info.room %}
+                            <div class="room-name">🏫 {{ row.info.room }}</div>
+                            {% else %}
+                            <div class="text-muted" style="font-size:0.7rem;">—</div>
+                            {% endif %}
+                        </td>
+                        {% else %}
+                        <td class="empty-cell"></td>
+                        <td class="empty-cell"></td>
+                        <td class="empty-cell"></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        {% endfor %}
-    {% else %}
-        <div class="text-center py-5 text-muted">
-            <div style="font-size:3rem;">📭</div>
-            <h5 class="mt-3">Hozircha guruh yo'q</h5>
-        </div>
-    {% endif %}
+    </div>
 
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

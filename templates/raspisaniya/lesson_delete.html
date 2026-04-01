@@ -11,33 +11,33 @@
 
             <p>
                 <strong>Fan:</strong>
-                {{ course.subject.name }}
+                {{ lesson.subject.name }}
             </p>
 
             <p>
                 <strong>Boshlanish sanasi:</strong>
-                {{ course.start_date|date:"d.m.Y" }}
+                {{ lesson.start_date|date:"d.m.Y" }}
             </p>
 
             <p>
                 <strong>Tugash sanasi:</strong>
-                {{ course.end_date|date:"d.m.Y" }}
+                {{ lesson.end_date|date:"d.m.Y" }}
             </p>
 
             <p>
                 <strong>Jami dars:</strong>
-                {{ course.total_lessons }} para
+                {{ lesson.total_lessons }} para
             </p>
 
             <p>
                 <strong>Guruhlar soni:</strong>
-                {{ course.groups.count }} ta
+                {{ lesson.groups.count }} ta
             </p>
 
             <p>
                 <strong>Jami o'quvchilar:</strong>
                 {% with total=0 %}
-                    {% for grp in course.groups.all %}
+                    {% for grp in lesson.groups.all %}
                         {{ grp.students.count }}
                     {% endfor %}
                 {% endwith %}

@@ -125,10 +125,13 @@
                             <span class="material-icons-round">person</span><span>O'qituvchilar</span>
                         </a>
                         <a href="{% url 'student_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'student_list' %}active{% endif %}">
-                            <span class="material-icons-round">school</span><span>O'quvchilar</span>
+                            <span class="material-icons-round">school</span><span>Studentlar</span>
                         </a>
                         <a href="{% url 'subject_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'subject_create' %}active{% endif %}">
                             <span class="material-icons-round">library_add</span><span>Fan</span>
+                        </a>
+                        <a href="{% url 'room_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'room_list' %}active{% endif %}">
+                            <span class="material-icons-round">meeting_room</span><span>Xonalar</span>
                         </a>
                     </div>
                     {% endif %}
@@ -182,6 +185,7 @@
                     <a href="{% url 'teacher_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person_add</span><span>O'qituvchi</span></a>
                     <a href="{% url 'student_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person_add</span><span>O'quvchi</span></a>
                     <a href="{% url 'subject_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">library_add</span><span>Fan</span></a>
+                    <a href="{% url 'room_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">meeting_room</span><span>Xonalar</span></a>
                 </div>
             </div>
             {% endif %}

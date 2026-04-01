@@ -1,18 +1,28 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
 
-<h2 class="mb-4">👨‍🎓 O'quvchilar ro'yxati</h2>
-<a href="{% url 'student_create' %}" class="btn btn-success mb-3">➕ O'quvchi qo'shish</a>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>👨‍🎓 O'quvchilar ro'yxati</h2>
+    <a href="{% url 'student_create' %}" class="btn btn-success">➕ O'quvchi qo'shish</a>
+</div>
+
+<form method="get" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="q" value="{{ q }}" class="form-control"
+               placeholder="Ism, familiya, ID yoki guruh...">
+        <button type="submit" class="btn btn-primary">🔍 Qidirish</button>
+        {% if q %}<a href="{% url 'student_list' %}" class="btn btn-outline-secondary">✕</a>{% endif %}
+    </div>
+</form>
 
 {% if students_data %}
-<table class="table table-striped table-hover">
+<table class="table table-striped table-hover align-middle">
     <thead class="table-dark">
         <tr>
             <th>T/R</th>
-            <th>Ism Sharif</th>
-            <th>Familiya</th>
+            <th>F.I.O</th>
             <th>Ta'lim tili</th>
-            <th>Qarzdor fanlar</th>
+            <th>Fanlar</th>
             <th>Amallar</th>
         </tr>
     </thead>
@@ -20,20 +30,13 @@
         {% for item in students_data %}
         <tr>
             <td>{{ forloop.counter }}</td>
-            <td>{{ item.student.last_name }}</td>
-            <td>{{ item.student.first_name }}</td>
+            <td>{{ item.student.first_name }} {{ item.student.last_name }}</td>
             <td>
-                {% if item.student.language == 'uz' %}
-                    <span class="badge bg-primary">O'zbek</span>
-                {% elif item.student.language == 'ru' %}
-                    <span class="badge bg-info text-dark">Rus</span>
-                {% elif item.student.language == 'qq' %}
-                    <span class="badge bg-warning text-dark">Qoraqalpoq</span>
-                {% elif item.student.language == 'en' %}
-                    <span class="badge bg-secondary">Ingliz</span>
-                {% else %}
-                    <span class="badge bg-secondary">{{ item.student.language }}</span>
-                {% endif %}
+                {% if item.student.language == 'uz' %}<span class="badge bg-primary">O'zbek</span>
+                {% elif item.student.language == 'ru' %}<span class="badge bg-info text-dark">Rus</span>
+                {% elif item.student.language == 'qq' %}<span class="badge bg-warning text-dark">Qoraqalpoq</span>
+                {% elif item.student.language == 'en' %}<span class="badge bg-secondary">Ingliz</span>
+                {% else %}<span class="badge bg-secondary">{{ item.student.language }}</span>{% endif %}
             </td>
             <td>
                 {% for debt in item.student.debts.all %}
@@ -55,7 +58,13 @@
     </tbody>
 </table>
 {% else %}
-<div class="alert alert-info">Hozircha o'quvchilar mavjud emas.</div>
+<div class="alert alert-info">
+    {% if q %}
+        "{{ q }}" bo'yicha hech narsa topilmadi.
+    {% else %}
+        Hozircha o'quvchilar mavjud emas.
+    {% endif %}
+</div>
 {% endif %}
 
 {% endblock %}

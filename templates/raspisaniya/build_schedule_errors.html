@@ -24,12 +24,61 @@
                     | {{ detail.group.students.count }} ta talaba
                 </div>
                 <div class="card-body">
-                    <p class="text-muted mb-2">
+                    <p class="text-muted mb-3">
                         Bu guruh uchun {{ detail.course.start_date|date:"d.m.Y" }} —
                         {{ detail.course.end_date|date:"d.m.Y" }} oralig'ida
                         bo'sh vaqt topilmadi.
                     </p>
 
+                    <!-- O'qituvchi band bo'lgan darslar -->
+                    {% if detail.teacher_scheds %}
+                    <h6 class="fw-bold text-warning">⏰ O'qituvchi band bo'lgan darslar (dastlabki 10 ta):</h6>
+                    <table class="table table-sm table-bordered mb-3">
+                        <thead class="table-warning">
+                            <tr>
+                                <th>Sana</th>
+                                <th>Vaqt</th>
+                                <th>Fan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in detail.teacher_scheds %}
+                            <tr>
+                                <td>{{ s.date|date:"d.m.Y" }}</td>
+                                <td>{{ s.start_time|time:"H:i"|default:"—" }}</td>
+                                <td>{{ s.group.course.subject }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+
+                    <!-- Talabalar band bo'lgan darslar -->
+                    {% if detail.student_scheds %}
+                    <h6 class="fw-bold text-info">👥 Talabalar band bo'lgan darslar (dastlabki 10 ta):</h6>
+                    <table class="table table-sm table-bordered mb-3">
+                        <thead class="table-info">
+                            <tr>
+                                <th>Sana</th>
+                                <th>Vaqt</th>
+                                <th>Fan</th>
+                                <th>O'qituvchi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in detail.student_scheds %}
+                            <tr>
+                                <td>{{ s.date|date:"d.m.Y" }}</td>
+                                <td>{{ s.start_time|time:"H:i"|default:"—" }}</td>
+                                <td>{{ s.group.course.subject }}</td>
+                                <td>{{ s.group.teacher }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% endif %}
+
+                    <!-- Boshqa guruhlar -->
                     <h6 class="fw-bold">Bu fandan boshqa guruhlar:</h6>
                     {% if detail.other_groups %}
                     <table class="table table-sm table-bordered">
@@ -47,13 +96,7 @@
                             <tr>
                                 <td>{{ og.group_number }}-guruh ({{ og.get_language_display }})</td>
                                 <td>{{ og.teacher }}</td>
-                                <td>
-                                    {% if og.start_time %}
-                                        {{ og.start_time|time:"H:i" }}
-                                    {% else %}
-                                        —
-                                    {% endif %}
-                                </td>
+                                <td>{{ og.start_time|time:"H:i"|default:"—" }}</td>
                                 <td>{{ og.students.count }} ta</td>
                                 <td>
                                     <a href="{% url 'move_students' detail.group.pk og.pk %}"

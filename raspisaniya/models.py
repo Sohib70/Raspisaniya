@@ -59,9 +59,21 @@ class Course(models.Model):
     total_lessons = models.PositiveIntegerField()
     lessons_per_week = models.PositiveIntegerField()
     lesson_duration = models.PositiveIntegerField(default=80)
+    include_saturday = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.subject} ({self.start_date} — {self.end_date})"
+
+class Room(models.Model):
+    name = models.CharField(max_length=100)
+    capacity = models.PositiveIntegerField(default=30)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
 
 
 class CourseGroup(models.Model):
@@ -73,6 +85,7 @@ class CourseGroup(models.Model):
     weekdays = models.JSONField(default=list, blank=True)
     language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
     is_scheduled = models.BooleanField(default=False)
+    room = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL)
 
     def __str__(self):
         return f"{self.course.subject} — {self.group_number}-guruh"
@@ -89,3 +102,5 @@ class GroupSchedule(models.Model):
 
     def __str__(self):
         return f"{self.group} — {self.date}"
+
+

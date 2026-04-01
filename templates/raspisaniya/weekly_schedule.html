@@ -1,62 +1,256 @@
-{% extends 'raspisaniya/base.html' %}
+{% extends "raspisaniya/base.html" %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="text-primary">📅 Haftalik jadval</h4>
-    <div class="d-flex gap-2">
-        <a href="{% url 'weekly_schedule_excel' %}?week={{ week_start|date:'Y-m-d' }}" class="btn btn-success">⬇ Excel</a>
-        <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
-    </div>
-</div>
+<div class="container-fluid px-3 py-3">
 
-<div class="d-flex align-items-center justify-content-center gap-3 mb-3">
-    <a href="?week={{ prev_week }}" class="btn btn-outline-primary btn-sm">← Oldingi hafta</a>
-    <div class="border rounded px-4 py-2 fw-bold" style="background:#1a252f; color:white; min-width:280px; text-align:center;">
-        📅 {{ week_start_str }} — {{ week_end_str }}
-    </div>
-    <a href="?week={{ next_week }}" class="btn btn-outline-primary btn-sm">Keyingi hafta →</a>
-</div>
+  <!-- Hafta navigatsiyasi -->
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+    <a href="?week={{ prev_week }}" class="btn btn-outline-secondary btn-sm">← Oldingi hafta</a>
+    <h5 class="mb-0 fw-bold px-3 py-1 rounded" style="background:#dc3545;color:#fff;">📅 {{ week_start_str }} — {{ week_end_str }}</h5>
+    <a href="?week={{ next_week }}" class="btn btn-outline-secondary btn-sm">Keyingi hafta →</a>
+  </div>
 
-<div class="table-responsive">
-<table class="table table-bordered table-sm mb-0" style="font-size:0.8rem;">
-    <thead>
-        <tr style="background:#1a252f; color:white;">
-            <th class="text-center" style="width:90px;">Kun</th>
-            <th class="text-center" style="width:120px;">Vaqt</th>
-            {% for gnum in group_numbers %}
-            <th class="text-center">{{ gnum }}-guruh</th>
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in table_data %}
+  <!-- Drag & Drop yordam xabari -->
+  <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2" role="alert">
+    <span>💡</span>
+    <span>Darsni boshqa vaqtga ko'chirish uchun <strong>sudrab olib boring</strong> va bo'sh katakka tashlang.</span>
+  </div>
+
+  <!-- Toast xabarnoma -->
+  <div id="toast-container" style="position:fixed;top:80px;right:20px;z-index:9999;min-width:300px;"></div>
+
+  <!-- Jadval -->
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle text-center mb-0" id="weekly-table"
+           style="font-size:13px; min-width: {{ group_numbers|length|add:2 }}00px;">
+      <thead class="table-dark">
         <tr>
+          <th style="min-width:90px;">Kun</th>
+          <th style="min-width:110px;">Vaqt</th>
+          {% for gnum in group_numbers %}
+            <th style="min-width:140px;">{{ gnum }}-guruh</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in table_data %}
+          <tr>
             {% if row.show_day %}
-            <td class="text-center fw-bold text-white"
-                rowspan="{{ row.para_count }}"
-                style="background:#2c3e50; vertical-align:middle; writing-mode:vertical-lr; transform:rotate(180deg); padding:8px 4px;">
+              <td rowspan="{{ row.para_count }}" class="fw-bold"
+                  style="background:#1A252F;color:#fff;vertical-align:middle;
+                         writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:2px;">
                 {{ row.day }}
-            </td>
+              </td>
             {% endif %}
 
-            <td class="text-center text-white"
-                style="background:#5d6d7e; vertical-align:middle; font-size:0.72rem; padding:4px;">
-                {{ row.time }}
+            <td style="background:#5D6D7E;color:#fff;font-weight:600;white-space:nowrap;">
+              {{ row.time }}
             </td>
 
             {% for cell in row.cells %}
-            <td class="text-center" style="vertical-align:middle; padding:4px;
-                {% if cell.filled %}background:#eafbea;{% else %}background:#fafafa;{% endif %}">
+              <td class="drop-zone {% if cell.filled %}has-lesson{% endif %}"
+                  data-date="{{ row.iso_date }}"
+                  data-time="{{ row.start_time }}"
+                  style="padding:4px;vertical-align:middle;min-height:60px;
+                         {% if not cell.filled %}background:#f9f9f9;{% endif %}
+                         transition:background 0.2s;">
+
                 {% if cell.filled %}
-                    <div class="fw-bold" style="font-size:0.78rem; color:#1a5c2a;">{{ cell.subject }}</div>
-                    {% if cell.teacher %}
-                    <div class="text-muted" style="font-size:0.68rem;">{{ cell.teacher }}</div>
+                  <div class="lesson-card"
+                       draggable="true"
+                       data-sched-id="{{ cell.sched_id }}"
+                       data-sched-url="{% url 'change_lesson_time_ajax' cell.sched_id %}"
+                       style="background:{{ cell.bg }};
+                              color:{{ cell.text }};
+                              border:1.5px solid {{ cell.border }};
+                              border-radius:8px;
+                              padding:6px 8px;
+                              cursor:grab;
+                              user-select:none;
+                              transition:opacity 0.2s, box-shadow 0.2s;">
+                    <div class="fw-bold" style="font-size:12px;">{{ cell.subject }}</div>
+                    <div style="font-size:11px;opacity:0.85;">{{ cell.teacher }}</div>
+                    {% if cell.room %}
+                      <div style="font-size:10px;opacity:0.7;">🏫 {{ cell.room }}</div>
                     {% endif %}
+                  </div>
                 {% endif %}
-            </td>
+              </td>
             {% endfor %}
-        </tr>
+          </tr>
         {% endfor %}
-    </tbody>
-</table>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Excel yuklab olish -->
+  <div class="mt-3">
+    <a href="{% url 'weekly_schedule_excel' %}?week={{ week_start|date:'Y-m-d' }}"
+       class="btn btn-success btn-sm">
+      📥 Excel yuklab olish
+    </a>
+  </div>
+
 </div>
+
+<script>
+(function () {
+  // ─── CSRF ───
+  function getCookie(name) {
+    let v = null;
+    document.cookie.split(';').forEach(c => {
+      c = c.trim();
+      if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+    });
+    return v;
+  }
+  const CSRF = getCookie('csrftoken');
+
+  // ─── Toast ───
+  function showToast(message, type) {
+    type = type || 'success';
+    const container = document.getElementById('toast-container');
+    const id = 'toast-' + Date.now();
+    const color = type === 'success' ? '#198754' : '#dc3545';
+    const icon  = type === 'success' ? '\u2705' : '\u274C';
+    const div = document.createElement('div');
+    div.id = id;
+    div.style.cssText = [
+      'background:' + color,
+      'color:#fff',
+      'padding:12px 16px',
+      'border-radius:10px',
+      'margin-bottom:8px',
+      'box-shadow:0 4px 12px rgba(0,0,0,0.2)',
+      'font-size:14px',
+      'display:flex',
+      'align-items:center',
+      'gap:8px',
+      'transition:opacity .3s'
+    ].join(';');
+    div.innerHTML = '<span>' + icon + '</span><span>' + message + '</span>';
+    container.appendChild(div);
+    setTimeout(function () {
+      div.style.opacity = '0';
+      setTimeout(function () { div.remove(); }, 300);
+    }, 4000);
+  }
+
+  // ─── STATE ───
+  var draggedCard = null;
+  var sourceCell  = null;
+  var isFetching  = false;
+
+  // ─── DRAG START ───
+  document.addEventListener('dragstart', function (e) {
+    var card = e.target.closest('.lesson-card');
+    if (!card) return;
+    draggedCard = card;
+    sourceCell  = card.closest('td');
+    card.style.opacity   = '0.45';
+    card.style.boxShadow = '0 0 0 3px #6366f1';
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  // ─── DRAG END ───
+  document.addEventListener('dragend', function (e) {
+    var card = e.target.closest('.lesson-card');
+    if (!card) return;
+    card.style.opacity   = '1';
+    card.style.boxShadow = '';
+  });
+
+  // ─── DROP ZONES ───
+  document.querySelectorAll('.drop-zone').forEach(function (td) {
+
+    td.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      var occupied = td.classList.contains('has-lesson') && td !== sourceCell;
+      td.style.background = occupied ? '#fee2e2' : '#e0e7ff';
+      td.style.outline    = occupied ? '2px dashed #ef4444' : '2px dashed #6366f1';
+      e.dataTransfer.dropEffect = occupied ? 'none' : 'move';
+    });
+
+    td.addEventListener('dragleave', function () { resetZoneStyle(td); });
+
+    td.addEventListener('drop', function (e) {
+      e.preventDefault();
+      resetZoneStyle(td);
+
+      if (!draggedCard || td === sourceCell || isFetching) return;
+
+      if (td.classList.contains('has-lesson')) {
+        showToast('Bu katak allaqachon band!', 'error');
+        return;
+      }
+
+      var newDate = td.dataset.date;
+      var newTime = td.dataset.time;
+      var url     = draggedCard.dataset.schedUrl;
+
+      if (!newDate || !newTime || !url) {
+        showToast('Sana yoki vaqt topilmadi', 'error');
+        return;
+      }
+
+      // Optimistik ko'chirish
+      isFetching = true;
+      var prevSource = sourceCell;
+      var cardRef    = draggedCard;
+
+      prevSource.classList.remove('has-lesson');
+      td.classList.add('has-lesson');
+      td.appendChild(cardRef);
+      sourceCell = td;
+
+      cardRef.style.opacity = '0.6';
+      cardRef.setAttribute('draggable', 'false');
+
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF
+        },
+        body: JSON.stringify({ new_date: newDate, new_time: newTime })
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        cardRef.style.opacity = '1';
+        cardRef.setAttribute('draggable', 'true');
+        isFetching = false;
+
+        if (data.success) {
+          showToast('Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\u02BCchirildi', 'success');
+        } else {
+          // Rollback
+          td.classList.remove('has-lesson');
+          prevSource.classList.add('has-lesson');
+          prevSource.appendChild(cardRef);
+          sourceCell = prevSource;
+          showToast(data.error || 'Xatolik yuz berdi', 'error');
+        }
+      })
+      .catch(function () {
+        // Rollback
+        td.classList.remove('has-lesson');
+        prevSource.classList.add('has-lesson');
+        prevSource.appendChild(cardRef);
+        sourceCell = prevSource;
+        cardRef.style.opacity = '1';
+        cardRef.setAttribute('draggable', 'true');
+        isFetching = false;
+        showToast('Server bilan aloqa yo\u02BCq', 'error');
+      });
+    });
+  });
+
+  function resetZoneStyle(td) {
+    td.style.background = td.classList.contains('has-lesson') ? '' : '#f9f9f9';
+    td.style.outline    = '';
+  }
+
+})();
+</script>
+
 {% endblock %}

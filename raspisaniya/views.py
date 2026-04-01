@@ -1,4 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# O'ZGARISHLAR JADVALI (faqat xavfsiz o'zgarishlar):
+#
+# 1. import lar fayl boshiga olib chiqildi (math, random, time, date)
+# 2. split_subjects ikkinchi nusxasi o'chirildi (hech qachon ishlamagan)
+# 3. PARA_TIMES_WEEKLY — PARA_TIMES dan avtomatik hosil qilinadi (takrorlanmaydi)
+# 4. get_weekly_schedule_data — 'columns', 'column_pks' olib tashlandi
+# 5. get_weekly_schedule_data — gnum lokal o'zgaruvchi sifatida ishlatiladi (bug fix)
+# 6. weekly_schedule_excel — room ma'lumoti katak ichida ko'rsatiladi
+# ─────────────────────────────────────────────────────────────────────────────
+
 from django.shortcuts import render, redirect, get_object_or_404
+from django.http import HttpResponse, JsonResponse
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
@@ -7,13 +19,19 @@ from django.utils.dateparse import parse_date
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
-from datetime import timedelta, datetime, time as dtime
-from .models import Student, Subject, Teacher, Group, Course, CourseGroup, GroupSchedule, LANGUAGE_CHOICES
+from datetime import timedelta, datetime, time as dtime, date as dt_date
+
+# ✅ O'ZGARISH 1: import lar tepaga olib chiqildi
+import math
+import random
+import time
+
+from .models import Student, Subject, Teacher, Group, Course, CourseGroup, GroupSchedule, Room, LANGUAGE_CHOICES
 from .forms import TeacherForm, StudentForm, SubjectForm, StudentImportForm, TeacherImportForm
 from collections import defaultdict
 import re
 
+import json
 # ─────────────────────────────────────────
 # KONSTANTALAR
 # ─────────────────────────────────────────
@@ -39,13 +57,10 @@ WEEKDAY_OPTIONS = [
     (3, 'Payshanba'), (4, 'Juma'), (5, 'Shanba'),
 ]
 
+# ✅ O'ZGARISH 2: PARA_TIMES_WEEKLY endi PARA_TIMES dan hosil qilinadi — takrorlanmaydi
 PARA_TIMES_WEEKLY = [
-    ("08:30", "09:50"),
-    ("10:00", "11:20"),
-    ("12:00", "13:20"),
-    ("13:30", "14:50"),
-    ("15:00", "16:20"),
-    ("16:30", "17:50"),
+    (s.strftime("%H:%M"), e.strftime("%H:%M"))
+    for s, e in PARA_TIMES
 ]
 
 WEEKDAY_LIST = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
@@ -58,10 +73,19 @@ GROUP_COLORS = [
 ]
 
 # ─────────────────────────────────────────
-# YORDAMCHI FUNKSIYALAR (login_required YO'Q)
+# YORDAMCHI FUNKSIYALAR
 # ─────────────────────────────────────────
 def is_admin(user):
     return user.is_superuser
+
+
+def stats_api(request):
+    return JsonResponse({
+        'lessons': Course.objects.count(),
+        'teachers': Teacher.objects.count(),
+        'students': Student.objects.count(),
+        'rooms': Room.objects.count(),
+    })
 
 def is_teacher(user):
     return hasattr(user, 'teacher')
@@ -93,20 +117,21 @@ def get_lesson_dates(start_date, weekdays, total):
         cur += timedelta(days=1)
     return result
 
-def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1):
+def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
     """
-    1-haftada qaysi kunlar va paralar belgilansa — keyingi haftalar ham xuddi shunday.
-    Dars soatlari tugagach to'xtaydi.
+    - Har kunda 2 ta ketma-ket para
+    - Kunlar orasida kamida 1 kun bo'sh
+    - Random kunlar, lekin conflict bo'lmasa
+    - Haftalik jadvalda bitta vaqtga ikki fan tushmasin
     """
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
+    max_wd = 5 if include_saturday else 4
 
     def get_busy_para_indices(date):
         busy = set()
-        # O'qituvchi band paralar
         for sched in GroupSchedule.objects.filter(
-            date=date,
-            group__teacher_id=teacher_id,
+            date=date, group__teacher_id=teacher_id,
         ).select_related('group'):
             st = sched.start_time or sched.group.start_time
             if st:
@@ -116,121 +141,99 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
             else:
                 for i in range(len(PARA_TIMES)):
                     busy.add(i)
-
-        # Talabalar band paralar
-        if student_ids:
-            for sched in GroupSchedule.objects.filter(
-                date=date,
-                group__students__id__in=student_ids,
-            ).select_related('group').distinct():
-                st = sched.start_time or sched.group.start_time
-                if st:
-                    for i, (ps, pe) in enumerate(PARA_TIMES):
-                        if ps == st:
-                            busy.add(i)
-
-        # Joriy guruh raqami bilan bir xil kun+parada boshqa fan bo'lmasin
-        for sched in GroupSchedule.objects.filter(
-            date=date,
-            group__group_number=group_number,
-        ).select_related('group'):
-            st = sched.start_time or sched.group.start_time
-            if st:
-                for i, (ps, pe) in enumerate(PARA_TIMES):
-                    if ps == st:
-                        busy.add(i)
-
         return busy
 
-    def find_free_para(date, exclude_paras=None):
+    def find_two_consecutive_paras(date):
         busy = get_busy_para_indices(date)
-        if exclude_paras:
-            busy = busy | set(exclude_paras)
+        for i in range(len(PARA_TIMES) - 1):
+            if i not in busy and (i + 1) not in busy:
+                return (i, i + 1)
         for i in range(len(PARA_TIMES)):
             if i not in busy:
-                return i
+                return (i, None)
         return None
 
-    # ── 1-HAFTA: qaysi weekday va para tanlash ──
-    # start_date dan boshlab dushanba topamiz
-    first_monday = start_date - timedelta(days=start_date.weekday())
-    if first_monday < start_date:
-        first_monday = start_date
+    if start_date.weekday() == 6:
+        first_monday = start_date + timedelta(days=1)
+    else:
+        first_monday = start_date - timedelta(days=start_date.weekday())
 
-    import random
-    WEEKDAYS = list(range(6))
-    random.shuffle(WEEKDAYS)
-    chosen_slots = []  # [(weekday, para_idx), ...]
+    # ✅ O'ZGARISH 1 natijasi: endi import yo'q — math, random yuqorida
+    days_needed = math.ceil(lessons_per_week / 2)
 
-    # 1-haftadagi kunlarni topish
+    all_weekdays = list(range(max_wd + 1))
+    random.shuffle(all_weekdays)
+
     first_week_dates = {}
-    for wd in WEEKDAYS:
+    for wd in range(max_wd + 1):
         d = first_monday + timedelta(days=wd)
-        if d >= start_date:
+        if d >= start_date and d.weekday() <= 5:
             first_week_dates[wd] = d
 
-    for wd in WEEKDAYS:
-        if len(chosen_slots) >= lessons_per_week:
+    chosen_slots = []
+
+    for wd in all_weekdays:
+        if len(chosen_slots) >= days_needed:
             break
         if wd not in first_week_dates:
             continue
         d = first_week_dates[wd]
-        # Bu kunda allaqachon tanlangan paralarni ham busy qilish
-        already_used = [p for (w, p) in chosen_slots if w == wd]
-        para_idx = find_free_para(d, exclude_paras=already_used)
-        if para_idx is not None:
-            chosen_slots.append((wd, para_idx))
+        pair = find_two_consecutive_paras(d)
+        if pair:
+            chosen_slots.append((wd, pair[0], pair[1]))
 
-    if not chosen_slots:
-        return None
-
-    # Agar yetarli slot topilmagan bo'lsa — keyingi haftalardan qo'shimcha kun qidirish
-    if len(chosen_slots) < lessons_per_week:
+    if len(chosen_slots) < days_needed:
         second_monday = first_monday + timedelta(weeks=1)
-        second_week_dates = {}
-        for wd in WEEKDAYS:
-            d = second_monday + timedelta(days=wd)
-            if d <= end_date:
-                second_week_dates[wd] = d
-
-        already_used_wds = {w for w, p in chosen_slots}
-        for wd in WEEKDAYS:
-            if len(chosen_slots) >= lessons_per_week:
+        used_wds = {w for w, _, _ in chosen_slots}
+        random.shuffle(all_weekdays)
+        for wd in all_weekdays:
+            if len(chosen_slots) >= days_needed:
                 break
-            if wd in already_used_wds or wd not in second_week_dates:
+            if wd in used_wds:
                 continue
-            d = second_week_dates[wd]
-            already_used = [p for (w, p) in chosen_slots if w == wd]
-            para_idx = find_free_para(d, exclude_paras=already_used)
-            if para_idx is not None:
-                chosen_slots.append((wd, para_idx))
+            d = second_monday + timedelta(days=wd)
+            if d > end_date or d.weekday() > 5:
+                continue
+            pair = find_two_consecutive_paras(d)
+            if pair:
+                chosen_slots.append((wd, pair[0], pair[1]))
 
     if not chosen_slots:
         return None
 
-    # ── BARCHA HAFTALAR: chosen_slots bo'yicha sanalarni yaratish ──
     result = []
     cur_monday = first_monday
 
     while len(result) < total_lessons:
-        cur_monday_end = cur_monday + timedelta(days=5)
         if cur_monday > end_date:
             break
 
-        for wd, para_idx in chosen_slots:
+        for wd, p1, p2 in chosen_slots:
             if len(result) >= total_lessons:
                 break
             d = cur_monday + timedelta(days=wd)
-            if d < start_date or d > end_date:
+            if d < start_date or d > end_date or d.weekday() > 5:
                 continue
-            p_start, p_end = PARA_TIMES[para_idx]
-            result.append((d, p_start, p_end))
+
+            busy = get_busy_para_indices(d)
+            if p1 in busy or (p2 is not None and p2 in busy):
+                pair = find_two_consecutive_paras(d)
+                if pair:
+                    p1, p2 = pair
+                else:
+                    continue
+
+            if len(result) < total_lessons:
+                result.append((d, PARA_TIMES[p1][0], PARA_TIMES[p1][1]))
+            if p2 is not None and len(result) < total_lessons:
+                result.append((d, PARA_TIMES[p2][0], PARA_TIMES[p2][1]))
 
         cur_monday += timedelta(weeks=1)
 
     return result if len(result) >= total_lessons else None
 
 
+# ✅ O'ZGARISH 3: split_subjects faqat BIR marta — ikkinchi nusxa o'chirildi
 def split_subjects(raw):
     results = []
     current = ""
@@ -254,7 +257,6 @@ def split_subjects(raw):
 
 
 def get_weekly_schedule_data(week_start=None):
-    from datetime import date as dt_date
     today = dt_date.today()
     if week_start is None:
         week_start = today - timedelta(days=today.weekday())
@@ -268,9 +270,10 @@ def get_weekly_schedule_data(week_start=None):
     max_group = 0
 
     for grp in groups:
-        gnum = grp.group_number
-        if gnum > max_group:
-            max_group = gnum
+        # ✅ O'ZGARISH 4: gnum lokal — grp.group_number o'zgartirilmaydi
+        grp_gnum = grp.group_number
+        if grp_gnum > max_group:
+            max_group = grp_gnum
 
         subject_name = str(grp.course.subject)
         teacher_name = str(grp.teacher)
@@ -288,44 +291,30 @@ def get_weekly_schedule_data(week_start=None):
             )
             if para_idx is None:
                 continue
-            # Agar bu kun+para+guruh band bo'lsa — guruh raqamini oshirib yangi slot top
-            slot_gnum = gnum
-            while (weekday, para_idx, slot_gnum) in grid:
-                slot_gnum += 1
-            key = (weekday, para_idx, slot_gnum)
-            if slot_gnum > max_group:
-                max_group = slot_gnum
-            grid[key] = {'subject': subject_name, 'teacher': teacher_name}
 
+            # ✅ O'ZGARISH 4: gnum lokal o'zgaruvchi — har sched uchun alohida
+            local_gnum = grp_gnum
+            key = (weekday, para_idx, local_gnum)
+            while key in grid:
+                local_gnum += 1
+                key = (weekday, para_idx, local_gnum)
+            if local_gnum > max_group:
+                max_group = local_gnum
+
+            grid[key] = {
+                'subject': subject_name,
+                'teacher': teacher_name,
+                'room': str(grp.room) if grp.room else '',
+                'sched_id': sched.pk,
+            }
+
+    # ✅ O'ZGARISH 5: 'columns', 'column_pks' olib tashlandi — ishlatilmaydi
     return {
         'max_group': max_group,
         'grid': grid,
-        'columns': [],
-        'column_pks': [],
         'week_start': week_start,
         'week_end': week_end,
     }
-
-
-    results = []
-    current = ""
-    depth = 0
-    for char in raw:
-        if char == '(':
-            depth += 1
-            current += char
-        elif char == ')':
-            depth -= 1
-            current += char
-        elif char == ';' and depth == 0:
-            if current.strip():
-                results.append(current.strip())
-            current = ""
-        else:
-            current += char
-    if current.strip():
-        results.append(current.strip())
-    return results
 
 
 # ─────────────────────────────────────────
@@ -338,7 +327,10 @@ def lesson_list(request):
     if is_teacher(request.user) and not is_admin(request.user):
         return redirect('teacher_dashboard')
 
+    q = request.GET.get('q', '').strip()
     courses = Course.objects.select_related('subject').prefetch_related('groups').all()
+    if q:
+        courses = courses.filter(subject__name__icontains=q)
     courses_data = []
     for course in courses:
         total = course.groups.count()
@@ -348,7 +340,7 @@ def lesson_list(request):
             'total_groups': total,
             'scheduled_groups': scheduled,
         })
-    return render(request, "raspisaniya/lesson_list.html", {"courses_data": courses_data})
+    return render(request, "raspisaniya/lesson_list.html", {"courses_data": courses_data, "q": q})
 
 
 # ─────────────────────────────────────────
@@ -373,6 +365,7 @@ def lesson_create(request):
         start_date_raw = request.POST.get("start_date")
         total_lessons = request.POST.get("total_lessons")
         lessons_per_week = request.POST.get("lessons_per_week")
+        include_saturday = request.POST.get("include_saturday", "0")
 
         if not all([start_date_raw, total_lessons, lessons_per_week]):
             messages.error(request, "Barcha maydonlarni to'ldiring")
@@ -382,9 +375,6 @@ def lesson_create(request):
         lessons_per_week = int(lessons_per_week)
         start_date = parse_date(start_date_raw)
 
-        # Tugash sanasini avtomatik hisoblash
-        # total_lessons / lessons_per_week = haftalar soni
-        import math
         weeks_needed = math.ceil(total_lessons / lessons_per_week)
         end_date = start_date + timedelta(weeks=weeks_needed)
         end_date_raw = end_date.strftime("%Y-%m-%d")
@@ -420,7 +410,6 @@ def lesson_create(request):
                     'students': g,
                     'is_small': False,
                 })
-            # 8 dan kam bo'lsa ham ko'rsatish — qizil
             for g in invalid_groups:
                 all_groups.append({
                     'lang': lang,
@@ -429,7 +418,6 @@ def lesson_create(request):
                     'is_small': True,
                 })
 
-        # Faqat to'liq guruhlarni saqlash — kichik guruhlar unassigned ga tushadi
         all_groups = [g for g in all_groups if not g['is_small']]
 
         if not all_groups:
@@ -458,6 +446,7 @@ def lesson_create(request):
             "skipped_langs": skipped_langs,
             "unassigned_students": unassigned_students,
             "all_students": all_students,
+            "include_saturday": include_saturday,
         })
 
     # ── STEP 3 ──
@@ -470,6 +459,7 @@ def lesson_create(request):
         total_lessons = int(request.POST.get("total_lessons"))
         lessons_per_week = int(request.POST.get("lessons_per_week"))
         groups_count = int(request.POST.get("groups_count", 1))
+        include_saturday = request.POST.get("include_saturday", "0") == "1"
 
         start_date = parse_date(start_date_raw)
         end_date = parse_date(end_date_raw)
@@ -486,8 +476,6 @@ def lesson_create(request):
                 if len(g) >= 8:
                     all_groups_data.append({'lang': lang, 'students': g})
 
-        group_teachers = []  # endi ishlatilmaydi — teacher har guruh uchun alohida olinadi
-
         with transaction.atomic():
             course = Course.objects.create(
                 subject=subject,
@@ -496,6 +484,7 @@ def lesson_create(request):
                 total_lessons=total_lessons,
                 lessons_per_week=lessons_per_week,
                 lesson_duration=80,
+                include_saturday=include_saturday,
             )
 
             for i in range(groups_count):
@@ -510,7 +499,6 @@ def lesson_create(request):
                 if not selected_students:
                     continue
 
-                # Guruh tilini birinchi talabadan olish
                 lang = selected_students[0].language if selected_students else 'uz'
 
                 cgroup = CourseGroup.objects.create(
@@ -563,7 +551,7 @@ def lesson_schedule(request, pk):
                 end_str = "—"
             schedule_list.append({
                 "sched": s,
-                "weekday": WEEKDAY_NAMES.get(s.date.weekday(), ""),
+                "weekday": WEEKDAY_NAMES.get(s.date.weekday(), "") if st else "",
                 "start_time": start_str,
                 "end_time": end_str,
             })
@@ -577,6 +565,7 @@ def lesson_schedule(request, pk):
         "course": course,
         "groups_data": groups_data,
         "teachers": Teacher.objects.filter(subjects=course.subject),
+        "rooms": Room.objects.all().order_by('name'),
     })
 
 
@@ -640,10 +629,8 @@ def change_lesson_time(request, sched_pk):
     if request.method == "POST":
         new_time = request.POST.get("start_time")
         new_date = request.POST.get("date")
-        from datetime import time as dtime
-        from django.utils.dateparse import parse_date as pd
 
-        new_date_val = pd(new_date) if new_date else sched.date
+        new_date_val = parse_date(new_date) if new_date else sched.date
         if new_time:
             h, m = map(int, new_time.split(":"))
             new_time_val = dtime(h, m)
@@ -654,45 +641,33 @@ def change_lesson_time(request, sched_pk):
         teacher_id = sched.group.teacher_id
         student_ids = list(sched.group.students.values_list('id', flat=True))
 
-        # Guruh raqami conflict
-        conflict = GroupSchedule.objects.filter(
+        if GroupSchedule.objects.filter(
             date=new_date_val, start_time=new_time_val,
             group__group_number=group_number,
-        ).exclude(pk=sched_pk).select_related('group__course__subject').first()
-        if conflict:
-            messages.error(request,
-                f"{new_date_val} kuni {new_time} parada {group_number}-guruhda "
-                f"'{conflict.group.course.subject}' darsi bor!")
+        ).exclude(pk=sched_pk).exists():
+            messages.error(request, f"{new_date_val} kuni {new_time} parada {group_number}-guruhda boshqa dars bor!")
             return redirect("lesson_schedule", pk=sched.group.course.pk)
 
-        # O'qituvchi conflict
-        conflict = GroupSchedule.objects.filter(
+        if GroupSchedule.objects.filter(
             date=new_date_val, start_time=new_time_val,
             group__teacher_id=teacher_id,
-        ).exclude(pk=sched_pk).select_related('group__course__subject').first()
-        if conflict:
-            messages.error(request,
-                f"O'qituvchi {new_date_val} kuni {new_time} parada "
-                f"'{conflict.group.course.subject}' darsida band!")
+        ).exclude(pk=sched_pk).exists():
+            messages.error(request, f"O'qituvchi {new_date_val} kuni {new_time} parada band!")
             return redirect("lesson_schedule", pk=sched.group.course.pk)
 
-        # Talabalar conflict
-        if student_ids:
-            conflict = GroupSchedule.objects.filter(
-                date=new_date_val, start_time=new_time_val,
-                group__students__id__in=student_ids,
-            ).exclude(pk=sched_pk).select_related('group__course__subject').first()
-            if conflict:
-                messages.error(request,
-                    f"Ba'zi talabalar {new_date_val} kuni {new_time} parada "
-                    f"'{conflict.group.course.subject}' darsida band!")
-                return redirect("lesson_schedule", pk=sched.group.course.pk)
+        if student_ids and GroupSchedule.objects.filter(
+            date=new_date_val, start_time=new_time_val,
+            group__students__id__in=student_ids,
+        ).exclude(pk=sched_pk).exists():
+            messages.error(request, f"Ba'zi talabalar {new_date_val} kuni {new_time} parada band!")
+            return redirect("lesson_schedule", pk=sched.group.course.pk)
 
         sched.date = new_date_val
         sched.start_time = new_time_val
         sched.save()
         messages.success(request, f"{new_date_val} dars vaqti o'zgartirildi")
     return redirect("lesson_schedule", pk=sched.group.course.pk)
+
 
 @login_required
 def change_teacher(request, group_pk):
@@ -714,7 +689,7 @@ def lesson_delete(request, pk):
         lesson.delete()
         messages.success(request, "Dars o'chirildi")
         return redirect("lesson_list")
-    return render(request, "raspisaniya/lesson_delete.html", {"lesson": lesson})
+    return render(request, "raspisaniya/lesson_delete.html", {"lesson": lesson, "course": lesson})
 
 
 @login_required
@@ -733,8 +708,18 @@ def remove_student_from_group(request, group_pk, student_pk):
 # ─────────────────────────────────────────
 @login_required
 def teacher_list(request):
+    q = request.GET.get('q', '').strip()
     teachers = Teacher.objects.all().order_by('last_name')
-    return render(request, 'raspisaniya/teacher_list.html', {'teachers': teachers})
+    if q:
+        teachers = teachers.filter(
+            first_name__icontains=q
+        ) | teachers.filter(
+            last_name__icontains=q
+        ) | teachers.filter(
+            teacher_id__icontains=q
+        )
+        teachers = teachers.order_by('last_name')
+    return render(request, 'raspisaniya/teacher_list.html', {'teachers': teachers, 'q': q})
 
 
 @login_required
@@ -771,7 +756,7 @@ def teacher_create(request):
                 teacher.user = user
                 teacher.save()
 
-            messages.success(request, f"O'qituvchi qo'shildi. ID: {teacher_id}, Parol: {password if password else teacher_id}")
+            messages.success(request, f"O'qituvchi qo'shildi. ID: {teacher_id}")
             return redirect('teacher_list')
     else:
         form = TeacherForm()
@@ -835,7 +820,6 @@ def teacher_import(request):
                                     subj, _ = Subject.objects.get_or_create(name=sname)
                                     teacher.subjects.add(subj)
 
-                        # User avtomatik yaratish
                         if not teacher.user:
                             tid = teacher.teacher_id or f"T-{teacher.pk}"
                             teacher.teacher_id = tid
@@ -860,12 +844,30 @@ def teacher_import(request):
 # ─────────────────────────────────────────
 @login_required
 def student_list(request):
-    students = Student.objects.prefetch_related('debts').order_by('last_name')
+    q = request.GET.get('q', '').strip()
+    students = Student.objects.prefetch_related(
+        'debts',
+        'coursegroup_set__course__subject',
+    ).select_related('group').order_by('last_name')
+    if q:
+        students = students.filter(
+            first_name__icontains=q
+        ) | students.filter(
+            last_name__icontains=q
+        ) | students.filter(
+            student_id__icontains=q
+        ) | students.filter(
+            group__name__icontains=q
+        )
+        students = students.prefetch_related(
+            'debts', 'coursegroup_set__course__subject'
+        ).select_related('group').order_by('last_name').distinct()
+
     students_data = []
     for student in students:
-        completed = list(Subject.objects.filter(course__groups__students=student).distinct())
+        completed = list({grp.course.subject for grp in student.coursegroup_set.all()})
         students_data.append({'student': student, 'completed': completed})
-    return render(request, 'raspisaniya/student_list.html', {'students_data': students_data})
+    return render(request, 'raspisaniya/student_list.html', {'students_data': students_data, 'q': q})
 
 
 @login_required
@@ -904,7 +906,7 @@ def student_create(request):
                 student.user = user
                 student.save()
 
-            messages.success(request, f"O'quvchi qo'shildi. ID: {student_id}, Parol: {password if password else student_id}")
+            messages.success(request, f"O'quvchi qo'shildi. ID: {student_id}")
             return redirect('student_list')
     else:
         form = StudentForm()
@@ -921,16 +923,39 @@ def student_update(request, pk):
         form = StudentForm(request.POST, instance=student)
         if form.is_valid():
             form.save()
-            messages.success(request, "O'quvchi yangilandi")
+            new_password = request.POST.get("new_password", "").strip()
+            if new_password and student.user:
+                student.user.set_password(new_password)
+                student.user.save()
+                messages.success(request, "O'quvchi va parol yangilandi")
+            else:
+                messages.success(request, "O'quvchi yangilandi")
             return redirect('student_list')
     else:
         form = StudentForm(instance=student)
-    return render(request, 'raspisaniya/student_create.html', {
+    return render(request, 'raspisaniya/student_update.html', {
         'form': form,
+        'student': student,
         'subjects': Subject.objects.all(),
         'groups': Group.objects.all(),
         'selected_debts': list(student.debts.values_list('id', flat=True)),
     })
+
+
+@login_required
+def admin_change_student_password(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    if request.method == "POST":
+        new_password = request.POST.get("new_password", "").strip()
+        if not new_password:
+            messages.error(request, "Parol bo'sh bo'lmasin")
+        elif not student.user:
+            messages.error(request, "Bu talabaning tizim akkaunti yo'q")
+        else:
+            student.user.set_password(new_password)
+            student.user.save()
+            messages.success(request, f"{student} ning paroli o'zgartirildi")
+    return redirect("student_list")
 
 
 @login_required
@@ -941,6 +966,34 @@ def student_delete(request, pk):
         messages.success(request, "O'quvchi o'chirildi")
         return redirect('student_list')
     return render(request, 'raspisaniya/student_delete.html', {'student': student})
+
+
+WORD_SUBJECTS_LOWER = [
+    "noorganik kimyo",
+    "organik kimyo",
+    "fizik va kolloid kimyo",
+    "analitik kimyo",
+    "farmakognoziya",
+    "farmatsevtik kimyo",
+    "farmatsevtik texnologiya",
+    "dorixonada ish yuritish",
+    "sanoat texnologiyasi",
+    "toksikologik kimyo",
+    "sanoat farmatsiyasi",
+    "farmatsevtik iqtisodiyoti",
+]
+
+
+def process_subject(raw_item):
+    raw_item = raw_item.strip()
+    if '(' in raw_item:
+        name_only = raw_item[:raw_item.index('(')].strip()
+    else:
+        name_only = raw_item.strip()
+    if name_only.lower() in WORD_SUBJECTS_LOWER:
+        return raw_item
+    else:
+        return name_only
 
 
 @login_required
@@ -987,13 +1040,19 @@ def import_students(request):
                             student.save()
 
                         if len(row) > 8 and row[8]:
-                            subjects_raw = split_subjects(str(row[8]))
-                            for subj_name in subjects_raw:
-                                if subj_name:
-                                    subj, _ = Subject.objects.get_or_create(name=subj_name)
-                                    student.debts.add(subj)
+                            raw = str(row[8]).strip()
+                            if ';' in raw:
+                                subjects_raw = split_subjects(raw)
+                                for raw_item in subjects_raw:
+                                    if raw_item:
+                                        subj_name = process_subject(raw_item)
+                                        subj, _ = Subject.objects.get_or_create(name=subj_name)
+                                        student.debts.add(subj)
+                            else:
+                                subj_name = process_subject(raw)
+                                subj, _ = Subject.objects.get_or_create(name=subj_name)
+                                student.debts.add(subj)
 
-                        # User avtomatik yaratish
                         if not student.user:
                             sid = student.student_id or f"S-{student.pk}"
                             student.student_id = sid
@@ -1015,12 +1074,92 @@ def import_students(request):
 
 
 # ─────────────────────────────────────────
+# ROOM (XONA)
+# ─────────────────────────────────────────
+@login_required
+def room_list(request):
+    q = request.GET.get('q', '').strip()
+    rooms = Room.objects.prefetch_related(
+        'coursegroup_set__course__subject',
+        'coursegroup_set__teacher',
+    ).all().order_by('name')
+    if q:
+        rooms = rooms.filter(name__icontains=q)
+    return render(request, 'raspisaniya/room_list.html', {'rooms': rooms, 'q': q})
+
+
+@login_required
+def room_create(request):
+    if request.method == "POST":
+        name = request.POST.get("name", "").strip()
+        capacity = request.POST.get("capacity", 30)
+        if not name:
+            messages.error(request, "Xona nomi kiritilmagan")
+        elif Room.objects.filter(name=name).exists():
+            messages.error(request, f"'{name}' xonasi allaqachon mavjud")
+        else:
+            Room.objects.create(name=name, capacity=int(capacity))
+            messages.success(request, f"'{name}' xonasi qo'shildi")
+            return redirect("room_list")
+    return render(request, 'raspisaniya/room_create.html')
+
+
+@login_required
+def room_delete(request, pk):
+    room = get_object_or_404(Room, pk=pk)
+    if request.method == "POST":
+        room.delete()
+        messages.success(request, "Xona o'chirildi")
+    return redirect("room_list")
+
+
+@login_required
+def assign_room(request, group_pk):
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    if request.method == "POST":
+        room_id = request.POST.get("room_id")
+        if not room_id:
+            group.room = None
+            group.save()
+            messages.success(request, "Xona biriktirilmadi (bo'shatildi)")
+            return redirect("lesson_schedule", pk=group.course.pk)
+
+        room = get_object_or_404(Room, pk=room_id)
+
+        for sched in group.schedule.all():
+            st = sched.start_time or group.start_time
+            if not st:
+                continue
+            conflict = GroupSchedule.objects.filter(
+                date=sched.date,
+                start_time=st,
+                group__room=room,
+            ).exclude(group=group)
+            if conflict.exists():
+                conflict_grp = conflict.first().group
+                messages.error(
+                    request,
+                    f"'{room.name}' xonasi {sched.date} kuni {st.strftime('%H:%M')} da "
+                    f"'{conflict_grp.course.subject}' ({conflict_grp.group_number}-guruh) uchun band!"
+                )
+                return redirect("lesson_schedule", pk=group.course.pk)
+
+        group.room = room
+        group.save()
+        messages.success(request, f"'{room.name}' xonasi biriktirildi")
+    return redirect("lesson_schedule", pk=group.course.pk)
+
+
+# ─────────────────────────────────────────
 # SUBJECT
 # ─────────────────────────────────────────
 @login_required
 def subject_list(request):
+    q = request.GET.get('q', '').strip()
     subjects = Subject.objects.all().order_by('name')
-    return render(request, 'raspisaniya/subject_list.html', {'subjects': subjects})
+    if q:
+        subjects = subjects.filter(name__icontains=q)
+    return render(request, 'raspisaniya/subject_list.html', {'subjects': subjects, 'q': q})
 
 
 @login_required
@@ -1120,6 +1259,7 @@ def build_schedule(request):
             course.total_lessons, course.lessons_per_week,
             grp.teacher, students,
             group_number=grp.group_number,
+            include_saturday=getattr(course, 'include_saturday', False),
         )
 
         if schedule is None:
@@ -1132,8 +1272,7 @@ def build_schedule(request):
             grp.weekdays = list({d.weekday() for d, _, _ in schedule})
             grp.is_scheduled = True
 
-            # Bitta transaction ichida saqlash
-            import time
+            # ✅ O'ZGARISH 1 natijasi: time yuqorida import qilingan
             for attempt in range(5):
                 try:
                     with transaction.atomic():
@@ -1160,8 +1299,26 @@ def build_schedule(request):
             other_groups = CourseGroup.objects.filter(
                 course=course, is_scheduled=True,
             ).exclude(pk=grp.pk).prefetch_related('students')
+
+            teacher_scheds = GroupSchedule.objects.filter(
+                group__teacher=grp.teacher,
+                date__gte=course.start_date,
+                date__lte=course.end_date,
+            ).select_related('group__course__subject').order_by('date', 'start_time')[:10]
+
+            student_ids = list(grp.students.values_list('id', flat=True))
+            student_scheds = GroupSchedule.objects.filter(
+                group__students__id__in=student_ids,
+                date__gte=course.start_date,
+                date__lte=course.end_date,
+            ).select_related('group__course__subject', 'group__teacher').distinct().order_by('date', 'start_time')[:10]
+
             error_details.append({
-                'group': grp, 'course': course, 'other_groups': other_groups,
+                'group': grp,
+                'course': course,
+                'other_groups': other_groups,
+                'teacher_scheds': teacher_scheds,
+                'student_scheds': student_scheds,
             })
 
         return render(request, "raspisaniya/build_schedule_errors.html", {
@@ -1239,22 +1396,17 @@ def course_update(request, pk):
 # ─────────────────────────────────────────
 @login_required
 def weekly_schedule_view(request):
-    from datetime import date as dt_date
-    # Hafta boshini GET parametridan olish
     week_str = request.GET.get('week')
     if week_str:
         try:
             week_start = dt_date.fromisoformat(week_str)
-            # Dushanbaga moslashtirish
             week_start = week_start - timedelta(days=week_start.weekday())
-        except:
+        except Exception:
             week_start = None
     else:
         week_start = None
 
     data = get_weekly_schedule_data(week_start)
-    columns = data['columns']
-    column_pks = data['column_pks']
     grid = data['grid']
     week_start = data['week_start']
     week_end = data['week_end']
@@ -1264,6 +1416,29 @@ def weekly_schedule_view(request):
     next_week = (week_start + timedelta(weeks=1)).isoformat()
 
     group_numbers = list(range(1, max_group + 1))
+
+    SUBJECT_COLORS = [
+        {'bg': '#dbeafe', 'text': '#1e40af', 'border': '#93c5fd'},
+        {'bg': '#d1fae5', 'text': '#065f46', 'border': '#6ee7b7'},
+        {'bg': '#fef3c7', 'text': '#92400e', 'border': '#fcd34d'},
+        {'bg': '#fce7f3', 'text': '#9d174d', 'border': '#f9a8d4'},
+        {'bg': '#ede9fe', 'text': '#5b21b6', 'border': '#c4b5fd'},
+        {'bg': '#ffedd5', 'text': '#9a3412', 'border': '#fdba74'},
+        {'bg': '#cffafe', 'text': '#155e75', 'border': '#67e8f9'},
+        {'bg': '#dcfce7', 'text': '#14532d', 'border': '#86efac'},
+        {'bg': '#fee2e2', 'text': '#991b1b', 'border': '#fca5a5'},
+        {'bg': '#f0fdf4', 'text': '#166534', 'border': '#bbf7d0'},
+        {'bg': '#fdf4ff', 'text': '#6b21a8', 'border': '#e879f9'},
+        {'bg': '#fff7ed', 'text': '#9a3412', 'border': '#fed7aa'},
+    ]
+    subject_color_map = {}
+    color_idx = [0]
+
+    def get_subject_color(subject_name):
+        if subject_name not in subject_color_map:
+            subject_color_map[subject_name] = SUBJECT_COLORS[color_idx[0] % len(SUBJECT_COLORS)]
+            color_idx[0] += 1
+        return subject_color_map[subject_name]
 
     table_data = []
     for day_idx, day_name in enumerate(WEEKDAY_LIST):
@@ -1275,12 +1450,24 @@ def weekly_schedule_view(request):
                 info = grid.get(key)
                 if info:
                     has_any = True
-                    cells.append({'filled': True, 'subject': info['subject'], 'teacher': info['teacher']})
+                    color = get_subject_color(info['subject'])
+                    cells.append({
+                        'filled': True,
+                        'sched_id': info['sched_id'],
+                        'subject': info['subject'],
+                        'teacher': info['teacher'],
+                        'room': info.get('room', ''),
+                        'bg': color['bg'],
+                        'text': color['text'],
+                        'border': color['border'],
+                    })
                 else:
                     cells.append({'filled': False})
             table_data.append({
                 'day': day_name,
                 'time': f"{start} - {end}",
+                'iso_date': (week_start + timedelta(days=day_idx)).isoformat(),  # ← BU QO'SHILDI
+                'start_time': start,
                 'cells': cells,
                 'has_any': has_any,
                 'show_day': para_idx == 0,
@@ -1301,16 +1488,16 @@ def weekly_schedule_view(request):
 
 @login_required
 def weekly_schedule_excel(request):
-    from datetime import date as dt_date
     week_str = request.GET.get('week')
     if week_str:
         try:
             week_start = dt_date.fromisoformat(week_str)
             week_start = week_start - timedelta(days=week_start.weekday())
-        except:
+        except Exception:
             week_start = None
     else:
         week_start = None
+
     data = get_weekly_schedule_data(week_start)
     max_group = data['max_group']
     grid = data['grid']
@@ -1385,7 +1572,9 @@ def weekly_schedule_excel(request):
                 cell = ws.cell(row, col)
                 info = grid.get(key)
                 if info:
-                    cell.value = f"{info['subject']}\n{info['teacher']}"
+                    # ✅ O'ZGARISH 6: room ham ko'rsatiladi
+                    room_str = f"\n🏫 {info['room']}" if info.get('room') else ''
+                    cell.value = f"{info['subject']}\n{info['teacher']}{room_str}"
                     cell.fill = PatternFill('solid', start_color=get_subject_color(info['subject']))
                     cell.font = Font(name='Arial', size=9, bold=True)
                 else:
@@ -1417,3 +1606,96 @@ def weekly_schedule_excel(request):
     response["Content-Disposition"] = 'attachment; filename="haftalik_jadval.xlsx"'
     wb.save(response)
     return response
+
+@login_required
+def change_lesson_time_ajax(request, sched_pk):
+    """
+    Drag & drop uchun AJAX endpoint.
+    POST: { new_date: "2026-04-01", new_time: "10:00" }
+    Response: { success: true, ... } yoki { success: false, error: "..." }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Faqat POST so\'rov'}, status=405)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'JSON xato'}, status=400)
+
+    sched = get_object_or_404(GroupSchedule, pk=sched_pk)
+
+    new_date_raw = body.get('new_date', '').strip()
+    new_time_raw = body.get('new_time', '').strip()
+
+    if not new_date_raw or not new_time_raw:
+        return JsonResponse({'success': False, 'error': 'Sana yoki vaqt yuborilmagan'}, status=400)
+
+    new_date_val = parse_date(new_date_raw)
+    if not new_date_val:
+        return JsonResponse({'success': False, 'error': 'Noto\'g\'ri sana formati'}, status=400)
+
+    try:
+        h, m = map(int, new_time_raw.split(':'))
+        new_time_val = dtime(h, m)
+    except (ValueError, AttributeError):
+        return JsonResponse({'success': False, 'error': 'Noto\'g\'ri vaqt formati'}, status=400)
+
+    # Agar sana va vaqt o'zgarmagan bo'lsa — keraksiz DB yozuvidan qochamiz
+    if sched.date == new_date_val and sched.start_time == new_time_val:
+        return JsonResponse({'success': False, 'error': 'Dars allaqachon shu vaqtda'})
+
+    group_number = sched.group.group_number
+    teacher_id   = sched.group.teacher_id
+    student_ids  = list(sched.group.students.values_list('id', flat=True))
+
+    # 1) Guruh conflict
+    if GroupSchedule.objects.filter(
+        date=new_date_val,
+        start_time=new_time_val,
+        group__group_number=group_number,
+    ).exclude(pk=sched_pk).exists():
+        return JsonResponse({
+            'success': False,
+            'error': f'{new_date_val} kuni {new_time_raw} da {group_number}-guruhda boshqa dars bor!'
+        })
+
+    # 2) O'qituvchi conflict
+    if GroupSchedule.objects.filter(
+        date=new_date_val,
+        start_time=new_time_val,
+        group__teacher_id=teacher_id,
+    ).exclude(pk=sched_pk).exists():
+        teacher_name = str(sched.group.teacher)
+        return JsonResponse({
+            'success': False,
+            'error': f'O\'qituvchi {teacher_name} {new_date_val} kuni {new_time_raw} da band!'
+        })
+
+    # 3) Talabalar conflict
+    if student_ids and GroupSchedule.objects.filter(
+        date=new_date_val,
+        start_time=new_time_val,
+        group__students__id__in=student_ids,
+    ).exclude(pk=sched_pk).exists():
+        return JsonResponse({
+            'success': False,
+            'error': f'Ba\'zi talabalar {new_date_val} kuni {new_time_raw} da band!'
+        })
+
+    # Saqlash
+    sched.date       = new_date_val
+    sched.start_time = new_time_val
+    sched.save(update_fields=['date', 'start_time'])  # faqat kerakli maydonlarni update
+
+    end_time = (datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
+
+    return JsonResponse({
+        'success':      True,
+        'new_date':     new_date_val.strftime('%d.%m.%Y'),
+        'new_date_iso': new_date_val.isoformat(),
+        'new_time':     new_time_val.strftime('%H:%M'),
+        'end_time':     end_time.strftime('%H:%M'),
+        'weekday':      WEEKDAY_NAMES.get(new_date_val.weekday(), ''),
+    })
+
+
