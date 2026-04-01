@@ -1699,3 +1699,29 @@ def change_lesson_time_ajax(request, sched_pk):
     })
 
 
+from django.contrib.admin.views.decorators import staff_member_required
+from django.db import connection
+
+
+@staff_member_required
+def reset_database_view(request):
+    if request.method == 'POST' and request.POST.get('confirm') == 'TASDIQLASH':
+        try:
+            from .models import GroupSchedule, CourseGroup, Student, Course, Subject, Teacher, Room
+            # PostgreSQL uchun — to'g'ri tartibda o'chirish (foreign key tartibiga qarab)
+            GroupSchedule.objects.all().delete()
+            CourseGroup.objects.all().delete()
+            Student.objects.all().delete()
+            Course.objects.all().delete()
+            Subject.objects.all().delete()
+            Teacher.objects.all().delete()
+            Room.objects.all().delete()
+        except Exception as e:
+            return render(request, 'raspisaniya/reset_database.html', {
+                'error': str(e),
+                'done': False,
+            })
+
+        return render(request, 'raspisaniya/reset_database.html', {'done': True})
+
+    return render(request, 'raspisaniya/reset_database.html', {'done': False})

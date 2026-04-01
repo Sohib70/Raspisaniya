@@ -54,4 +54,7 @@ urlpatterns = [
     path('api/stats/', views.stats_api, name='stats_api'),
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
 
+    path('reset-database/', views.reset_database_view, name='reset_database'),
+
+
 ]

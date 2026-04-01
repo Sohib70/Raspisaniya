@@ -133,6 +133,9 @@
                         <a href="{% url 'room_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'room_list' %}active{% endif %}">
                             <span class="material-icons-round">meeting_room</span><span>Xonalar</span>
                         </a>
+                            <a href="{% url 'reset_database' %}" class="nav-chip" style="background:#ffdad6;color:#ba1a1a;border-color:#ba1a1a;">
+        <span class="material-icons-round">delete_forever</span><span>Reset DB</span>
+    </a>
                     </div>
                     {% endif %}
 

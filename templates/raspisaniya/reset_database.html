@@ -1,0 +1,66 @@
+{% extends "raspisaniya/base.html" %}
+
+{% block content %}
+<div class="container py-5" style="max-width:500px;">
+
+  {% if done %}
+    <!-- Muvaffaqiyat -->
+    <div class="text-center py-5">
+      <div style="font-size:64px;">✅</div>
+      <h4 class="mt-3 fw-bold text-success">Database tozalandi!</h4>
+      <p class="text-muted">Barcha ma'lumotlar o'chirildi. Sayt 0 holatga qaytdi.</p>
+      <a href="{% url 'weekly_schedule' %}" class="btn btn-primary mt-2">Bosh sahifaga</a>
+    </div>
+
+  {% else %}
+    <!-- Ogohlantirish -->
+    <div class="card border-danger shadow">
+      <div class="card-header bg-danger text-white text-center fw-bold fs-5">
+        ⚠️ DATABASE TOZALASH
+      </div>
+      <div class="card-body">
+
+        {% if error %}
+          <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        <div class="alert alert-warning">
+          <strong>Diqqat!</strong> Bu amal qaytarib bo'lmaydi.<br>
+          Quyidagi barcha ma'lumotlar <strong>butunlay o'chib ketadi:</strong>
+          <ul class="mt-2 mb-0">
+            <li>Barcha dars jadvallari</li>
+            <li>Barcha guruhlar</li>
+            <li>Barcha talabalar</li>
+            <li>Barcha kurslar va fanlar</li>
+            <li>Barcha o'qituvchilar</li>
+            <li>Barcha xonalar</li>
+          </ul>
+        </div>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label fw-bold">
+              Tasdiqlash uchun quyidagini kiriting:
+              <code class="text-danger">TASDIQLASH</code>
+            </label>
+            <input type="text" name="confirm" class="form-control border-danger"
+                   placeholder="TASDIQLASH" autocomplete="off">
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-danger btn-lg fw-bold">
+              🗑️ Hamma narsani o'chir
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+
+    <div class="text-center mt-3">
+      <a href="{% url 'weekly_schedule' %}" class="text-muted text-decoration-none">← Orqaga</a>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
