@@ -55,6 +55,12 @@ urlpatterns = [
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
 
     path('reset-database/', views.reset_database_view, name='reset_database'),
+    path('export-database/', views.export_database_view, name='export_database'),  # Nusxa olish
+    path('restore-database/', views.restore_database_view, name='restore_database'),  # Qayta tiklash
+
+    # Statistikalar va API
+    path('api/stats/', views.stats_api, name='stats_api'),
+    path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
 
 
 ]

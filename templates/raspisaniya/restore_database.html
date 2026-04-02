@@ -1,0 +1,48 @@
+{% extends "raspisaniya/base.html" %}
+
+{% block content %}
+<div class="container py-5" style="max-width:600px;">
+    <div class="card border-0 shadow-lg mb-4" style="border-radius: 28px;">
+        <div class="card-header bg-success text-white text-center py-3 border-0">
+            <div class="d-flex align-items-center justify-content-center gap-2">
+                <span class="material-icons-round">storage</span>
+                <span class="fw-bold fs-5 text-uppercase">Database Boshqaruvi</span>
+            </div>
+        </div>
+        
+        <div class="card-body p-4">
+            <div class="text-center mb-5">
+                <h5 class="fw-bold">Nusxa olish (Backup)</h5>
+                <p class="text-muted small">Hozirgi barcha ma'lumotlarni bitta faylga jamlab kompyuteringizga yuklab oling.</p>
+                <a href="{% url 'export_database' %}" class="md-button md-button-filled w-100 py-3" style="background-color: #2e7d32;">
+                    <span class="material-icons-round">download</span> Nusxa yuklab olish (.json)
+                </a>
+            </div>
+
+            <div class="md-divider mb-4"></div>
+
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <h5 class="fw-bold text-danger">Qayta tiklash (Restore)</h5>
+                <p class="text-muted small">Avval olingan .json faylni tanlang. Bu amal hozirgi bazani o'sha fayldagi holatga qaytaradi.</p>
+                
+                <div class="mb-4">
+                    <input type="file" name="backup_file" class="form-control border-2" accept=".json" required>
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="md-button md-button-filled bg-dark border-0 py-3">
+                        <span class="material-icons-round">settings_backup_restore</span> Bazani tiklash
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="text-center">
+        <a href="{% url 'weekly_schedule' %}" class="md-chip text-decoration-none">
+            <span class="material-icons-round">arrow_back</span> Orqaga qaytish
+        </a>
+    </div>
+</div>
+{% endblock %}

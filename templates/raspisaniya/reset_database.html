@@ -1,66 +1,135 @@
 {% extends "raspisaniya/base.html" %}
 
 {% block content %}
-<div class="container py-5" style="max-width:500px;">
+<div class="container py-5" style="max-width:600px;">
 
   {% if done %}
-    <!-- Muvaffaqiyat -->
-    <div class="text-center py-5">
-      <div style="font-size:64px;">✅</div>
-      <h4 class="mt-3 fw-bold text-success">Database tozalandi!</h4>
-      <p class="text-muted">Barcha ma'lumotlar o'chirildi. Sayt 0 holatga qaytdi.</p>
-      <a href="{% url 'weekly_schedule' %}" class="btn btn-primary mt-2">Bosh sahifaga</a>
+    <div class="md-surface text-center py-5 shadow-sm" style="border-radius: 28px; background: #f0fdf4;">
+      <span class="material-icons-round text-success" style="font-size: 80px;">check_circle</span>
+      <h3 class="mt-3 fw-bold text-success">Muvaffaqiyatli!</h3>
+      <p class="text-muted">Amal bajarildi va ma'lumotlar yangilandi.</p>
+      <div class="mt-4">
+        <a href="{% url 'weekly_schedule' %}" class="md-button md-button-filled">
+            <span class="material-icons-round">home</span> Bosh sahifaga qaytish
+        </a>
+      </div>
     </div>
 
   {% else %}
-    <!-- Ogohlantirish -->
-    <div class="card border-danger shadow">
-      <div class="card-header bg-danger text-white text-center fw-bold fs-5">
-        ⚠️ DATABASE TOZALASH
-      </div>
-      <div class="card-body">
 
+    <div class="md-surface shadow-sm mb-4 p-4" style="border-radius: 28px; background: #f8f9fa; border: 1px solid #e9ecef;">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <span class="material-icons-round text-primary">storage</span>
+            <h5 class="fw-bold m-0 text-uppercase" style="letter-spacing: 1px;">Ma'lumotlar nusxasi</h5>
+        </div>
+
+        <div class="row g-2">
+            <div class="col-6">
+                <a href="{% url 'export_database' %}" class="btn btn-outline-primary w-100 py-3" style="border-radius: 15px; border-style: dashed;">
+                    <span class="material-icons-round d-block mb-1">download</span>
+                    <small class="fw-bold">Nusxa yuklash</small>
+                </a>
+            </div>
+            <div class="col-6">
+                <a href="{% url 'restore_database' %}" class="btn btn-outline-dark w-100 py-3" style="border-radius: 15px; border-style: dashed;">
+                    <span class="material-icons-round d-block mb-1">settings_backup_restore</span>
+                    <small class="fw-bold">Bazani tiklash</small>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-lg" style="border-radius: 28px; overflow: hidden;">
+      <div class="card-header bg-danger text-white text-center py-3 border-0">
+        <div class="d-flex align-items-center justify-content-center gap-2">
+            <span class="material-icons-round">warning</span>
+            <span class="fw-bold fs-5 text-uppercase">Database Tozalash</span>
+        </div>
+      </div>
+
+      <div class="card-body p-4">
         {% if error %}
-          <div class="alert alert-danger">{{ error }}</div>
+          <div class="alert alert-danger d-flex align-items-center gap-2" style="border-radius: 15px;">
+            <span class="material-icons-round">error</span> {{ error }}
+          </div>
         {% endif %}
 
-        <div class="alert alert-warning">
-          <strong>Diqqat!</strong> Bu amal qaytarib bo'lmaydi.<br>
-          Quyidagi barcha ma'lumotlar <strong>butunlay o'chib ketadi:</strong>
-          <ul class="mt-2 mb-0">
-            <li>Barcha dars jadvallari</li>
-            <li>Barcha guruhlar</li>
-            <li>Barcha talabalar</li>
-            <li>Barcha kurslar va fanlar</li>
-            <li>Barcha o'qituvchilar</li>
-            <li>Barcha xonalar</li>
-          </ul>
+        <div class="alert alert-warning mb-4" style="border-radius: 15px; border-left: 5px solid #ffc107;">
+          <strong class="d-block mb-1">Ehtiyot bo'ling!</strong>
+          Tanlangan bo'limlar butunlay o'chib ketadi.
         </div>
 
         <form method="post">
           {% csrf_token %}
-          <div class="mb-3">
-            <label class="form-label fw-bold">
-              Tasdiqlash uchun quyidagini kiriting:
-              <code class="text-danger">TASDIQLASH</code>
-            </label>
-            <input type="text" name="confirm" class="form-control border-danger"
-                   placeholder="TASDIQLASH" autocomplete="off">
+
+          <p class="fw-bold mb-3 text-secondary small text-uppercase">Tozalanadigan bo'limlar:</p>
+
+          <div class="row g-3 mb-4">
+            <div class="col-6">
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="schedule" id="chk1" checked>
+                    <label class="form-check-label" for="chk1">Jadvallar</label>
+                </div>
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="group" id="chk2">
+                    <label class="form-check-label" for="chk2">Guruhlar</label>
+                </div>
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="student" id="chk3">
+                    <label class="form-check-label" for="chk3">Talabalar</label>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="teacher" id="chk4">
+                    <label class="form-check-label" for="chk4">O'qituvchilar</label>
+                </div>
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="subject" id="chk5">
+                    <label class="form-check-label" for="chk5">Fanlar</label>
+                </div>
+                <div class="form-check custom-checkbox mb-2">
+                    <input class="form-check-input" type="checkbox" name="models_to_delete" value="room" id="chk6">
+                    <label class="form-check-label" for="chk6">Xonalar</label>
+                </div>
+            </div>
           </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-bold text-danger small">TASDIQLASH UCHUN YOZING:</label>
+            <input type="text" name="confirm" class="form-control form-control-lg border-2 text-center"
+                   style="border-radius: 15px; border-color: #f8d7da; letter-spacing: 2px;"
+                   placeholder="TASDIQLASH" required autocomplete="off">
+          </div>
+
           <div class="d-grid">
-            <button type="submit" class="btn btn-danger btn-lg fw-bold">
-              🗑️ Hamma narsani o'chir
+            <button type="submit" class="md-button md-button-filled bg-danger border-0 py-3 shadow">
+              <span class="material-icons-round">delete_sweep</span> Tanlanganlarni o'chirish
             </button>
           </div>
         </form>
-
       </div>
     </div>
 
-    <div class="text-center mt-3">
-      <a href="{% url 'weekly_schedule' %}" class="text-muted text-decoration-none">← Orqaga</a>
+    <div class="text-center mt-4">
+      <a href="{% url 'weekly_schedule' %}" class="md-chip text-decoration-none">
+        <span class="material-icons-round">arrow_back</span> Ortga qaytish
+      </a>
     </div>
   {% endif %}
 
 </div>
+
+<style>
+    .custom-checkbox .form-check-input:checked {
+        background-color: #ba1a1a;
+        border-color: #ba1a1a;
+    }
+    .custom-checkbox .form-check-label {
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .btn-outline-primary:hover { background-color: #e7f1ff; color: #0d6efd; }
+    .btn-outline-dark:hover { background-color: #f8f9fa; color: #212529; }
+</style>
 {% endblock %}

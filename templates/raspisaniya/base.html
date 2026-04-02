@@ -61,6 +61,121 @@
         .logout-chip:hover { background: #ba1a1a; color: white !important; }
         .logout-chip .material-icons-round { font-size: 1rem; color: inherit; }
 
+        /* ===== XS MAIN LOGO ===== */
+        .xs-main-logo {
+            display: inline-flex;
+            text-decoration: none;
+            transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), filter 0.25s ease;
+            filter: drop-shadow(0 0 6px rgba(34,211,238,0.4)) drop-shadow(0 0 12px rgba(168,85,247,0.3));
+        }
+        .xs-main-logo:hover {
+            transform: translateY(-3px) scale(1.06);
+            filter: drop-shadow(0 0 12px rgba(34,211,238,0.7)) drop-shadow(0 0 20px rgba(168,85,247,0.6));
+        }
+        .xs-main-logo:active { transform: scale(0.96); }
+        /* ===== END XS MAIN LOGO ===== */
+
+        /* ===== XS NEON LOGO ===== */
+        .xs-logo-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            position: relative;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            box-shadow:
+                0 0 10px rgba(80, 180, 255, 0.3),
+                0 0 20px rgba(150, 80, 255, 0.2),
+                inset 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .xs-logo-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 18px,
+                rgba(80, 200, 255, 0.04) 18px,
+                rgba(80, 200, 255, 0.04) 19px
+            ),
+            repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 18px,
+                rgba(80, 200, 255, 0.04) 18px,
+                rgba(80, 200, 255, 0.04) 19px
+            );
+            border-radius: 12px;
+            pointer-events: none;
+        }
+        .xs-logo-btn:hover {
+            transform: translateY(-2px) scale(1.05);
+            box-shadow:
+                0 0 18px rgba(80, 180, 255, 0.6),
+                0 0 35px rgba(150, 80, 255, 0.4),
+                inset 0 0 12px rgba(0,0,0,0.4);
+            border-color: rgba(100, 200, 255, 0.6);
+        }
+        .xs-logo-btn:hover .xs-text-x { filter: drop-shadow(0 0 8px #50c8ff) drop-shadow(0 0 16px #50c8ff); }
+        .xs-logo-btn:hover .xs-text-s { filter: drop-shadow(0 0 8px #a855f7) drop-shadow(0 0 16px #a855f7); }
+
+        .xs-inner {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 1px;
+            line-height: 1;
+        }
+        .xs-text-x {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: #50c8ff;
+            filter: drop-shadow(0 0 4px #50c8ff) drop-shadow(0 0 8px #50c8ff);
+            letter-spacing: -1px;
+            transition: filter 0.3s ease;
+            text-shadow: 0 0 6px #50c8ff, 0 0 12px #50c8ff;
+        }
+        .xs-text-s {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: #a855f7;
+            filter: drop-shadow(0 0 4px #a855f7) drop-shadow(0 0 8px #a855f7);
+            letter-spacing: -1px;
+            transition: filter 0.3s ease;
+            text-shadow: 0 0 6px #a855f7, 0 0 12px #a855f7;
+        }
+        .xs-underscore {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: rgba(200, 220, 255, 0.6);
+            letter-spacing: -1px;
+            text-shadow: none;
+        }
+        /* Circuit dots decoration */
+        .xs-dot {
+            width: 3px;
+            height: 3px;
+            border-radius: 50%;
+            background: #50c8ff;
+            box-shadow: 0 0 4px #50c8ff;
+            animation: blink 2s infinite;
+        }
+        .xs-dot:nth-child(2) { animation-delay: 0.7s; background: #a855f7; box-shadow: 0 0 4px #a855f7; }
+        .xs-dots { display: flex; flex-direction: column; gap: 4px; margin-left: 4px; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        /* ===== END XS LOGO ===== */
+
         .current-time { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--md-primary-container); border-radius: 32px; color: var(--md-primary); font-weight: 600; border: 1px solid var(--md-outline); }
         .current-time .material-icons-round { font-size: 1.2rem; }
         .md-surface { background: var(--md-surface); border-radius: 28px; box-shadow: var(--md-shadow); padding: 2rem; margin-top: 100px; margin-bottom: 2rem; border: 1px solid var(--md-outline); transition: all 0.3s ease; animation: surfaceAppear 0.6s ease; }
@@ -108,16 +223,57 @@
     <div class="app-bar" id="appBar">
         <div class="container">
             <div class="d-flex justify-content-between align-items-center">
-                <a href="{% url 'lesson_list' %}" class="logo text-decoration-none">
-                    <span class="material-icons-round">event_available</span>
-                    TimeTable Flow
-                </a>
+                <div class="d-flex align-items-center gap-3">
+                    <!-- XS Logo → Reset DB -->
+                    <a href="{% url 'reset_database' %}" class="xs-main-logo" title="Reset Database" style="text-decoration: none; display: inline-block;">
+   <svg width="80" height="40" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="glowBlue" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+        <filter id="glowPurple" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+
+    <g filter="url(#glowBlue)">
+        <line x1="10" y1="10" x2="40" y2="40" stroke="#00f2ff" stroke-width="7" stroke-linecap="round" />
+        <line x1="40" y1="10" x2="10" y2="40" stroke="#00f2ff" stroke-width="7" stroke-linecap="round" />
+        <line x1="10" y1="10" x2="40" y2="40" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+        <line x1="40" y1="10" x2="10" y2="40" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+    </g>
+
+    <g filter="url(#glowPurple)">
+        <path d="M90 10 H65 Q55 10 55 20 Q55 30 75 30 Q90 30 90 40 Q90 45 80 45 H55"
+              fill="none" stroke="#bc00ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M90 10 H65 Q55 10 55 20 Q55 30 75 30 Q90 30 90 40 Q90 45 80 45 H55"
+              fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.7" />
+    </g>
+</svg>
+</a>
+
+                    <!-- TimeTable Flow → lesson_list -->
+                    <a href="{% url 'lesson_list' %}" class="text-decoration-none">
+                        <div style="line-height:1.15;">
+                            <div style="font-size:1.25rem;font-weight:800;background:linear-gradient(135deg,var(--md-primary),var(--md-tertiary));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-0.3px;">TimeTable</div>
+                            <div style="font-size:0.85rem;font-weight:600;color:var(--md-outline);letter-spacing:2px;text-transform:uppercase;">Flow</div>
+                        </div>
+                    </a>
+                </div>
 
                 <div class="d-flex gap-2 align-items-center flex-wrap">
 
                     <!-- Desktop menu - faqat admin -->
                     {% if user.is_authenticated and user.is_superuser %}
-                    <div class="d-none d-lg-flex gap-2 desktop-menu">
+                    <div class="d-none d-lg-flex gap-2 align-items-center desktop-menu">
                         <a href="{% url 'lesson_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'lesson_list' %}active{% endif %}">
                             <span class="material-icons-round">schedule</span><span>Darslar</span>
                         </a>
@@ -133,9 +289,10 @@
                         <a href="{% url 'room_list' %}" class="nav-chip {% if request.resolver_match.url_name == 'room_list' %}active{% endif %}">
                             <span class="material-icons-round">meeting_room</span><span>Xonalar</span>
                         </a>
-                            <a href="{% url 'reset_database' %}" class="nav-chip" style="background:#ffdad6;color:#ba1a1a;border-color:#ba1a1a;">
-        <span class="material-icons-round">delete_forever</span><span>Reset DB</span>
-    </a>
+
+                        <!-- ===== XS NEON SVG LOGO - Reset DB ===== -->
+
+
                     </div>
                     {% endif %}
 
@@ -189,6 +346,18 @@
                     <a href="{% url 'student_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person_add</span><span>O'quvchi</span></a>
                     <a href="{% url 'subject_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">library_add</span><span>Fan</span></a>
                     <a href="{% url 'room_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">meeting_room</span><span>Xonalar</span></a>
+                    <!-- XS logo mobile -->
+                    <a href="{% url 'reset_database' %}" class="xs-logo-btn w-100 justify-content-center" style="padding: 8px 16px;">
+                        <span class="xs-inner">
+                            <span class="xs-text-x">X</span>
+                            <span class="xs-underscore">_</span>
+                            <span class="xs-text-s">S</span>
+                        </span>
+                        <span class="xs-dots">
+                            <span class="xs-dot"></span>
+                            <span class="xs-dot"></span>
+                        </span>
+                    </a>
                 </div>
             </div>
             {% endif %}

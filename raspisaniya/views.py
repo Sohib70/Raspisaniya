@@ -1702,26 +1702,91 @@ def change_lesson_time_ajax(request, sched_pk):
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db import connection
 
+from django.shortcuts import render
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib import messages
+
 
 @staff_member_required
 def reset_database_view(request):
+    models_dict = {
+        'schedule': GroupSchedule,
+        'group': CourseGroup,
+        'student': Student,
+        'course': Course,
+        'subject': Subject,
+        'teacher': Teacher,
+        'room': Room
+    }
+
     if request.method == 'POST' and request.POST.get('confirm') == 'TASDIQLASH':
-        try:
-            from .models import GroupSchedule, CourseGroup, Student, Course, Subject, Teacher, Room
-            # PostgreSQL uchun — to'g'ri tartibda o'chirish (foreign key tartibiga qarab)
-            GroupSchedule.objects.all().delete()
-            CourseGroup.objects.all().delete()
-            Student.objects.all().delete()
-            Course.objects.all().delete()
-            Subject.objects.all().delete()
-            Teacher.objects.all().delete()
-            Room.objects.all().delete()
-        except Exception as e:
+        # Checkbox orqali tanlangan modellarni olish
+        selected_models = request.POST.getlist('models_to_delete')
+
+        if not selected_models:
             return render(request, 'raspisaniya/reset_database.html', {
-                'error': str(e),
-                'done': False,
+                'error': "Hech bo'lmaganda bitta bo'limni tanlang!",
+                'done': False
             })
 
-        return render(request, 'raspisaniya/reset_database.html', {'done': True})
+        try:
+            # Foreign Key xatoligi chiqmasligi uchun tartib bilan o'chirish
+            # Masalan, Jadval har doim birinchi o'chirilishi kerak
+            for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
+                if key in selected_models:
+                    models_dict[key].objects.all().delete()
+
+            return render(request, 'raspisaniya/reset_database.html', {'done': True})
+
+        except Exception as e:
+            return render(request, 'raspisaniya/reset_database.html', {
+                'error': f"Xatolik yuz berdi: {str(e)}",
+                'done': False
+            })
 
     return render(request, 'raspisaniya/reset_database.html', {'done': False})
+
+
+import os
+import json
+from django.core import management
+from django.http import HttpResponse
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.conf import settings
+from io import StringIO
+
+
+# 1. Bazani faylga ko'chirish (Export/Backup)
+def export_database_view(request):
+    output = StringIO()
+    # Ma'lumotlarni JSON formatida yig'ish
+    management.call_command('dumpdata', indent=2, stdout=output)
+
+    response = HttpResponse(output.getvalue(), content_type="application/json")
+    response['Content-Disposition'] = 'attachment; filename="timetable_backup.json"'
+    return response
+
+
+# 2. Fayldan bazaga qaytarish (Import/Restore)
+def restore_database_view(request):
+    if request.method == 'POST' and request.FILES.get('backup_file'):
+        backup_file = request.FILES['backup_file']
+
+        # Faylni vaqtinchalik saqlash
+        path = os.path.join(settings.MEDIA_ROOT, 'temp_backup.json')
+        with open(path, 'wb+') as destination:
+            for chunk in backup_file.chunks():
+                destination.write(chunk)
+
+        try:
+            # Bazani yuklash buyrug'i
+            management.call_command('loaddata', path)
+            os.remove(path)  # Vaqtinchalik faylni o'chirish
+            messages.success(request, "Database muvaffaqiyatli tiklandi!")
+        except Exception as e:
+            messages.error(request, f"Xatolik: {str(e)}")
+
+        return redirect('weekly_schedule')
+
+    return render(request, 'raspisaniya/restore_database.html')
