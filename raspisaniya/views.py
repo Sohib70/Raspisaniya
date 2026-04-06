@@ -20,18 +20,18 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import timedelta, datetime, time as dtime, date as dt_date
-
-# ✅ O'ZGARISH 1: import lar tepaga olib chiqildi
 import math
 import random
 import time
-
 from .models import Student, Subject, Teacher, Group, Course, CourseGroup, GroupSchedule, Room, LANGUAGE_CHOICES
 from .forms import TeacherForm, StudentForm, SubjectForm, StudentImportForm, TeacherImportForm
 from collections import defaultdict
-import re
-
+import os
 import json
+from django.core import management
+from django.http import HttpResponse
+from django.conf import settings
+from io import StringIO
 # ─────────────────────────────────────────
 # KONSTANTALAR
 # ─────────────────────────────────────────
@@ -118,18 +118,14 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
-    """
-    - Har kunda 2 ta ketma-ket para
-    - Kunlar orasida kamida 1 kun bo'sh
-    - Random kunlar, lekin conflict bo'lmasa
-    - Haftalik jadvalda bitta vaqtga ikki fan tushmasin
-    """
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
     max_wd = 5 if include_saturday else 4
 
     def get_busy_para_indices(date):
         busy = set()
+
+        # ✅ 1. O'qituvchi band bo'lgan paralar
         for sched in GroupSchedule.objects.filter(
             date=date, group__teacher_id=teacher_id,
         ).select_related('group'):
@@ -141,8 +137,25 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
             else:
                 for i in range(len(PARA_TIMES)):
                     busy.add(i)
+
+        # ✅ 2. Talabalar band bo'lgan paralar — YANGI QISM
+        if student_ids:
+            for sched in GroupSchedule.objects.filter(
+                date=date,
+                group__students__id__in=student_ids,
+            ).select_related('group').distinct():
+                st = sched.start_time or sched.group.start_time
+                if st:
+                    for i, (ps, pe) in enumerate(PARA_TIMES):
+                        if ps == st:
+                            busy.add(i)
+                else:
+                    for i in range(len(PARA_TIMES)):
+                        busy.add(i)
+
         return busy
 
+    # qolgan hamma narsa O'ZGARMAYDI
     def find_two_consecutive_paras(date):
         busy = get_busy_para_indices(date)
         for i in range(len(PARA_TIMES) - 1):
@@ -158,7 +171,6 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
     else:
         first_monday = start_date - timedelta(days=start_date.weekday())
 
-    # ✅ O'ZGARISH 1 natijasi: endi import yo'q — math, random yuqorida
     days_needed = math.ceil(lessons_per_week / 2)
 
     all_weekdays = list(range(max_wd + 1))
@@ -266,15 +278,11 @@ def get_weekly_schedule_data(week_start=None):
         is_scheduled=True
     ).select_related('course__subject', 'teacher').prefetch_related('schedule')
 
-    grid = {}
-    max_group = 0
+    # ✅ YANGI: grid endi list saqlaydi, guruh raqamiga bog'liq emas
+    # key: (weekday, para_idx) → list of dicts
+    grid_lists = defaultdict(list)
 
     for grp in groups:
-        # ✅ O'ZGARISH 4: gnum lokal — grp.group_number o'zgartirilmaydi
-        grp_gnum = grp.group_number
-        if grp_gnum > max_group:
-            max_group = grp_gnum
-
         subject_name = str(grp.course.subject)
         teacher_name = str(grp.teacher)
 
@@ -292,23 +300,23 @@ def get_weekly_schedule_data(week_start=None):
             if para_idx is None:
                 continue
 
-            # ✅ O'ZGARISH 4: gnum lokal o'zgaruvchi — har sched uchun alohida
-            local_gnum = grp_gnum
-            key = (weekday, para_idx, local_gnum)
-            while key in grid:
-                local_gnum += 1
-                key = (weekday, para_idx, local_gnum)
-            if local_gnum > max_group:
-                max_group = local_gnum
-
-            grid[key] = {
+            grid_lists[(weekday, para_idx)].append({
                 'subject': subject_name,
                 'teacher': teacher_name,
                 'room': str(grp.room) if grp.room else '',
                 'sched_id': sched.pk,
-            }
+            })
 
-    # ✅ O'ZGARISH 5: 'columns', 'column_pks' olib tashlandi — ishlatilmaydi
+    # max_group = har bir slotda nechta dars bor, shunday maksimal son
+    max_group = max((len(v) for v in grid_lists.values()), default=0)
+
+    # ✅ grid ni eski formatga o'tkazish: (weekday, para_idx, slot_idx) → info
+    # slot_idx 1 dan boshlanadi
+    grid = {}
+    for (weekday, para_idx), items in grid_lists.items():
+        for slot_idx, item in enumerate(items, 1):
+            grid[(weekday, para_idx, slot_idx)] = item
+
     return {
         'max_group': max_group,
         'grid': grid,
@@ -806,30 +814,39 @@ def teacher_import(request):
                     for row in ws.iter_rows(min_row=2, values_only=True):
                         if not row or not row[0]:
                             continue
-                        parts = str(row[0]).strip().split()
+
+                        # ✅ 1-ustun: raqam (ID sifatida ishlatiladi)
+                        tid = f"T-{str(row[0]).strip()}"
+
+                        # ✅ 2-ustun: F.I.SH
+                        if not row[1]:
+                            continue
+                        parts = str(row[1]).strip().split()
                         if len(parts) < 2:
                             continue
-                        teacher, _ = Teacher.objects.get_or_create(
+
+                        teacher, created = Teacher.objects.get_or_create(
                             first_name=parts[0],
                             last_name=" ".join(parts[1:])
                         )
-                        if len(row) > 1 and row[1]:
-                            for sname in str(row[1]).split(","):
+
+                        # ✅ 3-ustun: Fanlar (vergul bilan ajratilgan)
+                        if len(row) > 2 and row[2]:
+                            for sname in str(row[2]).split(","):
                                 sname = sname.strip()
                                 if sname:
                                     subj, _ = Subject.objects.get_or_create(name=sname)
                                     teacher.subjects.add(subj)
 
-                        if not teacher.user:
-                            tid = teacher.teacher_id or f"T-{teacher.pk}"
-                            teacher.teacher_id = tid
-                            if not User.objects.filter(username=tid).exists():
-                                user = User.objects.create_user(
-                                    username=tid,
-                                    password=tid,
-                                )
-                                teacher.user = user
-                                teacher.save()
+                        # ✅ User ulash
+                        teacher.teacher_id = tid
+                        u, user_created = User.objects.get_or_create(username=tid)
+                        if user_created:
+                            u.set_password(tid)
+                            u.save()
+                        teacher.user = u
+                        teacher.save()
+
                 messages.success(request, "O'qituvchilar import qilindi ✅")
                 return redirect("teacher_list")
             except Exception as e:
@@ -1007,7 +1024,14 @@ def import_students(request):
                 ws = wb.active
                 with transaction.atomic():
                     for row in ws.iter_rows(min_row=2, values_only=True):
-                        if not row or not row[1]:
+                        if not row or not row[0]:
+                            continue
+
+                        # ✅ 1-ustun: № — ID sifatida
+                        sid = f"S-{str(row[0]).strip()}"
+
+                        # ✅ 2-ustun: F.I.SH
+                        if not row[1]:
                             continue
                         full_name = str(row[1]).strip().split()
                         if len(full_name) < 2:
@@ -1015,10 +1039,12 @@ def import_students(request):
                         first_name = full_name[0]
                         last_name = " ".join(full_name[1:])
 
+                        # ✅ 5-ustun: Guruh
                         group = None
                         if len(row) > 4 and row[4]:
                             group, _ = Group.objects.get_or_create(name=str(row[4]).strip())
 
+                        # ✅ 6-ustun: Ta'lim tili
                         language = 'uz'
                         if len(row) > 5 and row[5]:
                             lang_raw = str(row[5]).strip().lower()
@@ -1035,10 +1061,12 @@ def import_students(request):
                             defaults={"group": group, "language": language}
                         )
                         if not created:
-                            student.group = group
+                            if group:
+                                student.group = group
                             student.language = language
                             student.save()
 
+                        # ✅ 9-ustun: Fanlar
                         if len(row) > 8 and row[8]:
                             raw = str(row[8]).strip()
                             if ';' in raw:
@@ -1053,16 +1081,14 @@ def import_students(request):
                                 subj, _ = Subject.objects.get_or_create(name=subj_name)
                                 student.debts.add(subj)
 
-                        if not student.user:
-                            sid = student.student_id or f"S-{student.pk}"
-                            student.student_id = sid
-                            if not User.objects.filter(username=sid).exists():
-                                user = User.objects.create_user(
-                                    username=sid,
-                                    password=sid,
-                                )
-                                student.user = user
-                                student.save()
+                        # ✅ User ulash — har doim
+                        student.student_id = sid
+                        u, user_created = User.objects.get_or_create(username=sid)
+                        if user_created:
+                            u.set_password(sid)
+                            u.save()
+                        student.user = u
+                        student.save()
 
                 messages.success(request, "O'quvchilar import qilindi ✅")
                 return redirect("student_list")
@@ -1746,15 +1772,6 @@ def reset_database_view(request):
 
     return render(request, 'raspisaniya/reset_database.html', {'done': False})
 
-
-import os
-import json
-from django.core import management
-from django.http import HttpResponse
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.conf import settings
-from io import StringIO
 
 
 # 1. Bazani faylga ko'chirish (Export/Backup)

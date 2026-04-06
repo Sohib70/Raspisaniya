@@ -17,20 +17,15 @@ def login_view(request):
         user = authenticate(request, username=user_id, password=password)
         if user:
             login(request, user)
-            # Rolga qarab yo'naltirish
             if user.is_superuser:
                 return redirect('lesson_list')
-            try:
-                teacher = user.teacher
-                return redirect('lesson_list')
-            except:
-                pass
-            try:
-                student = user.student
+
+            # hasattr ishlatish try-except dan ko'ra tozaroq va tezroq
+            if hasattr(user, 'teacher'):
+                return redirect('teacher_dashboard')
+            elif hasattr(user, 'student'):
                 return redirect('student_dashboard')
-            except:
-                pass
-            return redirect('lesson_list')
+
         else:
             messages.error(request, "ID yoki parol noto'g'ri")
 
