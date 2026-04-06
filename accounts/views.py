@@ -15,19 +15,27 @@ def login_view(request):
         password = request.POST.get("password", "").strip()
 
         user = authenticate(request, username=user_id, password=password)
-        if user:
-            login(request, user)
-            if user.is_superuser:
-                return redirect('lesson_list')
 
-            # hasattr ishlatish try-except dan ko'ra tozaroq va tezroq
-            if hasattr(user, 'teacher'):
-                return redirect('teacher_dashboard')
-            elif hasattr(user, 'student'):
-                return redirect('student_dashboard')
+        if user is not None:
+            # Roli borligini tekshiramiz
+            is_teacher = hasattr(user, 'teacher')
+            is_student = hasattr(user, 'student')
 
+            if user.is_superuser or is_teacher or is_student:
+                login(request, user)
+
+                if user.is_superuser:
+                    return redirect('lesson_list')
+                elif is_teacher:
+                    return redirect('teacher_dashboard')
+                elif is_student:
+                    return redirect('student_dashboard')
+            else:
+                # Foydalanuvchi bor, lekin roli yo'q bo'lsa
+                messages.error(request, "Hisobingizga hech qanday rol biriktirilmagan. Ma'muriyatga murojaat qiling.")
         else:
-            messages.error(request, "ID yoki parol noto'g'ri")
+            # Login yoki parol xato bo'lsa
+            messages.error(request, "Bunday foydalanuvchi topilmadi. ID yoki parolni qayta tekshiring.")
 
     return render(request, "accounts/login.html")
 
