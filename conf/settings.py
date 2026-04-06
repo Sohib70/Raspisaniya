@@ -86,15 +86,22 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     }
 # }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'raspisaniya_db',
+#         'USER': 'postgres',
+#         'PASSWORD': 'Sohib030',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'raspisaniya_db',
-        'USER': 'postgres',
-        'PASSWORD': 'Sohib030',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        default='sqlite:///db.sqlite3', # Agar PostgreSQL topilmasa, SQLite ishlatadi
+        conn_max_age=600
+    )
 }
 
 # Password validation
