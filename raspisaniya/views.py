@@ -33,6 +33,10 @@ from django.db import connection
 from django.conf import settings
 from io import StringIO
 from django.contrib.admin.views.decorators import staff_member_required
+
+import io
+
+
 # ─────────────────────────────────────────
 # KONSTANTALAR
 # ─────────────────────────────────────────
@@ -1021,77 +1025,136 @@ def import_students(request):
         if form.is_valid():
             file = request.FILES["file"]
             try:
-                wb = load_workbook(file)
+                # read_only=True va data_only=True yuklashni tezlashtiradi va xotirani tejaydi
+                wb = load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
+
+                # 1. BAZADAGI MAVJUD MA'LUMOTLARNI KESHGA OLAMIZ (RAM ga yuklash)
+                # Bu orqali har bir qatorda bazaga murojaat qilishdan qutulamiz
+                existing_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
+                existing_groups = {g.name: g for g in CourseGroup.objects.all()}
+                existing_subjects = {s.name: s for s in Subject.objects.all()}
+                existing_students = {s.student_id: s for s in Student.objects.all()}
+
+                new_users_to_create = []
+                students_to_create = []
+                students_to_update = []
+
+                # Talabalarning fanlarini jamlash uchun lug'at {sid: set(subject_names)}
+                # set() ishlatishimiz sababi - bitta qatorning o'zida fan dublikat bo'lsa, o'chirib tashlaydi
+                student_debts_map = {}
+
+                # Tranzaksiyani boshlaymiz (PostgreSQL uchun eng xavfsiz va tezkor usul)
                 with transaction.atomic():
                     for row in ws.iter_rows(min_row=2, values_only=True):
                         if not row or not row[0]:
                             continue
 
-                        # ✅ ID (sid) yaratish
+                        # ✅ ID (sid) tayyorlash
                         sid = f"S-{str(row[0]).strip()}"
 
-                        # F.I.SH ajratish
+                        # ✅ F.I.SH ajratish
                         if not row[1]: continue
                         full_name = str(row[1]).strip().split()
                         if len(full_name) < 2: continue
                         first_name = full_name[0]
                         last_name = " ".join(full_name[1:])
 
-                        # Guruhni topish yoki yaratish
+                        # ✅ Guruhni boshqarish (Topish yoki yangi yaratish)
                         group = None
                         if len(row) > 4 and row[4]:
-                            group, _ = Group.objects.get_or_create(name=str(row[4]).strip())
+                            group_name = str(row[4]).strip()
+                            if group_name not in existing_groups:
+                                group = CourseGroup.objects.create(name=group_name)
+                                existing_groups[group_name] = group
+                            else:
+                                group = existing_groups[group_name]
 
-                        # ✅ 1. Userni sid orqali qidiramiz/yaratamiz
-                        user_obj, user_created = User.objects.get_or_create(username=sid)
-
-                        # Faqat yangi user bo'lsagina parol o'rnatamiz (Serverni qiynamaslik uchun)
-                        if user_created:
+                        # ✅ User (Login) yaratish
+                        if sid not in existing_users:
+                            user_obj = User(username=sid)
                             user_obj.set_password(sid)
-                            user_obj.save()
+                            new_users_to_create.append(user_obj)
+                            existing_users[sid] = user_obj  # Keshga qo'shish (keyingi qatorlar uchun)
+                        else:
+                            user_obj = existing_users[sid]
 
-                        # ✅ 2. Talabani User orqali qidiramiz (ID bo'yicha jamlash shu yerda)
-                        student, created = Student.objects.get_or_create(
-                            user=user_obj,
-                            defaults={
-                                "first_name": first_name,
-                                "last_name": last_name,
-                                "student_id": sid,
-                                "group": group,
-                                "language": 'uz'  # Kerakli tilni shu yerda bering
-                            }
-                        )
-
-                        # Agar talaba bazada bo'lsa (boshqa fani bilan oldinroq o'tgan bo'lsa), ismini yangilab qo'yamiz
-                        if not created:
-                            student.first_name = first_name
-                            student.last_name = last_name
-                            if group:
-                                student.group = group
-                            student.save()
-
-                        # ✅ 3. Fanlarni qo'shish (Bitta talabaga bir nechta fanni jamlaydi)
+                        # ✅ Fanlarni jamlash (Bitta ID li talaba bir nechta joyda bo'lsa fanlarni qo'shib boradi)
                         if len(row) > 8 and row[8]:
                             raw = str(row[8]).strip()
-                            # split_subjects va process_subject funksiyalaringiz bor deb hisoblaymiz
-                            subjects_to_process = split_subjects(raw) if ';' in raw else [raw]
+                            # split_subjects funksiyasi mavjudligini tekshiring
+                            subjects_list = split_subjects(raw) if ';' in raw else [raw]
 
-                            for raw_item in subjects_to_process:
-                                if raw_item:
-                                    subj_name = process_subject(raw_item)
-                                    subj, _ = Subject.objects.get_or_create(name=subj_name)
-                                    # .add() dublikat yaratmaydi, faqat yangi fanni qo'shadi
-                                    student.debts.add(subj)
+                            if sid not in student_debts_map:
+                                student_debts_map[sid] = set()
 
-                messages.success(request, "Import muvaffaqiyatli yakunlandi ✅")
+                            for s in subjects_list:
+                                if s:
+                                    clean_subj = process_subject(
+                                        s)  # process_subject funksiyasi mavjudligini tekshiring
+                                    student_debts_map[sid].add(clean_subj)
+
+                        # ✅ Student obyekti (Yaratish yoki Update ro'yxatiga qo'shish)
+                        if sid not in existing_students:
+                            new_student = Student(
+                                user=user_obj,
+                                first_name=first_name,
+                                last_name=last_name,
+                                student_id=sid,
+                                group=group,
+                                language='uz'
+                            )
+                            students_to_create.append(new_student)
+                            existing_students[sid] = new_student  # Dublikat qatorlar uchun keshga qo'shish
+                        else:
+                            # Agar talaba allaqachon bo'lsa, ma'lumotlarini yangilash ro'yxatiga olamiz
+                            student = existing_students[sid]
+                            student.first_name = first_name
+                            student.last_name = last_name
+                            student.group = group
+                            students_to_update.append(student)
+
+                    # 2. BAZAGA "BULK" (TO'PLAMLI) YOZISH
+                    # Userlarni bir marta yozamiz
+                    if new_users_to_create:
+                        User.objects.bulk_create(new_users_to_create, ignore_conflicts=True)
+                        # Userlar ID olishi uchun ularni qayta keshlaymiz
+                        refreshed_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
+                        for s in students_to_create:
+                            s.user = refreshed_users[s.student_id]
+
+                    # Talabalarni bir marta yozamiz
+                    if students_to_create:
+                        Student.objects.bulk_create(students_to_create)
+
+                    if students_to_update:
+                        Student.objects.bulk_update(students_to_update, ['first_name', 'last_name', 'group'])
+
+                    # 3. MANY-TO-MANY (FANLARNI) BOG'LASH
+                    # Hozirgi barcha talabalarni qayta yuklaymiz (fan qo'shish uchun ID kerak)
+                    all_st = {s.student_id: s for s in Student.objects.filter(student_id__in=student_debts_map.keys())}
+
+                    for sid, sub_names in student_debts_map.items():
+                        current_student = all_st[sid]
+                        for s_name in sub_names:
+                            if s_name not in existing_subjects:
+                                subj = Subject.objects.create(name=s_name)
+                                existing_subjects[s_name] = subj
+                            else:
+                                subj = existing_subjects[s_name]
+
+                            # .add() dublikat fan yaratmaydi
+                            current_student.debts.add(subj)
+
+                messages.success(request, f"Import muvaffaqiyatli! {len(students_to_create)} yangi talaba qo'shildi.")
                 return redirect("student_list")
+
             except Exception as e:
-                # Xatoni aniqroq ko'rish uchun
-                print(f"IMPORT XATOSI: {e}")
-                messages.error(request, f"Xatolik yuz berdi: {e}")
+                print(f"IMPORT XATOSI: {str(e)}")
+                messages.error(request, f"Xatolik: {str(e)}")
     else:
         form = StudentImportForm()
+
     return render(request, "raspisaniya/import_students.html", {"form": form})
 
 
