@@ -386,31 +386,6 @@
                 <div>{% block header_buttons %}{% endblock %}</div>
             </div>
 
-            <!-- Stats - faqat admin -->
-            {% block stats %}
-            {% if user.is_superuser %}
-            <div class="md-grid">
-                <div class="md-card">
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-primary);">event</span>
-                        <div><div class="title-large" id="totalLessons">0</div><div class="body-large">Jami darslar</div></div>
-                    </div>
-                </div>
-                <div class="md-card">
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-secondary);">group</span>
-                        <div><div class="title-large" id="totalTeachers">0</div><div class="body-large">O'qituvchilar</div></div>
-                    </div>
-                </div>
-                <div class="md-card">
-                    <div class="d-flex align-items-center gap-3">
-                        <span class="material-icons-round" style="font-size: 2.5rem; color: var(--md-tertiary);">school</span>
-                        <div><div class="title-large" id="totalStudents">0</div><div class="body-large">O'quvchilar</div></div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            {% endblock %}
 
             <!-- Messages -->
             {% if messages %}
@@ -532,6 +507,19 @@
             document.body.appendChild(o);
             gsap.from(d, { duration: 0.3, scale: 0.8, opacity: 0 });
         };
+        // Mobil menyuni yopish va ochish funksiyasini yakunlash
+        function toggleMobileMenu() {
+            const m = document.getElementById('mobileMenu');
+            if (m.style.display === 'none' || m.style.display === '') {
+                m.style.display = 'block';
+                gsap.from(m, { duration: 0.3, y: -20, opacity: 0, ease: "power2.out" });
+            } else {
+                m.style.display = 'none';
+            }
+        }
+
+
+
     </script>
     {% block extra_js %}{% endblock %}
 </body>

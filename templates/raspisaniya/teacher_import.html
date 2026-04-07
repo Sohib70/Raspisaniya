@@ -1,5 +1,5 @@
 {% extends 'raspisaniya/base.html' %}
-{% block content %}
+{% load static %} {% block content %}
 <div class="container mt-4">
     <h4>O'qituvchilarni Excel orqali import qilish</h4>
 
@@ -9,21 +9,33 @@
         {% endfor %}
     {% endif %}
 
-    <div class="alert alert-info">
-        <strong>Excel format:</strong><br>
-        A ustun — № (masalan: <code>1</code>)<br>
-        B ustun — I.F.Sh (masalan: <code>Karimov Ali Vali</code>)<br>
-        C ustun — Fanlar, vergul bilan (masalan: <code>Matematika,Fizika</code>)
+    <div class="mb-3">
+        <a href="{% static 'raspisaniya/uqituvchilar_namuna.xlsx' %}"
+           class="btn btn-success" download>
+            <i class="fas fa-file-excel"></i> 📥 Namuna Excel yuklab olish
+        </a>
     </div>
 
-    <form method="post" enctype="multipart/form-data">
+    <div class="alert alert-info">
+        <strong>Excel formati qanday bo'lishi kerak:</strong><br>
+        A ustun — № (masalan: <code>1</code>)<br>
+        B ustun — I.F.Sh (masalan: <code>Pulatova G.</code>)<br>
+        C ustun — Fanlar, vergul bilan (masalan: <code>Analitik kimyo, Biofizika</code>)<br>
+        <small class="text-danger">* Eslatma: Fanlar tizimda bo'lmasa, avtomatik yaratiladi.</small>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
         {% csrf_token %}
         <div class="mb-3">
-            <label class="form-label">Excel fayl</label>
+            <label class="form-label font-weight-bold">Excel faylni tanlang</label>
             {{ form.file }}
         </div>
-        <button type="submit" class="btn btn-primary">Import qilish</button>
-        <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Bekor</a>
+        <div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-upload"></i> Import qilish
+            </button>
+            <a href="{% url 'teacher_list' %}" class="btn btn-secondary">Bekor qilish</a>
+        </div>
     </form>
 </div>
 {% endblock %}

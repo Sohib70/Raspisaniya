@@ -29,7 +29,7 @@ from collections import defaultdict
 import os
 import json
 from django.core import management
-
+from django.db import connection
 from django.conf import settings
 from io import StringIO
 from django.contrib.admin.views.decorators import staff_member_required
@@ -1836,3 +1836,5 @@ def restore_database_view(request):
         return redirect('weekly_schedule')
 
     return render(request, 'raspisaniya/restore_database.html')
+
+

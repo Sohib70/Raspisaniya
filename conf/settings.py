@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-d6447_-38u3#%q&7=94s!n$s+3=ixljl&l4x+f96)di!9zphit'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
@@ -139,8 +139,16 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# 1. Brauzer orqali murojaat qilish uchun URL
 STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+# 2. Asosiy statik fayllar turgan papka (Sizda fayl 'static' ichida edi)
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
+
+# 3. Collectstatic buyrug'i yordamida yig'iladigan joy (Boshqa nom bering)
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -161,3 +169,19 @@ CSRF_COOKIE_SECURE = True
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+# Brauzer yopilganda sessiyani tugatish (muhim!)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Sessiya saqlanib qolmasligi uchun (False qiling)
+SESSION_SAVE_EVERY_REQUEST = True
+
+# Agar foydalanuvchi saytda harakatsiz tursa, ma'lum vaqtdan keyin chiqarib yuborish (ixtiyoriy)
+# Masalan, 3600 soniya = 1 soat
+SESSION_COOKIE_AGE = 3600
+
+
+# Dinamik xavfsizlik: Agar DEBUG True bo'lsa (localhost), xavfsiz kuki shart emas
+# Agar DEBUG False bo'lsa (server), HTTPS shart bo'ladi
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG

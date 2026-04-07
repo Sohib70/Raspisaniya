@@ -6,14 +6,23 @@ from raspisaniya.models import Student, Teacher,CourseGroup
 from django.contrib.auth.decorators import login_required
 
 
+
 def login_view(request):
+    # 1. Agar foydalanuvchi allaqachon login qilgan bo'lsa va
+    # sessiya hali tirik bo'lsa, uni tegishli dashboardga yuboramiz.
     if request.user.is_authenticated:
-        return redirect('lesson_list')
+        if request.user.is_superuser:
+            return redirect('lesson_list')
+        elif hasattr(request.user, 'teacher'):
+            return redirect('teacher_dashboard')
+        elif hasattr(request.user, 'student'):
+            return redirect('student_dashboard')
 
     if request.method == "POST":
         user_id = request.POST.get("user_id", "").strip()
         password = request.POST.get("password", "").strip()
 
+        # Foydalanuvchini tekshirish
         user = authenticate(request, username=user_id, password=password)
 
         if user is not None:
@@ -22,8 +31,16 @@ def login_view(request):
             is_student = hasattr(user, 'student')
 
             if user.is_superuser or is_teacher or is_student:
+                # Tizimga kirish
                 login(request, user)
 
+                # ========================================================
+                # MUHIM QISM: Sessiya muddatini brauzer yopilguncha qilish
+                # 0 qiymati - brauzer yopilishi bilan sessiya o'lishini anglatadi
+                request.session.set_expiry(0)
+                # ========================================================
+
+                # Rollarga qarab yo'naltirish (Redirect)
                 if user.is_superuser:
                     return redirect('lesson_list')
                 elif is_teacher:
@@ -31,10 +48,10 @@ def login_view(request):
                 elif is_student:
                     return redirect('student_dashboard')
             else:
-                # Foydalanuvchi bor, lekin roli yo'q bo'lsa
+                # Foydalanuvchi bazada bor, lekin profil biriktirilmagan
                 messages.error(request, "Hisobingizga hech qanday rol biriktirilmagan. Ma'muriyatga murojaat qiling.")
         else:
-            # Login yoki parol xato bo'lsa
+            # Login yoki parol xato kiritilganda
             messages.error(request, "Bunday foydalanuvchi topilmadi. ID yoki parolni qayta tekshiring.")
 
     return render(request, "accounts/login.html")

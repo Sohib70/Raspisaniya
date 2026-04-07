@@ -3,7 +3,7 @@ from . import views
 
 urlpatterns = [
     # Course (Dars)
-    path('', views.lesson_list, name='lesson_list'),
+    path('lesson/list/', views.lesson_list, name='lesson_list'),
     path('lesson/create/', views.lesson_create, name='lesson_create'),
     path('lesson/<int:pk>/schedule/', views.lesson_schedule, name='lesson_schedule'),
     path('lesson/<int:pk>/schedule/excel/', views.lesson_schedule_excel, name='lesson_schedule_excel'),
@@ -61,6 +61,7 @@ urlpatterns = [
     # Statistikalar va API
     path('api/stats/', views.stats_api, name='stats_api'),
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
+
 
 
 ]
