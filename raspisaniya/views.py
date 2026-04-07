@@ -1762,21 +1762,28 @@ def reset_database_view(request):
                 )
 
             # =============================================
-            # 2. Barcha jadvallarni tozala (to'g'ri tartibda)
+            # 2. Barcha jadvallarni tozala (Postgres uchun)
             # =============================================
             with connection.cursor() as cursor:
-                cursor.execute("PRAGMA foreign_keys = OFF;")
+                # PostgreSQL-da cheklovlarni vaqtincha o'chirish o'rniga
+                # TRUNCATE ... CASCADE ishlatish xavfsizroq va osonroq.
 
+                # Jadvallar ro'yxatini yig'amiz
+                tables_to_truncate = []
                 for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
                     if key in selected_models:
-                        table = models_dict[key]._meta.db_table
-                        cursor.execute(f"DELETE FROM {table};")
-                        cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}';")
+                        table_name = models_dict[key]._meta.db_table
+                        tables_to_truncate.append(table_name)
 
-                cursor.execute("PRAGMA foreign_keys = ON;")
+                if tables_to_truncate:
+                    # Barcha tanlangan jadvallarni bitta buyruq bilan tozalaymiz.
+                    # RESTART IDENTITY - ID raqamlarni 1 dan boshlaydi.
+                    # CASCADE - Bog'langan (Foreign Key) qatorlarni ham hisobga oladi.
+                    tables_str = ", ".join(tables_to_truncate)
+                    cursor.execute(f"TRUNCATE TABLE {tables_str} RESTART IDENTITY CASCADE;")
 
             # =============================================
-            # 3. Tegishli User larni o'chir (admin SAQLANADI)
+            # 3. Tegishli User larni o'chir
             # =============================================
             all_user_ids = list(set(student_user_ids + teacher_user_ids))
             if all_user_ids:
@@ -1789,6 +1796,8 @@ def reset_database_view(request):
             return render(request, 'raspisaniya/reset_database.html', {'done': True})
 
         except Exception as e:
+            # Xatolikni aniqroq ko'rish uchun terminalga ham chiqaramiz
+            print(f"Baza tozalashda xato: {e}")
             return render(request, 'raspisaniya/reset_database.html', {
                 'error': f"Xatolik yuz berdi: {str(e)}",
                 'done': False
