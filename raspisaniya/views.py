@@ -29,9 +29,10 @@ from collections import defaultdict
 import os
 import json
 from django.core import management
-from django.http import HttpResponse
+
 from django.conf import settings
 from io import StringIO
+from django.contrib.admin.views.decorators import staff_member_required
 # ─────────────────────────────────────────
 # KONSTANTALAR
 # ─────────────────────────────────────────
@@ -1725,14 +1726,6 @@ def change_lesson_time_ajax(request, sched_pk):
     })
 
 
-from django.contrib.admin.views.decorators import staff_member_required
-from django.db import connection
-
-from django.shortcuts import render
-from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib import messages
-
-
 @staff_member_required
 def reset_database_view(request):
     models_dict = {
@@ -1746,7 +1739,6 @@ def reset_database_view(request):
     }
 
     if request.method == 'POST' and request.POST.get('confirm') == 'TASDIQLASH':
-        # Checkbox orqali tanlangan modellarni olish
         selected_models = request.POST.getlist('models_to_delete')
 
         if not selected_models:
@@ -1756,11 +1748,48 @@ def reset_database_view(request):
             })
 
         try:
-            # Foreign Key xatoligi chiqmasligi uchun tartib bilan o'chirish
-            # Masalan, Jadval har doim birinchi o'chirilishi kerak
-            for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
-                if key in selected_models:
-                    models_dict[key].objects.all().delete()
+            # =============================================
+            # 1. AVVAL barcha user_id larni yig'ib ol
+            # =============================================
+            student_user_ids = []
+            teacher_user_ids = []
+
+            if 'student' in selected_models:
+                student_user_ids = list(
+                    Student.objects.filter(user__isnull=False)
+                    .values_list('user_id', flat=True)
+                )
+
+            if 'teacher' in selected_models:
+                teacher_user_ids = list(
+                    Teacher.objects.filter(user__isnull=False)
+                    .values_list('user_id', flat=True)
+                )
+
+            # =============================================
+            # 2. Barcha jadvallarni tozala (to'g'ri tartibda)
+            # =============================================
+            with connection.cursor() as cursor:
+                cursor.execute("PRAGMA foreign_keys = OFF;")
+
+                for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
+                    if key in selected_models:
+                        table = models_dict[key]._meta.db_table
+                        cursor.execute(f"DELETE FROM {table};")
+                        cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}';")
+
+                cursor.execute("PRAGMA foreign_keys = ON;")
+
+            # =============================================
+            # 3. Tegishli User larni o'chir (admin SAQLANADI)
+            # =============================================
+            all_user_ids = list(set(student_user_ids + teacher_user_ids))
+            if all_user_ids:
+                User.objects.filter(
+                    id__in=all_user_ids,
+                    is_staff=False,
+                    is_superuser=False
+                ).delete()
 
             return render(request, 'raspisaniya/reset_database.html', {'done': True})
 

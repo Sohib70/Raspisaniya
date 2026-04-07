@@ -2,7 +2,13 @@
 {% load widget_tweaks %}
 {% block content %}
 
-<h2>📂 Excel orqali o‘quvchi qo‘shish</h2>
+<h2>📂 Excel orqali o'quvchi qo'shish</h2>
+
+<!-- Namuna yuklab olish -->
+<a href="{% static 'raspisaniya/talabalar_namuna.xlsx' %}"
+   class="btn btn-success mb-3" download>
+    📥 Namuna Excel yuklab olish
+</a>
 
 <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
