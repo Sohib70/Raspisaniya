@@ -98,9 +98,16 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     }
 # }
 
+# DATABASES = {
+#     'default': dj_database_url.config(
+#         default='sqlite:///db.sqlite3', # Agar PostgreSQL topilmasa, SQLite ishlatadi
+#         conn_max_age=600
+#     )
+# }
+
 DATABASES = {
     'default': dj_database_url.config(
-        default='sqlite:///db.sqlite3', # Agar PostgreSQL topilmasa, SQLite ishlatadi
+        default='postgres://postgres:Sohib030@localhost:5432/raspisaniya_db',
         conn_max_age=600
     )
 }
@@ -160,28 +167,35 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CSRF_TRUSTED_ORIGINS = [
     'https://z17.tuit.uz',
+    'http://z17.tuit.uz',
+    'http://z17.tuit.uz:810',
 ]
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
 
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
-# Brauzer yopilganda sessiyani tugatish (muhim!)
-SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
-# Sessiya saqlanib qolmasligi uchun (False qiling)
-SESSION_SAVE_EVERY_REQUEST = True
 
-# Agar foydalanuvchi saytda harakatsiz tursa, ma'lum vaqtdan keyin chiqarib yuborish (ixtiyoriy)
-# Masalan, 3600 soniya = 1 soat
-SESSION_COOKIE_AGE = 3600
 
 
 # Dinamik xavfsizlik: Agar DEBUG True bo'lsa (localhost), xavfsiz kuki shart emas
 # Agar DEBUG False bo'lsa (server), HTTPS shart bo'ladi
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+
+# Sessiya sozlamalari
+SESSION_COOKIE_AGE = 3600  # 1 soat
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Brauzer yopilganda o'chmasin (ixtiyoriy)
+SESSION_SAVE_EVERY_REQUEST = False  # Har bir so'rovda sessiyani qayta yozmaslik kerak (tezlik uchun)
+
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.db' # Sessiyani bazada saqlash
+
+# Xavfsizlik qismini DEBUG holatiga qarab sozlang
+if DEBUG:
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+else:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
