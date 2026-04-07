@@ -1028,32 +1028,30 @@ def import_students(request):
                         if not row or not row[0]:
                             continue
 
-                        # ✅ 1-ustun: № — ID sifatida (Masalan: S-101)
+                        # ✅ ID (sid) yaratish
                         sid = f"S-{str(row[0]).strip()}"
 
-                        # 2-ustun: F.I.SH
+                        # F.I.SH ajratish
                         if not row[1]: continue
                         full_name = str(row[1]).strip().split()
                         if len(full_name) < 2: continue
                         first_name = full_name[0]
                         last_name = " ".join(full_name[1:])
 
-                        # 5-ustun: Guruh
+                        # Guruhni topish yoki yaratish
                         group = None
                         if len(row) > 4 and row[4]:
                             group, _ = Group.objects.get_or_create(name=str(row[4]).strip())
 
-                        # 6-ustun: Til
-                        language = 'uz'
-                        # ... (tilni aniqlash kodingiz o'zgarishsiz qoladi)
-
-                        # ✅ ENG MUHIM QISMI: Avval Userni ID (sid) bo'yicha olamiz yoki yaratamiz
+                        # ✅ 1. Userni sid orqali qidiramiz/yaratamiz
                         user_obj, user_created = User.objects.get_or_create(username=sid)
+
+                        # Faqat yangi user bo'lsagina parol o'rnatamiz (Serverni qiynamaslik uchun)
                         if user_created:
                             user_obj.set_password(sid)
                             user_obj.save()
 
-                        # ✅ Talabani User orqali qidiramiz (ID bo'yicha saralash shu yerda)
+                        # ✅ 2. Talabani User orqali qidiramiz (ID bo'yicha jamlash shu yerda)
                         student, created = Student.objects.get_or_create(
                             user=user_obj,
                             defaults={
@@ -1061,11 +1059,11 @@ def import_students(request):
                                 "last_name": last_name,
                                 "student_id": sid,
                                 "group": group,
-                                "language": language
+                                "language": 'uz'  # Kerakli tilni shu yerda bering
                             }
                         )
 
-                        # Agar talaba allaqachon bo'lsa (masalan boshqa fani bilan oldin kelgan bo'lsa)
+                        # Agar talaba bazada bo'lsa (boshqa fani bilan oldinroq o'tgan bo'lsa), ismini yangilab qo'yamiz
                         if not created:
                             student.first_name = first_name
                             student.last_name = last_name
@@ -1073,22 +1071,25 @@ def import_students(request):
                                 student.group = group
                             student.save()
 
-                        # ✅ 9-ustun: Fanlarni qo'shish (Takrorlansa ham xato bermaydi)
+                        # ✅ 3. Fanlarni qo'shish (Bitta talabaga bir nechta fanni jamlaydi)
                         if len(row) > 8 and row[8]:
                             raw = str(row[8]).strip()
+                            # split_subjects va process_subject funksiyalaringiz bor deb hisoblaymiz
                             subjects_to_process = split_subjects(raw) if ';' in raw else [raw]
 
                             for raw_item in subjects_to_process:
                                 if raw_item:
                                     subj_name = process_subject(raw_item)
                                     subj, _ = Subject.objects.get_or_create(name=subj_name)
-                                    # .add() metodi agar fan allaqachon bo'lsa qayta qo'shmaydi (DUBLIKAT bo'lmaydi)
+                                    # .add() dublikat yaratmaydi, faqat yangi fanni qo'shadi
                                     student.debts.add(subj)
 
-                messages.success(request, "O'quvchilar va fanlar import qilindi ✅")
+                messages.success(request, "Import muvaffaqiyatli yakunlandi ✅")
                 return redirect("student_list")
             except Exception as e:
-                messages.error(request, f"Xatolik: {e}")
+                # Xatoni aniqroq ko'rish uchun
+                print(f"IMPORT XATOSI: {e}")
+                messages.error(request, f"Xatolik yuz berdi: {e}")
     else:
         form = StudentImportForm()
     return render(request, "raspisaniya/import_students.html", {"form": form})
