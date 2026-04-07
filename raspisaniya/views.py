@@ -1025,11 +1025,10 @@ def import_students(request):
         if form.is_valid():
             file = request.FILES["file"]
             try:
-                # read_only=True Excelni juda tez o'qiydi (504 xatosini oldini oladi)
                 wb = load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
 
-                # 1. BAZADAGI MA'LUMOTLARNI RAM-GA YUKLASH (KESH)
+                # 1. KESHGA YUKLASH
                 existing_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
                 existing_groups = {g.name: g for g in Group.objects.all()}
                 existing_subjects = {s.name: s for s in Subject.objects.all()}
@@ -1044,25 +1043,23 @@ def import_students(request):
                     for row in ws.iter_rows(min_row=2, values_only=True):
                         if not row or not row[0]: continue
 
-                        # ID va Ism-sharif
                         sid = f"S-{str(row[0]).strip()}"
                         if not row[1]: continue
                         full_name = str(row[1]).strip().split()
                         if len(full_name) < 2: continue
                         first_name, last_name = full_name[0], " ".join(full_name[1:])
 
-                        # ✅ AKADEMIK GURUH (CourseGroup emas, aynan Group modeli)
+                        # GURUH
                         group_obj = None
                         if len(row) > 4 and row[4]:
                             g_name = str(row[4]).strip()
                             if g_name not in existing_groups:
-                                # Sizning modelingizda Group'da 'name' fieldi bor
                                 group_obj = Group.objects.create(name=g_name)
                                 existing_groups[g_name] = group_obj
                             else:
                                 group_obj = existing_groups[g_name]
 
-                        # ✅ USER (LOGIN)
+                        # USER
                         if sid not in existing_users:
                             user_obj = User(username=sid)
                             user_obj.set_password(sid)
@@ -1071,13 +1068,11 @@ def import_students(request):
                         else:
                             user_obj = existing_users[sid]
 
-                        # ✅ FANLARNI JAMLASH (Set dublikatlarni o'chiradi)
+                        # FANLARNI JAMLASH (Tepadagi funksiyalarni ishlatadi)
                         if len(row) > 8 and row[8]:
                             raw_subjects = str(row[8]).strip()
-                            # split_subjects va process_subject funksiyalaringiz bor deb hisoblaymiz
-                            from .utils import split_subjects, process_subject  # Agar boshqa joyda bo'lsa
+                            sub_list = split_subjects(raw_subjects)
 
-                            sub_list = split_subjects(raw_subjects) if ';' in raw_subjects else [raw_subjects]
                             if sid not in student_debts_map:
                                 student_debts_map[sid] = set()
 
@@ -1085,7 +1080,7 @@ def import_students(request):
                                 if s:
                                     student_debts_map[sid].add(process_subject(s))
 
-                        # ✅ STUDENT YARATISH YOKI UPDATE
+                        # STUDENT
                         if sid not in existing_students:
                             new_st = Student(
                                 user=user_obj,
@@ -1102,10 +1097,9 @@ def import_students(request):
                             st.first_name, st.last_name, st.group = first_name, last_name, group_obj
                             students_to_update.append(st)
 
-                    # 2. BAZAGA BULK (TO'PLAM) YOZISH
+                    # 2. BULK CREATE/UPDATE
                     if new_users_to_create:
                         User.objects.bulk_create(new_users_to_create, ignore_conflicts=True)
-                        # Userlarni qayta o'qib, Studentlarga bog'laymiz
                         all_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
                         for s in students_to_create:
                             s.user = all_users.get(s.student_id)
@@ -1116,8 +1110,7 @@ def import_students(request):
                     if students_to_update:
                         Student.objects.bulk_update(students_to_update, ['first_name', 'last_name', 'group'])
 
-                    # 3. MANY-TO-MANY (FANLAR)
-                    # Talabalarni bazadan qayta yuklaymiz (M2M uchun ID kerak)
+                    # 3. MANY-TO-MANY
                     db_students = {s.student_id: s for s in
                                    Student.objects.filter(student_id__in=student_debts_map.keys())}
 
@@ -1133,7 +1126,7 @@ def import_students(request):
                                 subj = existing_subjects[s_name]
                             student_obj.debts.add(subj)
 
-                messages.success(request, f"Muvaffaqiyatli! {len(students_to_create)} yangi talaba qo'shildi.")
+                messages.success(request, f"Import yakunlandi!")
                 return redirect("student_list")
 
             except Exception as e:
