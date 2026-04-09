@@ -7,6 +7,9 @@
 # 4. get_weekly_schedule_data — 'columns', 'column_pks' olib tashlandi
 # 5. get_weekly_schedule_data — gnum lokal o'zgaruvchi sifatida ishlatiladi (bug fix)
 # 6. weekly_schedule_excel — room ma'lumoti katak ichida ko'rsatiladi
+# 7. lesson_create step1 — 8 tadan kam o'quvchisi bo'lgan fanlar ko'rinmaydi,
+#    ko'rinayotganlarda o'quvchi soni ko'rsatiladi
+# 8. lesson_delete — o'chirilganda o'quvchilar qaytib debts ga qo'shiladi
 # ─────────────────────────────────────────────────────────────────────────────
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -62,7 +65,6 @@ WEEKDAY_OPTIONS = [
     (3, 'Payshanba'), (4, 'Juma'), (5, 'Shanba'),
 ]
 
-# ✅ O'ZGARISH 2: PARA_TIMES_WEEKLY endi PARA_TIMES dan hosil qilinadi — takrorlanmaydi
 PARA_TIMES_WEEKLY = [
     (s.strftime("%H:%M"), e.strftime("%H:%M"))
     for s, e in PARA_TIMES
@@ -130,7 +132,6 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
     def get_busy_para_indices(date):
         busy = set()
 
-        # ✅ 1. O'qituvchi band bo'lgan paralar
         for sched in GroupSchedule.objects.filter(
             date=date, group__teacher_id=teacher_id,
         ).select_related('group'):
@@ -143,7 +144,6 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                 for i in range(len(PARA_TIMES)):
                     busy.add(i)
 
-        # ✅ 2. Talabalar band bo'lgan paralar — YANGI QISM
         if student_ids:
             for sched in GroupSchedule.objects.filter(
                 date=date,
@@ -160,7 +160,6 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
 
         return busy
 
-    # qolgan hamma narsa O'ZGARMAYDI
     def find_two_consecutive_paras(date):
         busy = get_busy_para_indices(date)
         for i in range(len(PARA_TIMES) - 1):
@@ -250,7 +249,6 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
     return result if len(result) >= total_lessons else None
 
 
-# ✅ O'ZGARISH 3: split_subjects faqat BIR marta — ikkinchi nusxa o'chirildi
 def split_subjects(raw):
     results = []
     current = ""
@@ -283,8 +281,6 @@ def get_weekly_schedule_data(week_start=None):
         is_scheduled=True
     ).select_related('course__subject', 'teacher').prefetch_related('schedule')
 
-    # ✅ YANGI: grid endi list saqlaydi, guruh raqamiga bog'liq emas
-    # key: (weekday, para_idx) → list of dicts
     grid_lists = defaultdict(list)
 
     for grp in groups:
@@ -312,11 +308,8 @@ def get_weekly_schedule_data(week_start=None):
                 'sched_id': sched.pk,
             })
 
-    # max_group = har bir slotda nechta dars bor, shunday maksimal son
     max_group = max((len(v) for v in grid_lists.values()), default=0)
 
-    # ✅ grid ni eski formatga o'tkazish: (weekday, para_idx, slot_idx) → info
-    # slot_idx 1 dan boshlanadi
     grid = {}
     for (weekday, para_idx), items in grid_lists.items():
         for slot_idx, item in enumerate(items, 1):
@@ -364,10 +357,20 @@ def lesson_create(request):
 
     # ── STEP 1 ──
     if request.method == "GET":
-        subjects = Subject.objects.all()
+        # ✅ O'ZGARISH 7: faqat 8+ o'quvchisi bor fanlarni ko'rsatish,
+        #    har bir fanning o'quvchi sonini ham uzatish
+        all_subjects = Subject.objects.all()
+        subjects_data = []
+        for subj in all_subjects:
+            count = Student.objects.filter(debts=subj).count()
+            if count >= 8:
+                subjects_data.append({
+                    'subject': subj,
+                    'student_count': count,
+                })
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 1,
-            "subjects": subjects,
+            "subjects_data": subjects_data,
         })
 
     # ── STEP 2 ──
@@ -525,6 +528,7 @@ def lesson_create(request):
                 )
                 cgroup.students.set(selected_students)
 
+                # O'quvchilar faqat shu yerda debts dan olib tashlanadi
                 for st in selected_students:
                     st.debts.remove(subject)
 
@@ -695,12 +699,21 @@ def change_teacher(request, group_pk):
     return redirect("lesson_schedule", pk=group.course.pk)
 
 
+# ─────────────────────────────────────────
+# ✅ O'ZGARISH 8: lesson_delete — o'chirilganda o'quvchilar
+#    qaytib subject.debts ga qo'shiladi
+# ─────────────────────────────────────────
 @login_required
 def lesson_delete(request, pk):
     lesson = get_object_or_404(Course, pk=pk)
     if request.method == "POST":
+        subject = lesson.subject
+        # Kursga biriktirilgan barcha guruhlar va ulardagi o'quvchilarni qaytarish
+        for group in lesson.groups.prefetch_related('students').all():
+            for student in group.students.all():
+                student.debts.add(subject)
         lesson.delete()
-        messages.success(request, "Dars o'chirildi")
+        messages.success(request, "Dars o'chirildi va o'quvchilar qayta ro'yxatga qaytarildi")
         return redirect("lesson_list")
     return render(request, "raspisaniya/lesson_delete.html", {"lesson": lesson, "course": lesson})
 
@@ -820,10 +833,8 @@ def teacher_import(request):
                         if not row or not row[0]:
                             continue
 
-                        # ✅ 1-ustun: raqam (ID sifatida ishlatiladi)
                         tid = f"T-{str(row[0]).strip()}"
 
-                        # ✅ 2-ustun: F.I.SH
                         if not row[1]:
                             continue
                         parts = str(row[1]).strip().split()
@@ -835,7 +846,6 @@ def teacher_import(request):
                             last_name=" ".join(parts[1:])
                         )
 
-                        # ✅ 3-ustun: Fanlar (vergul bilan ajratilgan)
                         if len(row) > 2 and row[2]:
                             for sname in str(row[2]).split(","):
                                 sname = sname.strip()
@@ -843,7 +853,6 @@ def teacher_import(request):
                                     subj, _ = Subject.objects.get_or_create(name=sname)
                                     teacher.subjects.add(subj)
 
-                        # ✅ User ulash
                         teacher.teacher_id = tid
                         u, user_created = User.objects.get_or_create(username=tid)
                         if user_created:
@@ -1028,7 +1037,6 @@ def import_students(request):
                 wb = load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
 
-                # 1. KESHGA YUKLASH
                 existing_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
                 existing_groups = {g.name: g for g in Group.objects.all()}
                 existing_subjects = {s.name: s for s in Subject.objects.all()}
@@ -1049,7 +1057,6 @@ def import_students(request):
                         if len(full_name) < 2: continue
                         first_name, last_name = full_name[0], " ".join(full_name[1:])
 
-                        # GURUH
                         group_obj = None
                         if len(row) > 4 and row[4]:
                             g_name = str(row[4]).strip()
@@ -1059,7 +1066,6 @@ def import_students(request):
                             else:
                                 group_obj = existing_groups[g_name]
 
-                        # USER
                         if sid not in existing_users:
                             user_obj = User(username=sid)
                             user_obj.set_password(sid)
@@ -1068,7 +1074,6 @@ def import_students(request):
                         else:
                             user_obj = existing_users[sid]
 
-                        # FANLARNI JAMLASH (Tepadagi funksiyalarni ishlatadi)
                         if len(row) > 8 and row[8]:
                             raw_subjects = str(row[8]).strip()
                             sub_list = split_subjects(raw_subjects)
@@ -1080,7 +1085,6 @@ def import_students(request):
                                 if s:
                                     student_debts_map[sid].add(process_subject(s))
 
-                        # STUDENT
                         if sid not in existing_students:
                             new_st = Student(
                                 user=user_obj,
@@ -1097,7 +1101,6 @@ def import_students(request):
                             st.first_name, st.last_name, st.group = first_name, last_name, group_obj
                             students_to_update.append(st)
 
-                    # 2. BULK CREATE/UPDATE
                     if new_users_to_create:
                         User.objects.bulk_create(new_users_to_create, ignore_conflicts=True)
                         all_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
@@ -1110,7 +1113,6 @@ def import_students(request):
                     if students_to_update:
                         Student.objects.bulk_update(students_to_update, ['first_name', 'last_name', 'group'])
 
-                    # 3. MANY-TO-MANY
                     db_students = {s.student_id: s for s in
                                    Student.objects.filter(student_id__in=student_debts_map.keys())}
 
@@ -1336,7 +1338,6 @@ def build_schedule(request):
             grp.weekdays = list({d.weekday() for d, _, _ in schedule})
             grp.is_scheduled = True
 
-            # ✅ O'ZGARISH 1 natijasi: time yuqorida import qilingan
             for attempt in range(5):
                 try:
                     with transaction.atomic():
@@ -1530,7 +1531,7 @@ def weekly_schedule_view(request):
             table_data.append({
                 'day': day_name,
                 'time': f"{start} - {end}",
-                'iso_date': (week_start + timedelta(days=day_idx)).isoformat(),  # ← BU QO'SHILDI
+                'iso_date': (week_start + timedelta(days=day_idx)).isoformat(),
                 'start_time': start,
                 'cells': cells,
                 'has_any': has_any,
@@ -1636,7 +1637,6 @@ def weekly_schedule_excel(request):
                 cell = ws.cell(row, col)
                 info = grid.get(key)
                 if info:
-                    # ✅ O'ZGARISH 6: room ham ko'rsatiladi
                     room_str = f"\n🏫 {info['room']}" if info.get('room') else ''
                     cell.value = f"{info['subject']}\n{info['teacher']}{room_str}"
                     cell.fill = PatternFill('solid', start_color=get_subject_color(info['subject']))
@@ -1673,11 +1673,6 @@ def weekly_schedule_excel(request):
 
 @login_required
 def change_lesson_time_ajax(request, sched_pk):
-    """
-    Drag & drop uchun AJAX endpoint.
-    POST: { new_date: "2026-04-01", new_time: "10:00" }
-    Response: { success: true, ... } yoki { success: false, error: "..." }
-    """
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Faqat POST so\'rov'}, status=405)
 
@@ -1704,7 +1699,6 @@ def change_lesson_time_ajax(request, sched_pk):
     except (ValueError, AttributeError):
         return JsonResponse({'success': False, 'error': 'Noto\'g\'ri vaqt formati'}, status=400)
 
-    # Agar sana va vaqt o'zgarmagan bo'lsa — keraksiz DB yozuvidan qochamiz
     if sched.date == new_date_val and sched.start_time == new_time_val:
         return JsonResponse({'success': False, 'error': 'Dars allaqachon shu vaqtda'})
 
@@ -1712,7 +1706,6 @@ def change_lesson_time_ajax(request, sched_pk):
     teacher_id   = sched.group.teacher_id
     student_ids  = list(sched.group.students.values_list('id', flat=True))
 
-    # 1) Guruh conflict
     if GroupSchedule.objects.filter(
         date=new_date_val,
         start_time=new_time_val,
@@ -1723,7 +1716,6 @@ def change_lesson_time_ajax(request, sched_pk):
             'error': f'{new_date_val} kuni {new_time_raw} da {group_number}-guruhda boshqa dars bor!'
         })
 
-    # 2) O'qituvchi conflict
     if GroupSchedule.objects.filter(
         date=new_date_val,
         start_time=new_time_val,
@@ -1735,7 +1727,6 @@ def change_lesson_time_ajax(request, sched_pk):
             'error': f'O\'qituvchi {teacher_name} {new_date_val} kuni {new_time_raw} da band!'
         })
 
-    # 3) Talabalar conflict
     if student_ids and GroupSchedule.objects.filter(
         date=new_date_val,
         start_time=new_time_val,
@@ -1746,10 +1737,9 @@ def change_lesson_time_ajax(request, sched_pk):
             'error': f'Ba\'zi talabalar {new_date_val} kuni {new_time_raw} da band!'
         })
 
-    # Saqlash
     sched.date       = new_date_val
     sched.start_time = new_time_val
-    sched.save(update_fields=['date', 'start_time'])  # faqat kerakli maydonlarni update
+    sched.save(update_fields=['date', 'start_time'])
 
     end_time = (datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
 
@@ -1785,9 +1775,6 @@ def reset_database_view(request):
             })
 
         try:
-            # =============================================
-            # 1. AVVAL barcha user_id larni yig'ib ol
-            # =============================================
             student_user_ids = []
             teacher_user_ids = []
 
@@ -1803,14 +1790,7 @@ def reset_database_view(request):
                     .values_list('user_id', flat=True)
                 )
 
-            # =============================================
-            # 2. Barcha jadvallarni tozala (Postgres uchun)
-            # =============================================
             with connection.cursor() as cursor:
-                # PostgreSQL-da cheklovlarni vaqtincha o'chirish o'rniga
-                # TRUNCATE ... CASCADE ishlatish xavfsizroq va osonroq.
-
-                # Jadvallar ro'yxatini yig'amiz
                 tables_to_truncate = []
                 for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
                     if key in selected_models:
@@ -1818,15 +1798,9 @@ def reset_database_view(request):
                         tables_to_truncate.append(table_name)
 
                 if tables_to_truncate:
-                    # Barcha tanlangan jadvallarni bitta buyruq bilan tozalaymiz.
-                    # RESTART IDENTITY - ID raqamlarni 1 dan boshlaydi.
-                    # CASCADE - Bog'langan (Foreign Key) qatorlarni ham hisobga oladi.
                     tables_str = ", ".join(tables_to_truncate)
                     cursor.execute(f"TRUNCATE TABLE {tables_str} RESTART IDENTITY CASCADE;")
 
-            # =============================================
-            # 3. Tegishli User larni o'chir
-            # =============================================
             all_user_ids = list(set(student_user_ids + teacher_user_ids))
             if all_user_ids:
                 User.objects.filter(
@@ -1838,7 +1812,6 @@ def reset_database_view(request):
             return render(request, 'raspisaniya/reset_database.html', {'done': True})
 
         except Exception as e:
-            # Xatolikni aniqroq ko'rish uchun terminalga ham chiqaramiz
             print(f"Baza tozalashda xato: {e}")
             return render(request, 'raspisaniya/reset_database.html', {
                 'error': f"Xatolik yuz berdi: {str(e)}",
@@ -1848,11 +1821,8 @@ def reset_database_view(request):
     return render(request, 'raspisaniya/reset_database.html', {'done': False})
 
 
-
-# 1. Bazani faylga ko'chirish (Export/Backup)
 def export_database_view(request):
     output = StringIO()
-    # Ma'lumotlarni JSON formatida yig'ish
     management.call_command('dumpdata', indent=2, stdout=output)
 
     response = HttpResponse(output.getvalue(), content_type="application/json")
@@ -1860,21 +1830,18 @@ def export_database_view(request):
     return response
 
 
-# 2. Fayldan bazaga qaytarish (Import/Restore)
 def restore_database_view(request):
     if request.method == 'POST' and request.FILES.get('backup_file'):
         backup_file = request.FILES['backup_file']
 
-        # Faylni vaqtinchalik saqlash
         path = os.path.join(settings.MEDIA_ROOT, 'temp_backup.json')
         with open(path, 'wb+') as destination:
             for chunk in backup_file.chunks():
                 destination.write(chunk)
 
         try:
-            # Bazani yuklash buyrug'i
             management.call_command('loaddata', path)
-            os.remove(path)  # Vaqtinchalik faylni o'chirish
+            os.remove(path)
             messages.success(request, "Database muvaffaqiyatli tiklandi!")
         except Exception as e:
             messages.error(request, f"Xatolik: {str(e)}")
@@ -1882,5 +1849,3 @@ def restore_database_view(request):
         return redirect('weekly_schedule')
 
     return render(request, 'raspisaniya/restore_database.html')
-
-

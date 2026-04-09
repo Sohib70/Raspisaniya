@@ -192,6 +192,14 @@
         showToast('Sana yoki vaqt topilmadi', 'error');
         return;
       }
+      // ✅ Vaqt bir xil bo'lsa — faqat DOM ko'chadi, server chaqirilmaydi
+      if (newDate === sourceCell.dataset.date && newTime === sourceCell.dataset.time) {
+        sourceCell.classList.remove('has-lesson');
+        td.classList.add('has-lesson');
+        td.appendChild(draggedCard);
+        sourceCell = td;
+        return;
+      }
 
       // Optimistik ko'chirish
       isFetching = true;
