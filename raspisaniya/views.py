@@ -1120,7 +1120,7 @@ def import_students(request):
                     # QARZ FANLAR: Har bir qatordagi fanlarni yig'amiz
                     if len(row) > 8 and row[8]:
                         # split_subjects va process_subject o'rniga oddiyroq split ishlatamiz
-                        raw_subjects = [s.strip() for s in str(row[8]).split(",") if s.strip()]
+                        raw_subjects = [s.strip() for s in str(row[8]).split(";") if s.strip()]
 
                         if sid not in student_debts_collector:
                             student_debts_collector[sid] = set()
