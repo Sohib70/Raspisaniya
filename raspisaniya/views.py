@@ -308,15 +308,19 @@ def get_weekly_schedule_data(week_start=None):
                 'sched_id': sched.pk,
             })
 
-    max_group = max((len(v) for v in grid_lists.values()), default=0)
+    # Bir vaqtda eng ko'p dars bo'lgan slot — ustunlar soni
+    max_cols = max((len(v) for v in grid_lists.values()), default=0)
 
+    # Har bir (weekday, para_idx) dagi darslarni col=1,2,3... ga joylashtir.
+    # Natijada har bir dars o'zining alohida ustunida ko'rinadi,
+    # bo'sh kataklar o'ng tomonda qoladi — hech qanday dars ko'rinmay qolmaydi.
     grid = {}
     for (weekday, para_idx), items in grid_lists.items():
-        for slot_idx, item in enumerate(items, 1):
-            grid[(weekday, para_idx, slot_idx)] = item
+        for col, item in enumerate(items, 1):
+            grid[(weekday, para_idx, col)] = item
 
     return {
-        'max_group': max_group,
+        'max_group': max_cols,
         'grid': grid,
         'week_start': week_start,
         'week_end': week_end,
@@ -657,13 +661,6 @@ def change_lesson_time(request, sched_pk):
         group_number = sched.group.group_number
         teacher_id = sched.group.teacher_id
         student_ids = list(sched.group.students.values_list('id', flat=True))
-
-        if GroupSchedule.objects.filter(
-            date=new_date_val, start_time=new_time_val,
-            group__group_number=group_number,
-        ).exclude(pk=sched_pk).exists():
-            messages.error(request, f"{new_date_val} kuni {new_time} parada {group_number}-guruhda boshqa dars bor!")
-            return redirect("lesson_schedule", pk=sched.group.course.pk)
 
         if GroupSchedule.objects.filter(
             date=new_date_val, start_time=new_time_val,
@@ -1709,16 +1706,6 @@ def change_lesson_time_ajax(request, sched_pk):
     if GroupSchedule.objects.filter(
         date=new_date_val,
         start_time=new_time_val,
-        group__group_number=group_number,
-    ).exclude(pk=sched_pk).exists():
-        return JsonResponse({
-            'success': False,
-            'error': f'{new_date_val} kuni {new_time_raw} da {group_number}-guruhda boshqa dars bor!'
-        })
-
-    if GroupSchedule.objects.filter(
-        date=new_date_val,
-        start_time=new_time_val,
         group__teacher_id=teacher_id,
     ).exclude(pk=sched_pk).exists():
         teacher_name = str(sched.group.teacher)
@@ -1755,16 +1742,6 @@ def change_lesson_time_ajax(request, sched_pk):
 
 @staff_member_required
 def reset_database_view(request):
-    models_dict = {
-        'schedule': GroupSchedule,
-        'group': CourseGroup,
-        'student': Student,
-        'course': Course,
-        'subject': Subject,
-        'teacher': Teacher,
-        'room': Room
-    }
-
     if request.method == 'POST' and request.POST.get('confirm') == 'TASDIQLASH':
         selected_models = request.POST.getlist('models_to_delete')
 
@@ -1775,39 +1752,55 @@ def reset_database_view(request):
             })
 
         try:
-            student_user_ids = []
-            teacher_user_ids = []
+            with transaction.atomic():
+                # ── 1. Avval user ID larini yig'ib ol (o'chirishdan oldin) ──
+                student_user_ids = []
+                teacher_user_ids = []
 
-            if 'student' in selected_models:
-                student_user_ids = list(
-                    Student.objects.filter(user__isnull=False)
-                    .values_list('user_id', flat=True)
-                )
+                if 'student' in selected_models:
+                    student_user_ids = list(
+                        Student.objects.filter(user__isnull=False)
+                        .values_list('user_id', flat=True)
+                    )
+                if 'teacher' in selected_models:
+                    teacher_user_ids = list(
+                        Teacher.objects.filter(user__isnull=False)
+                        .values_list('user_id', flat=True)
+                    )
 
-            if 'teacher' in selected_models:
-                teacher_user_ids = list(
-                    Teacher.objects.filter(user__isnull=False)
-                    .values_list('user_id', flat=True)
-                )
+                # ── 2. To'g'ri tartibda o'chirish (CASCADE yo'q — faqat Django ORM) ──
+                # Tartib muhim: avval bog'liq jadvallar, keyin asosiylar
 
-            with connection.cursor() as cursor:
-                tables_to_truncate = []
-                for key in ['schedule', 'group', 'student', 'course', 'subject', 'teacher', 'room']:
-                    if key in selected_models:
-                        table_name = models_dict[key]._meta.db_table
-                        tables_to_truncate.append(table_name)
+                if 'schedule' in selected_models:
+                    GroupSchedule.objects.all().delete()
 
-                if tables_to_truncate:
-                    tables_str = ", ".join(tables_to_truncate)
-                    cursor.execute(f"TRUNCATE TABLE {tables_str} RESTART IDENTITY CASCADE;")
+                if 'group' in selected_models:
+                    CourseGroup.objects.all().delete()
 
-            all_user_ids = list(set(student_user_ids + teacher_user_ids))
-            if all_user_ids:
-                User.objects.filter(
-                    id__in=all_user_ids,
-                    is_staff=False,
-                    is_superuser=False
-                ).delete()
+                if 'course' in selected_models:
+                    # GroupSchedule va CourseGroup avval o'chadi (yuqorida yoki cascade orqali)
+                    Course.objects.all().delete()
+
+                if 'student' in selected_models:
+                    Student.objects.all().delete()
+
+                if 'teacher' in selected_models:
+                    Teacher.objects.all().delete()
+
+                if 'subject' in selected_models:
+                    Subject.objects.all().delete()
+
+                if 'room' in selected_models:
+                    Room.objects.all().delete()
+
+                # ── 3. Tegishli oddiy foydalanuvchilarni o'chir ──
+                all_user_ids = list(set(student_user_ids + teacher_user_ids))
+                if all_user_ids:
+                    User.objects.filter(
+                        id__in=all_user_ids,
+                        is_staff=False,
+                        is_superuser=False,
+                    ).delete()
 
             return render(request, 'raspisaniya/reset_database.html', {'done': True})
 

@@ -23,10 +23,17 @@
         <label class="form-label fw-bold">Fan tanlang</label>
         <select name="subject" class="form-select" required>
             <option value="">— tanlang —</option>
-            {% for s in subjects %}
-                <option value="{{ s.id }}">{{ s }}</option>
+            {% for item in subjects_data %}
+                <option value="{{ item.subject.id }}">
+                    {{ item.subject }} — {{ item.student_count }} ta o'quvchi
+                </option>
             {% endfor %}
         </select>
+        {% if not subjects_data %}
+            <div class="alert alert-warning mt-2">
+                ⚠ Hozircha 8 yoki undan ko'p o'quvchi qarzdor bo'lgan fan yo'q.
+            </div>
+        {% endif %}
     </div>
 
     <div class="row mb-3">
@@ -95,7 +102,6 @@ const ALL_STUDENTS = [
 ];
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Faqat unassigned (hech bir guruhda yo'q) talabalar selectga tushsin
     for (let i = 0; i < GROUPS_COUNT; i++) {
         const sel = document.getElementById('add_select_' + i);
         if (!sel) continue;
@@ -250,24 +256,18 @@ document.addEventListener('DOMContentLoaded', function() {
 </form>
 
 <script>
-// Add panel toggle
 function toggleAddPanel(groupIdx) {
     const panel = document.getElementById(`add_panel_${groupIdx}`);
     panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
 }
 
-// Guruhdan talabani o'chirish
 function removeStudent(groupIdx, studentId, studentName) {
     const row = document.getElementById(`row_${groupIdx}_${studentId}`);
     if (!row) return;
     row.remove();
     updateGroupUI(groupIdx);
     renumberGroup(groupIdx);
-
-    // Tayinlanmagan panelga qo'shish
     addToUnassignedPanel(studentId, studentName);
-
-    // Barcha guruhlarning selectiga qo'shish
     for (let i = 0; i < GROUPS_COUNT; i++) {
         const sel = document.getElementById(`add_select_${i}`);
         if (sel && !Array.from(sel.options).some(o => o.value == studentId)) {
@@ -277,15 +277,11 @@ function removeStudent(groupIdx, studentId, studentName) {
     }
 }
 
-// Tayinlanmagan panelga badge qo'shish
 function addToUnassignedPanel(studentId, studentName) {
     const list = document.getElementById('unassigned_list');
     if (document.getElementById(`unassigned_badge_${studentId}`)) return;
-
-    // "Hammasi taqsimlangan" xabarini yashirish
     const noMsg = document.getElementById('no_unassigned_msg');
     if (noMsg) noMsg.style.display = 'none';
-
     const span = document.createElement('span');
     span.className = 'badge bg-light text-dark border me-1 mb-1 p-2';
     span.id = `unassigned_badge_${studentId}`;
@@ -294,7 +290,6 @@ function addToUnassignedPanel(studentId, studentName) {
     refreshUnassignedCount();
 }
 
-// Avtomatik eng kam talabali guruhga qo'shish
 function autoAssign(studentId, studentName) {
     let minCount = Infinity;
     let minGroupIdx = 0;
@@ -310,7 +305,6 @@ function autoAssign(studentId, studentName) {
     addStudentDirectly(minGroupIdx, studentId, studentName);
 }
 
-// Select orqali qo'shish
 function addStudentToGroup(groupIdx) {
     const sel = document.getElementById(`add_select_${groupIdx}`);
     const studentId = sel.value;
@@ -320,9 +314,7 @@ function addStudentToGroup(groupIdx) {
     sel.value = '';
 }
 
-// Asosiy qo'shish funksiyasi
 function addStudentDirectly(groupIdx, studentId, studentName) {
-    // Boshqa guruhlardan o'chirish
     for (let i = 0; i < GROUPS_COUNT; i++) {
         const existRow = document.getElementById(`row_${i}_${studentId}`);
         if (existRow) {
@@ -331,19 +323,14 @@ function addStudentDirectly(groupIdx, studentId, studentName) {
             renumberGroup(i);
         }
     }
-
-    // Barcha selectlardan o'chirish
     for (let i = 0; i < GROUPS_COUNT; i++) {
         const sel = document.getElementById(`add_select_${i}`);
         if (sel) Array.from(sel.options).filter(o => o.value == studentId).forEach(o => o.remove());
     }
-
-    // Tayinlanmagan paneldan o'chirish
     const badge = document.getElementById(`unassigned_badge_${studentId}`);
     if (badge) badge.remove();
     refreshUnassignedCount();
 
-    // Guruhga qo'shish
     const list = document.getElementById(`students_list_${groupIdx}`);
     const num = list.querySelectorAll('[id^="row_"]').length + 1;
     const div = document.createElement('div');
@@ -360,7 +347,6 @@ function addStudentDirectly(groupIdx, studentId, studentName) {
     updateGroupUI(groupIdx);
 }
 
-// Guruh UI ni yangilash (badge, rang)
 function updateGroupUI(groupIdx) {
     const list = document.getElementById(`students_list_${groupIdx}`);
     if (!list) return;
@@ -368,9 +354,7 @@ function updateGroupUI(groupIdx) {
     const badge = document.getElementById(`badge_${groupIdx}`);
     const warn = document.getElementById(`warn_${groupIdx}`);
     const card = document.getElementById(`group_card_${groupIdx}`);
-
     if (badge) badge.textContent = `${count} ta o'quvchi`;
-
     if (count < 8) {
         if (badge) badge.className = 'badge bg-danger';
         if (warn) warn.style.display = '';
@@ -388,7 +372,6 @@ function updateGroupUI(groupIdx) {
     }
 }
 
-// Raqamlarni tartiblab chiqish
 function renumberGroup(groupIdx) {
     const list = document.getElementById(`students_list_${groupIdx}`);
     if (!list) return;
@@ -398,13 +381,11 @@ function renumberGroup(groupIdx) {
     });
 }
 
-// Tayinlanmagan son
 function refreshUnassignedCount() {
     const list = document.getElementById('unassigned_list');
     const countBadge = document.getElementById('unassigned_count');
     const badges = list.querySelectorAll('[id^="unassigned_badge_"]');
     if (countBadge) countBadge.textContent = badges.length;
-
     const noMsg = document.getElementById('no_unassigned_msg');
     if (noMsg) noMsg.style.display = badges.length === 0 ? '' : 'none';
 }
