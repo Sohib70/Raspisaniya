@@ -306,6 +306,7 @@ def get_weekly_schedule_data(week_start=None):
                 'teacher': teacher_name,
                 'room': str(grp.room) if grp.room else '',
                 'sched_id': sched.pk,
+                'group_number': grp.group_number,
             })
 
     # Bir vaqtda eng ko'p dars bo'lgan slot — ustunlar soni
@@ -1567,6 +1568,7 @@ def weekly_schedule_view(request):
                         'subject': info['subject'],
                         'teacher': info['teacher'],
                         'room': info.get('room', ''),
+                        'group_number': info.get('group_number', ''),
                         'bg': color['bg'],
                         'text': color['text'],
                         'border': color['border'],

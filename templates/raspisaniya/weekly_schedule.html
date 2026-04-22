@@ -68,7 +68,12 @@
                               cursor:grab;
                               user-select:none;
                               transition:opacity 0.2s, box-shadow 0.2s;">
-                    <div class="fw-bold" style="font-size:12px;">{{ cell.subject }}</div>
+                    <div class="fw-bold" style="font-size:12px;">
+                          {{ cell.subject }}
+                          {% if cell.group_number %}
+                            <span style="font-size:10px;opacity:0.7;">({{ cell.group_number }}-guruh)</span>
+                          {% endif %}
+                    </div>
                     <div style="font-size:11px;opacity:0.85;">{{ cell.teacher }}</div>
                     {% if cell.room %}
                       <div style="font-size:10px;opacity:0.7;">🏫 {{ cell.room }}</div>
