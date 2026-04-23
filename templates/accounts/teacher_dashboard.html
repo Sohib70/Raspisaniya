@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>O'quvchi kabineti</title>
+    <title>O'qituvchi kabineti</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f4ff; }
@@ -14,20 +14,24 @@
         .schedule-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 12px 12px 0 0; padding: 12px 20px; font-weight: 700; font-size: 1rem; }
         .day-cell { background: #2c3e50; color: white; font-weight: 700; text-align: center; vertical-align: middle; font-size: 0.85rem; writing-mode: vertical-lr; transform: rotate(180deg); padding: 8px 4px; min-width: 40px; }
         .time-cell { background: #5d6d7e; color: white; text-align: center; vertical-align: middle; font-size: 0.75rem; padding: 4px 6px; white-space: nowrap; min-width: 90px; }
-        .subject-cell { background: #eafbea; vertical-align: middle; text-align: center; padding: 6px 8px; }
+        .subject-cell { background: #eafbea; vertical-align: middle; text-align: center; padding: 6px 8px; cursor: pointer; transition: background 0.2s; }
+        .subject-cell:hover { background: #c8f0c8; }
         .subject-name { font-weight: 700; color: #1a5c2a; font-size: 0.82rem; }
-        .teacher-name { color: #444; font-size: 0.72rem; }
         .room-name { color: #1565c0; font-size: 0.7rem; font-weight: 600; }
+        .student-count { color: #555; font-size: 0.7rem; margin-top: 2px; }
         .empty-cell { background: #fafafa; }
         .week-nav { background: #1a252f; color: white; border-radius: 8px; padding: 8px 20px; font-weight: 700; min-width: 260px; text-align: center; font-size: 0.95rem; }
+        .student-list { max-height: 400px; overflow-y: auto; }
+        .student-item { padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+        .student-item:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
 
 <div class="topbar">
-    <h5>📚 O'quvchi kabineti</h5>
+    <h5>🎓 O'qituvchi kabineti</h5>
     <div class="d-flex align-items-center gap-3">
-        <span>👤 {{ student.first_name }} {{ student.last_name }}</span>
+        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
         <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
@@ -35,27 +39,25 @@
 
 <div class="container-fluid mt-4 px-4">
 
+    <!-- Info -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
-            <div class="col-md-3">
-                <div class="text-muted small">Guruh</div>
-                <div class="fw-bold">{{ student.group|default:"—" }}</div>
+            <div class="col-md-4">
+                <div class="text-muted small">O'qituvchi ID</div>
+                <div class="fw-bold">{{ teacher.teacher_id|default:"—" }}</div>
             </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Ta'lim tili</div>
-                <div class="fw-bold">{{ student.get_language_display }}</div>
+            <div class="col-md-4">
+                <div class="text-muted small">Fanlar</div>
+                <div class="fw-bold">{{ teacher.subjects.all|join:", " }}</div>
             </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Fanlar soni</div>
+            <div class="col-md-4">
+                <div class="text-muted small">Guruhlar soni</div>
                 <div class="fw-bold">{{ my_groups|length }} ta</div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">ID</div>
-                <div class="fw-bold">{{ student.student_id|default:"—" }}</div>
             </div>
         </div>
     </div>
 
+    <!-- Jadval -->
     <div class="card info-card mb-4">
         <div class="schedule-header">🗓 Haftalik jadvalim</div>
 
@@ -71,9 +73,7 @@
                     <tr style="background:#1a252f; color:white;">
                         <th class="text-center" style="width:42px;">Kun</th>
                         <th class="text-center" style="width:95px;">Vaqt</th>
-                        <th class="text-center">Fan</th>
-                        <th class="text-center">O'qituvchi</th>
-                        <th class="text-center">Xona</th>
+                        <th class="text-center">Fan / Xona</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -84,22 +84,21 @@
                         {% endif %}
                         <td class="time-cell">{{ row.time }}</td>
                         {% if row.info %}
-                        <td class="subject-cell">
+                        <td class="subject-cell"
+                            data-bs-toggle="modal"
+                            data-bs-target="#studentsModal"
+                            data-subject="{{ row.info.subject }}"
+                            data-room="{{ row.info.room }}"
+                            data-time="{{ row.time }}"
+                            data-day="{{ row.day }}"
+                            data-students='{{ row.info.students_json|safe }}'>
                             <div class="subject-name">{{ row.info.subject }}</div>
-                        </td>
-                        <td class="subject-cell" style="background:#f0f8f0;">
-                            <div class="teacher-name">{{ row.info.teacher }}</div>
-                        </td>
-                        <td class="subject-cell" style="background:#f0f4ff;">
                             {% if row.info.room %}
                             <div class="room-name">🏫 {{ row.info.room }}</div>
-                            {% else %}
-                            <div class="text-muted" style="font-size:0.7rem;">—</div>
                             {% endif %}
+                            <div class="student-count">👥 {{ row.info.students_count }} o'quvchi</div>
                         </td>
                         {% else %}
-                        <td class="empty-cell"></td>
-                        <td class="empty-cell"></td>
                         <td class="empty-cell"></td>
                         {% endif %}
                     </tr>
@@ -108,7 +107,61 @@
             </table>
         </div>
     </div>
-
 </div>
+
+<!-- Modal: O'quvchilar ro'yxati -->
+<div class="modal fade" id="studentsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#1a237e; color:white;">
+                <h6 class="modal-title" id="modalTitle">O'quvchilar ro'yxati</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="p-3 border-bottom" id="modalInfo" style="background:#f8f9fa; font-size:0.85rem;"></div>
+                <div class="student-list" id="studentsList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.getElementById('studentsModal').addEventListener('show.bs.modal', function(e) {
+    var btn = e.relatedTarget;
+    var subject = btn.dataset.subject;
+    var room = btn.dataset.room;
+    var time = btn.dataset.time;
+    var day = btn.dataset.day;
+
+    var students = [];
+    try {
+        students = JSON.parse(btn.dataset.students);
+    } catch(err) {
+        console.error("students JSON xatosi:", err, btn.dataset.students);
+    }
+
+    document.getElementById('modalTitle').textContent = subject + ' — o\'quvchilar';
+    document.getElementById('modalInfo').innerHTML =
+        '<b>📅 ' + day + '</b> | <b>⏰ ' + time + '</b>' +
+        (room ? ' | <b>🏫 ' + room + '</b>' : '') +
+        ' | <b>' + students.length + ' o\'quvchi</b>';
+
+    var list = document.getElementById('studentsList');
+    list.innerHTML = '';
+    if (students.length === 0) {
+        list.innerHTML = '<div class="p-3 text-muted">O\'quvchilar yo\'q</div>';
+    } else {
+        students.forEach(function(st, i) {
+            list.innerHTML +=
+                '<div class="student-item">' +
+                '<span class="text-muted me-2">' + (i + 1) + '.</span>' +
+                '<b>' + (st.first_name || '') + ' ' + (st.last_name || '') + '</b>'
+
+                '</div>';
+        });
+    }
+});
+</script>
 </body>
 </html>

@@ -285,7 +285,7 @@ def get_weekly_schedule_data(week_start=None):
 
     for grp in groups:
         subject_name = str(grp.course.subject)
-        teacher_name = str(grp.teacher)
+        teacher_name = f"{grp.teacher.first_name} {grp.teacher.last_name}"
 
         for sched in grp.schedule.filter(date__gte=week_start, date__lte=week_end):
             weekday = sched.date.weekday()

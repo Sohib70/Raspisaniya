@@ -4,6 +4,12 @@ from django.contrib.auth.models import User
 from django.contrib import messages
 from raspisaniya.models import Student, Teacher,CourseGroup
 from django.contrib.auth.decorators import login_required
+import json
+from datetime import timedelta, date as dt_date
+
+
+
+
 
 
 
@@ -167,26 +173,29 @@ def student_dashboard(request):
 def teacher_dashboard(request):
     try:
         teacher = request.user.teacher
-    except:
+    except Exception:
         messages.error(request, "Siz o'qituvchi emassiz")
         return redirect('login')
-
-    from datetime import timedelta, date as dt_date
 
     week_str = request.GET.get('week')
     if week_str:
         try:
             week_start = dt_date.fromisoformat(week_str)
             week_start = week_start - timedelta(days=week_start.weekday())
-        except:
+        except Exception:
             week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
     else:
         week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
+
     week_end = week_start + timedelta(days=5)
 
     PARA_TIMES_LIST = [
-        ("08:30", "09:50"), ("10:00", "11:20"), ("12:00", "13:20"),
-        ("13:30", "14:50"), ("15:00", "16:20"), ("16:30", "17:50"),
+        ("08:30", "09:50"),
+        ("10:00", "11:20"),
+        ("12:00", "13:20"),
+        ("13:30", "14:50"),
+        ("15:00", "16:20"),
+        ("16:30", "17:50"),
     ]
     WEEKDAY_LIST = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
 
@@ -205,15 +214,25 @@ def teacher_dashboard(request):
             if not st:
                 continue
             start_str = st.strftime("%H:%M")
-            para_idx = next((i for i, (s, e) in enumerate(PARA_TIMES_LIST) if s == start_str), None)
+            para_idx = next(
+                (i for i, (s, _) in enumerate(PARA_TIMES_LIST) if s == start_str),
+                None
+            )
             if para_idx is None:
                 continue
             key = (wd, para_idx)
             if key not in grid:
+                # students ni JSON string sifatida saqlaymiz
+                students_data = list(
+                    grp.students.values('first_name', 'last_name', )
+                )
                 grid[key] = {
                     'subject': str(grp.course.subject),
-                    'students_count': grp.students.count(),
                     'room': str(grp.room) if grp.room else '',
+                    'sched_id': sched.pk,
+                    'group_pk': grp.pk,
+                    'students_json': json.dumps(students_data, ensure_ascii=False),
+                    'students_count': len(students_data),
                 }
 
     table_data = []
