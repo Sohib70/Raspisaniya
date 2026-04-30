@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Davomat jadvali — {{ group }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f4ff; }
+        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .topbar h5 { margin: 0; font-weight: 700; }
+        .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 10px 10px 0 0; padding: 10px 18px; font-weight: 700; }
+        .att-present { background: #d4edda; color: #155724; font-weight: 700; text-align: center; font-size: 0.85rem; }
+        .att-absent  { background: #f8d7da; color: #721c24; font-weight: 700; text-align: center; font-size: 0.85rem; }
+        .att-none    { background: #f5f5f5; color: #aaa; text-align: center; font-size: 0.8rem; }
+        th.date-th   { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72rem; padding: 6px 4px; white-space: nowrap; background: #e8eaf6; }
+        td, th { vertical-align: middle !important; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h5>📋 Davomat jadvali</h5>
+    <div class="d-flex align-items-center gap-3">
+        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-sm btn-outline-light">← Guruhga qaytish</a>
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
+    </div>
+</div>
+
+<div class="container-fluid mt-4 px-4">
+
+    <!-- Guruh info -->
+    <div class="card info-card mb-3 p-3">
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="text-muted small">Fan</div>
+                <div class="fw-bold">{{ group.course.subject }}</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Guruh</div>
+                <div class="fw-bold">{{ group.group_number }}-guruh</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Jami darslar</div>
+                <div class="fw-bold">{{ schedules|length }} ta</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Izoh -->
+    <div class="d-flex gap-3 mb-3 align-items-center" style="font-size:0.85rem;">
+        <span class="px-3 py-1 rounded" style="background:#d4edda; color:#155724; font-weight:600;">✓ Keldi</span>
+        <span class="px-3 py-1 rounded" style="background:#f8d7da; color:#721c24; font-weight:600;">✗ Kelmadi</span>
+        <span class="px-3 py-1 rounded" style="background:#f5f5f5; color:#aaa;">— Belgilanmagan</span>
+        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-auto">📝 Baholar</a>
+    </div>
+
+    <!-- Davomat jadvali -->
+    <div class="card info-card mb-4">
+        <div class="section-header">Davomat jadvali — {{ group.course.subject }} {{ group.group_number }}-guruh</div>
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0" style="font-size:0.82rem;">
+                <thead>
+                    <tr>
+                        <th style="min-width:160px;">#  Talaba</th>
+                        {% for sched in schedules %}
+                        <th class="date-th">
+                            <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
+                               style="color:#1a237e; text-decoration:none;"
+                               title="{{ sched.date }} uchun davomatni tahrirlash">
+                                {{ sched.date|date:"d.m" }}<br>
+                                <span style="font-size:0.65rem;">{{ sched.lesson_number }}-dars</span>
+                            </a>
+                        </th>
+                        {% endfor %}
+                        <th class="text-center" style="min-width:70px;">Keldi</th>
+                        <th class="text-center" style="min-width:70px;">Kelmadi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td>
+                            <span class="text-muted me-1">{{ forloop.counter }}.</span>
+                            <b>{{ row.student.last_name }} {{ row.student.first_name }}</b>
+                        </td>
+                        {% for cell in row.cells %}
+                        <td class="{% if cell == 'present' %}att-present{% elif cell == 'absent' %}att-absent{% else %}att-none{% endif %}">
+                            {% if cell == 'present' %}✓{% elif cell == 'absent' %}✗{% else %}—{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>
+                        <td class="text-center fw-bold" style="color:#721c24;">{{ row.missed }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="100" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

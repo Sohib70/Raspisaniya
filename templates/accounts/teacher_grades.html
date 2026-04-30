@@ -1,0 +1,176 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baholar — {{ group }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f4ff; }
+        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .topbar h5 { margin: 0; font-weight: 700; }
+        .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 10px 10px 0 0; padding: 10px 18px; font-weight: 700; }
+        .grade-input { width: 80px; text-align: center; border-radius: 8px; border: 1px solid #ccc; padding: 4px 6px; font-size: 0.9rem; font-weight: 600; }
+        .grade-input:focus { border-color: #1565c0; outline: none; box-shadow: 0 0 0 2px rgba(21,101,192,0.15); }
+        .grade-input.midterm:focus { border-color: #e67e22; box-shadow: 0 0 0 2px rgba(230,126,34,0.15); }
+        .grade-input.current:focus { border-color: #27ae60; box-shadow: 0 0 0 2px rgba(39,174,96,0.15); }
+        .grade-input.final:focus { border-color: #8e44ad; box-shadow: 0 0 0 2px rgba(142,68,173,0.15); }
+        td, th { vertical-align: middle !important; }
+        .col-label { font-size: 0.75rem; color: #888; display: block; margin-bottom: 2px; }
+        .messages-area { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h5>📝 Baholar kiritish</h5>
+    <div class="d-flex align-items-center gap-3">
+        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-sm btn-outline-light">← Guruhga qaytish</a>
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
+    </div>
+</div>
+
+<div class="container-fluid mt-4 px-4">
+
+    {% if messages %}
+    <div class="messages-area">
+        {% for msg in messages %}
+        <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
+            {{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Guruh info -->
+    <div class="card info-card mb-3 p-3">
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="text-muted small">Fan</div>
+                <div class="fw-bold">{{ group.course.subject }}</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Guruh</div>
+                <div class="fw-bold">{{ group.group_number }}-guruh</div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted small">Talabalar soni</div>
+                <div class="fw-bold">{{ students_grades|length }} ta</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Izoh -->
+    <div class="d-flex gap-3 mb-3 align-items-center" style="font-size:0.82rem;">
+        <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (0–20)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (0–30)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (0–50)</span>
+        <span class="text-muted ms-2">Bo'sh qoldirish = baho yo'q</span>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="card info-card mb-4">
+            <div class="section-header">Baholar jadvali — {{ group.course.subject }} {{ group.group_number }}-guruh</div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" style="font-size:0.88rem;">
+                    <thead style="background:#f8f9fa;">
+                        <tr>
+                            <th style="width:40px;" class="text-center">#</th>
+                            <th>Ism Familiya</th>
+                            <th>ID</th>
+                            <th class="text-center" style="min-width:100px;">
+                                <span style="color:#e67e22;">Oraliq</span>
+                            </th>
+                            <th class="text-center" style="min-width:100px;">
+                                <span style="color:#27ae60;">Joriy</span>
+                            </th>
+                            <th class="text-center" style="min-width:100px;">
+                                <span style="color:#8e44ad;">Yakuniy</span>
+                            </th>
+                            <th class="text-center" style="min-width:80px;">O'rtacha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in students_grades %}
+                        <tr>
+                            <td class="text-center text-muted">{{ forloop.counter }}</td>
+                            <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
+                            <td class="text-muted">{{ row.student.student_id|default:"—" }}</td>
+                            <td class="text-center">
+                                <input type="number"
+                                       name="midterm_{{ row.student.pk }}"
+                                       class="grade-input midterm"
+                                       min="0" max="20" step="0.5"
+                                       placeholder="—"
+                                       value="{% if row.grade and row.grade.midterm is not None %}{{ row.grade.midterm }}{% endif %}">
+                            </td>
+                            <td class="text-center">
+                                <input type="number"
+                                       name="current_{{ row.student.pk }}"
+                                       class="grade-input current"
+                                       min="0" max="300" step="0.5"
+                                       placeholder="—"
+                                       value="{% if row.grade and row.grade.current is not None %}{{ row.grade.current }}{% endif %}">
+                            </td>
+                            <td class="text-center">
+                                <input type="number"
+                                       name="final_{{ row.student.pk }}"
+                                       class="grade-input final"
+                                       min="0" max="500" step="0.5"
+                                       placeholder="—"
+                                       value="{% if row.grade and row.grade.final is not None %}{{ row.grade.final }}{% endif %}">
+                            </td>
+                            <td class="text-center fw-bold" id="avg_{{ row.student.pk }}" style="color:#1a237e;">
+                                {% if row.grade %}
+                                    {% with m=row.grade.midterm c=row.grade.current f=row.grade.final %}
+                                    {% if m is not None and c is not None and f is not None %}
+                                        {{ m|add:c|add:f }}
+                                    {% else %}—{% endif %}
+                                    {% endwith %}
+                                {% else %}—{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="d-flex gap-3 mb-5">
+            <button type="submit" class="btn btn-success px-5">💾 Saqlash</button>
+            <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-outline-secondary">Bekor qilish</a>
+        </div>
+    </form>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Real-vaqt o'rtacha hisoblash
+document.querySelectorAll('.grade-input').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+        var row = this.closest('tr');
+        var pk = this.name.split('_').pop();
+        var m = parseFloat(row.querySelector('[name="midterm_' + pk + '"]').value);
+        var c = parseFloat(row.querySelector('[name="current_' + pk + '"]').value);
+        var f = parseFloat(row.querySelector('[name="final_' + pk + '"]').value);
+        var avgCell = document.getElementById('avg_' + pk);
+        if (!isNaN(m) && !isNaN(c) && !isNaN(f)) {
+            avgCell.textContent = ((m + c + f) / 3).toFixed(1);
+            avgCell.style.color = (m + c + f) / 3 >= 55 ? '#155724' : '#721c24';
+        } else {
+            avgCell.textContent = '—';
+            avgCell.style.color = '#1a237e';
+        }
+    });
+});
+</script>
+</body>
+</html>

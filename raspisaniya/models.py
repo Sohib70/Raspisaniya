@@ -104,3 +104,22 @@ class GroupSchedule(models.Model):
         return f"{self.group} — {self.date}"
 
 
+class Attendance(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    schedule = models.ForeignKey(GroupSchedule, on_delete=models.CASCADE)
+    is_present = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('student', 'schedule')
+
+# Baho
+class Grade(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    course_group = models.ForeignKey(CourseGroup, on_delete=models.CASCADE)
+    midterm = models.FloatField(null=True, blank=True)   # Oraliq
+    current = models.FloatField(null=True, blank=True)   # Joriy
+    final = models.FloatField(null=True, blank=True)     # Yakuniy
+
+    class Meta:
+        unique_together = ('student', 'course_group')
+

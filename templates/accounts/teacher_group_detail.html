@@ -1,0 +1,141 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guruh: {{ group }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f4ff; }
+        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
+        .topbar h5 { margin: 0; font-weight: 700; }
+        .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 10px 10px 0 0; padding: 10px 18px; font-weight: 700; }
+        .badge-came { background: #d4edda; color: #155724; font-weight: 600; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+        .badge-missed { background: #f8d7da; color: #721c24; font-weight: 600; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
+        .grade-val { font-weight: 700; color: #1a237e; }
+        .progress-bar-custom { height: 6px; border-radius: 4px; background: #e0e0e0; overflow: hidden; margin-top: 4px; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<div class="topbar">
+    <h5>🎓 O'qituvchi kabineti</h5>
+    <div class="d-flex align-items-center gap-3">
+        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-light">← Dashboard</a>
+        <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
+        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
+    </div>
+</div>
+
+<div class="container-fluid mt-4 px-4">
+
+    <!-- Guruh ma'lumoti -->
+    <div class="card info-card mb-3 p-3">
+        <div class="row text-center">
+            <div class="col-md-3">
+                <div class="text-muted small">Fan</div>
+                <div class="fw-bold">{{ group.course.subject }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Guruh</div>
+                <div class="fw-bold">{{ group.group_number }}-guruh</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Jami darslar</div>
+                <div class="fw-bold">{{ total_lessons }} ta</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Talabalar</div>
+                <div class="fw-bold">{{ students_data|length }} ta</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Havolalar -->
+    <div class="d-flex gap-2 mb-3">
+        <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-primary">
+            📋 Davomat jadvali
+        </a>
+        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success">
+            📝 Baholar kiritish
+        </a>
+    </div>
+
+    <!-- Talabalar jadvali -->
+    <div class="card info-card mb-4">
+        <div class="section-header">👥 Talabalar ro'yxati</div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="font-size: 0.88rem;">
+                <thead style="background:#f8f9fa;">
+                    <tr>
+                        <th style="width:40px;" class="text-center">#</th>
+                        <th>Ism Familiya</th>
+                        <th>ID</th>
+                        <th class="text-center">Keldi</th>
+                        <th class="text-center">Kelmadi</th>
+                        <th class="text-center" style="width:130px;">Davomat %</th>
+                        <th class="text-center">Oraliq</th>
+                        <th class="text-center">Joriy</th>
+                        <th class="text-center">Yakuniy</th>
+                        <th class="text-center">Davomat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in students_data %}
+                    <tr>
+                        <td class="text-center text-muted">{{ forloop.counter }}</td>
+                        <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
+                        <td class="text-muted">{{ row.student.student_id|default:"—" }}</td>
+                        <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
+                        <td class="text-center"><span class="badge-missed">{{ row.missed }}</span></td>
+                        <td class="text-center">
+                            {% if row.percent is not None %}
+                                <span class="grade-val">{{ row.percent }}%</span>
+                                <div class="progress-bar-custom">
+                                    <div class="progress-fill" style="width:{{ row.percent }}%; background:{% if row.percent >= 70 %}#28a745{% elif row.percent >= 50 %}#ffc107{% else %}#dc3545{% endif %};"></div>
+                                </div>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.grade and row.grade.midterm is not None %}
+                                <span class="grade-val">{{ row.grade.midterm }}</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.grade and row.grade.current is not None %}
+                                <span class="grade-val">{{ row.grade.current }}</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if row.grade and row.grade.final is not None %}
+                                <span class="grade-val">{{ row.grade.final }}</span>
+                            {% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% for sched in schedules %}
+                            <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
+                               class="btn btn-sm btn-outline-secondary py-0 px-1"
+                               style="font-size:0.7rem;" title="{{ sched.date }}">
+                                {{ sched.date|date:"d.m" }}
+                            </a>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

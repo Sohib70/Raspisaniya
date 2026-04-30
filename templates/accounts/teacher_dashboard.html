@@ -57,6 +57,31 @@
         </div>
     </div>
 
+    <!-- Guruhlar ro'yxati -->
+    <div class="card info-card mb-3">
+        <div class="schedule-header">📚 Mening guruhlarim</div>
+        <div class="p-3">
+            <div class="row g-2">
+                {% for grp in my_groups %}
+                <div class="col-md-4 col-sm-6">
+                    <div class="border rounded p-3" style="background:white;">
+                        <div class="fw-bold" style="color:#1a237e;">{{ grp.course.subject }}</div>
+                        <div class="text-muted" style="font-size:0.8rem;">{{ grp.group_number }}-guruh &bull; {{ grp.students.count }} talaba</div>
+                        {% if grp.room %}<div class="text-muted" style="font-size:0.78rem;">🏫 {{ grp.room }}</div>{% endif %}
+                        <div class="d-flex gap-1 mt-2 flex-wrap">
+                            <a href="{% url 'teacher_group_detail' grp.pk %}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">👥 Guruh</a>
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}" class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">📋 Davomat</a>
+                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">📝 Baholar</a>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-muted p-2">Guruhlar yo'q</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <!-- Jadval -->
     <div class="card info-card mb-4">
         <div class="schedule-header">🗓 Haftalik jadvalim</div>
@@ -91,6 +116,8 @@
                             data-room="{{ row.info.room }}"
                             data-time="{{ row.time }}"
                             data-day="{{ row.day }}"
+                            data-group-pk="{{ row.info.group_pk }}"
+                            data-sched-id="{{ row.info.sched_id }}"
                             data-students='{{ row.info.students_json|safe }}'>
                             <div class="subject-name">{{ row.info.subject }}</div>
                             {% if row.info.room %}
@@ -156,11 +183,18 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
             list.innerHTML +=
                 '<div class="student-item">' +
                 '<span class="text-muted me-2">' + (i + 1) + '.</span>' +
-                '<b>' + (st.first_name || '') + ' ' + (st.last_name || '') + '</b>'
-
+                '<b>' + (st.first_name || '') + ' ' + (st.last_name || '') + '</b>' +
                 '</div>';
         });
     }
+    var groupPk = btn.dataset.groupPk;
+    var schedId = btn.dataset.schedId;
+    list.innerHTML +=
+        '<div class="p-3 border-top d-flex gap-2 flex-wrap">' +
+        '<a href="/teacher/group/' + groupPk + '/" class="btn btn-sm btn-outline-primary">👥 Guruh</a>' +
+        '<a href="/teacher/group/' + groupPk + '/attendance/' + schedId + '/" class="btn btn-sm btn-outline-warning">📋 Davomat</a>' +
+        '<a href="/teacher/group/' + groupPk + '/grades/" class="btn btn-sm btn-outline-success">📝 Baholar</a>' +
+        '</div>';
 });
 </script>
 </body>
