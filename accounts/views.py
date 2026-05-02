@@ -119,6 +119,7 @@ def student_dashboard(request):
                 grid[key] = {
                     'subject': str(grp.course.subject),
                     'teacher': str(grp.teacher),
+                    'teacher_name': f"{grp.teacher.first_name} {grp.teacher.last_name}",
                     'room': str(grp.room) if grp.room else '',
                 }
 
@@ -138,6 +139,33 @@ def student_dashboard(request):
     prev_week = (week_start - timedelta(weeks=1)).isoformat()
     next_week = (week_start + timedelta(weeks=1)).isoformat()
 
+    # Baholar
+    from raspisaniya.models import Grade, Attendance
+    grade_map = {g.course_group_id: g for g in Grade.objects.filter(student=student)}
+
+    # Davomat va qoldirilgan darslar
+    groups_data = []
+    for grp in my_groups:
+        total = grp.schedule.count()
+        came = Attendance.objects.filter(student=student, schedule__group=grp, is_present=True).count()
+        missed_list = list(
+            grp.schedule.filter(
+                attendance__student=student,
+                attendance__is_present=False
+            ).order_by('date').values('date', 'lesson_number')
+        )
+        marked = Attendance.objects.filter(student=student, schedule__group=grp).count()
+        percent = round(came / marked * 100) if marked > 0 else None
+        groups_data.append({
+            'group': grp,
+            'total': total,
+            'came': came,
+            'missed': len(missed_list),
+            'missed_list': missed_list,
+            'percent': percent,
+            'grade': grade_map.get(grp.pk),
+        })
+
     return render(request, "accounts/student_dashboard.html", {
         "student": student,
         "my_groups": my_groups,
@@ -146,6 +174,7 @@ def student_dashboard(request):
         "week_end_str": week_end.strftime("%d.%m.%Y"),
         "prev_week": prev_week,
         "next_week": next_week,
+        "groups_data": groups_data,
     })
 
 

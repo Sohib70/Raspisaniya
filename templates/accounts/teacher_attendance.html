@@ -78,7 +78,6 @@
                 <div>
                     <span class="text-muted me-2">{{ forloop.counter }}.</span>
                     <span class="student-name"><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></span>
-                    <span class="text-muted ms-2" style="font-size:0.8rem;">{{ row.student.student_id|default:"" }}</span>
                 </div>
                 <div class="toggle-btn">
                     <input type="radio" name="present_{{ row.student.pk }}" id="came_{{ row.student.pk }}" value="1"

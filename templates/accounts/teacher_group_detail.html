@@ -74,8 +74,7 @@
                     <tr>
                         <th style="width:40px;" class="text-center">#</th>
                         <th>Ism Familiya</th>
-                        <th>ID</th>
-                        <th class="text-center">Keldi</th>
+                                                <th class="text-center">Keldi</th>
                         <th class="text-center">Kelmadi</th>
                         <th class="text-center" style="width:130px;">Davomat %</th>
                         <th class="text-center">Oraliq</th>
@@ -89,8 +88,7 @@
                     <tr>
                         <td class="text-center text-muted">{{ forloop.counter }}</td>
                         <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
-                        <td class="text-muted">{{ row.student.student_id|default:"—" }}</td>
-                        <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
+                                                <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
                         <td class="text-center"><span class="badge-missed">{{ row.missed }}</span></td>
                         <td class="text-center">
                             {% if row.percent is not None %}

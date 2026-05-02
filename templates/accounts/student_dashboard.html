@@ -11,7 +11,7 @@
         .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
         .topbar h5 { margin: 0; font-weight: 700; }
         .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        .schedule-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 12px 12px 0 0; padding: 12px 20px; font-weight: 700; font-size: 1rem; }
+        .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 12px 12px 0 0; padding: 12px 20px; font-weight: 700; font-size: 1rem; }
         .day-cell { background: #2c3e50; color: white; font-weight: 700; text-align: center; vertical-align: middle; font-size: 0.85rem; writing-mode: vertical-lr; transform: rotate(180deg); padding: 8px 4px; min-width: 40px; }
         .time-cell { background: #5d6d7e; color: white; text-align: center; vertical-align: middle; font-size: 0.75rem; padding: 4px 6px; white-space: nowrap; min-width: 90px; }
         .subject-cell { background: #eafbea; vertical-align: middle; text-align: center; padding: 6px 8px; }
@@ -20,6 +20,14 @@
         .room-name { color: #1565c0; font-size: 0.7rem; font-weight: 600; }
         .empty-cell { background: #fafafa; }
         .week-nav { background: #1a252f; color: white; border-radius: 8px; padding: 8px 20px; font-weight: 700; min-width: 260px; text-align: center; font-size: 0.95rem; }
+        .grade-box { border-radius: 10px; padding: 14px 18px; background: white; box-shadow: 0 1px 6px rgba(0,0,0,0.07); height: 100%; }
+        .grade-label { font-size: 0.72rem; color: #888; margin-bottom: 2px; }
+        .grade-val { font-size: 1.3rem; font-weight: 800; }
+        .progress-bar-custom { height: 7px; border-radius: 4px; background: #e0e0e0; overflow: hidden; margin-top: 6px; }
+        .progress-fill { height: 100%; border-radius: 4px; }
+        .badge-missed { background: #f8d7da; color: #721c24; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+        .badge-came { background: #d4edda; color: #155724; font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+        .subject-card { border-left: 4px solid #1565c0; border-radius: 0 10px 10px 0; background: white; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 1px 6px rgba(0,0,0,0.06); }
     </style>
 </head>
 <body>
@@ -35,6 +43,7 @@
 
 <div class="container-fluid mt-4 px-4">
 
+    <!-- Talaba info -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
             <div class="col-md-3">
@@ -46,18 +55,94 @@
                 <div class="fw-bold">{{ student.get_language_display }}</div>
             </div>
             <div class="col-md-3">
-                <div class="text-muted small">Fanlar soni</div>
-                <div class="fw-bold">{{ my_groups|length }} ta</div>
-            </div>
-            <div class="col-md-3">
                 <div class="text-muted small">ID</div>
                 <div class="fw-bold">{{ student.student_id|default:"—" }}</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Fanlar soni</div>
+                <div class="fw-bold">{{ my_groups|length }} ta</div>
             </div>
         </div>
     </div>
 
+    <!-- Fanlar: baholar va davomat -->
+    {% if groups_data %}
+    <div class="card info-card mb-3">
+        <div class="section-header">📊 Fanlarim — baholar va davomat</div>
+        <div class="p-3">
+            {% for row in groups_data %}
+            <div class="subject-card">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+
+                    <!-- Fan nomi -->
+                    <div style="min-width:160px;">
+                        <div class="fw-bold" style="color:#1a237e; font-size:0.95rem;">{{ row.group.course.subject }}</div>
+                        <div class="text-muted" style="font-size:0.78rem;">
+                            {{ row.group.teacher.first_name }} {{ row.group.teacher.last_name }} &bull; {{ row.group.group_number }}-guruh
+                        </div>
+                    </div>
+
+                    <!-- Baholar -->
+                    <div class="d-flex gap-2 flex-wrap">
+                        <div class="grade-box text-center" style="min-width:80px;">
+                            <div class="grade-label">Oraliq</div>
+                            <div class="grade-val" style="color:#e67e22;">
+                                {% if row.grade and row.grade.midterm is not None %}{{ row.grade.midterm }}{% else %}<span style="color:#ccc;">—</span>{% endif %}
+                            </div>
+                        </div>
+                        <div class="grade-box text-center" style="min-width:80px;">
+                            <div class="grade-label">Joriy</div>
+                            <div class="grade-val" style="color:#27ae60;">
+                                {% if row.grade and row.grade.current is not None %}{{ row.grade.current }}{% else %}<span style="color:#ccc;">—</span>{% endif %}
+                            </div>
+                        </div>
+                        <div class="grade-box text-center" style="min-width:80px;">
+                            <div class="grade-label">Yakuniy</div>
+                            <div class="grade-val" style="color:#8e44ad;">
+                                {% if row.grade and row.grade.final is not None %}{{ row.grade.final }}{% else %}<span style="color:#ccc;">—</span>{% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Davomat -->
+                    <div style="min-width:180px;">
+                        <div class="grade-label mb-1">Davomat</div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="badge-came">✓ {{ row.came }} keldi</span>
+                            <span class="badge-missed">✗ {{ row.missed }} kelmadi</span>
+                        </div>
+                        {% if row.percent is not None %}
+                        <div class="progress-bar-custom mt-2">
+                            <div class="progress-fill" style="width:{{ row.percent }}%; background:{% if row.percent >= 70 %}#28a745{% elif row.percent >= 50 %}#ffc107{% else %}#dc3545{% endif %};"></div>
+                        </div>
+                        <div style="font-size:0.72rem; color:#666; margin-top:2px;">{{ row.percent }}%</div>
+                        {% endif %}
+
+                        <!-- Qoldirilgan darslar -->
+                        {% if row.missed_list %}
+                        <div class="mt-2">
+                            <div class="grade-label">Qoldirilgan darslar:</div>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                {% for d in row.missed_list %}
+                                <span style="background:#ffeaea; color:#c0392b; font-size:0.68rem; padding:1px 6px; border-radius:4px; border:1px solid #f5c6cb;">
+                                    {{ d.date|date:"d.m" }} ({{ d.lesson_number }}-dars)
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Haftalik jadval -->
     <div class="card info-card mb-4">
-        <div class="schedule-header">🗓 Haftalik jadvalim</div>
+        <div class="section-header">🗓 Haftalik jadvalim</div>
 
         <div class="d-flex align-items-center justify-content-center gap-3 py-3">
             <a href="?week={{ prev_week }}" class="btn btn-outline-primary btn-sm">← Oldingi hafta</a>
@@ -88,7 +173,7 @@
                             <div class="subject-name">{{ row.info.subject }}</div>
                         </td>
                         <td class="subject-cell" style="background:#f0f8f0;">
-                            <div class="teacher-name">{{ row.info.teacher }}</div>
+                            <div class="teacher-name">{{ row.info.teacher_name }}</div>
                         </td>
                         <td class="subject-cell" style="background:#f0f4ff;">
                             {% if row.info.room %}
@@ -110,5 +195,6 @@
     </div>
 
 </div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
