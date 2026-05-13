@@ -1956,7 +1956,8 @@ def weekly_schedule_excel(request):
                 info = grid.get(key)
                 if info:
                     room_str = f"\n🏫 {info['room']}" if info.get('room') else ''
-                    cell.value = f"{info['subject']}\n{info['teacher']}{room_str}"
+                    group_str = f" ({info['group_number']}-guruh)" if info.get('group_number') else ''
+                    cell.value = f"{info['subject']}{group_str}\n{info['teacher']}{room_str}"
                     cell.fill = PatternFill('solid', start_color=get_subject_color(info['subject']))
                     cell.font = Font(name='Arial', size=9, bold=True)
                 else:
