@@ -9,12 +9,29 @@ class SubjectForm(forms.ModelForm):
 
 
 class TeacherForm(forms.ModelForm):
+    teacher_id = forms.CharField(
+        required=False,
+        label="O'qituvchi ID",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Masalan: T-3'})
+    )
+
     class Meta:
         model = Teacher
-        fields = ['first_name', 'last_name', 'subjects']
+        fields = ['first_name', 'last_name', 'teacher_id', 'subjects']
         widgets = {
             'subjects': forms.CheckboxSelectMultiple(),
         }
+
+    def save(self, commit=True):
+        teacher = super().save(commit=False)
+        new_id = self.cleaned_data.get('teacher_id', '').strip()
+        # Bo'sh bo'lsa — eski ID ni saqlab qolamiz
+        if new_id:
+            teacher.teacher_id = new_id
+        if commit:
+            teacher.save()
+            self._save_m2m()
+        return teacher
 
 
 class StudentForm(forms.ModelForm):

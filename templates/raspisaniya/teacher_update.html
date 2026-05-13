@@ -1,0 +1,102 @@
+{% extends 'raspisaniya/base.html' %}
+{% load widget_tweaks %}
+{% block content %}
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+.form-page { font-family: 'Outfit', sans-serif; max-width: 780px; margin: 0 auto; padding: 0 16px 60px; }
+.form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; padding-bottom: 18px; border-bottom: 2px solid #f0f0f0; }
+.form-title { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; display: flex; align-items: center; gap: 10px; }
+.form-title .icon { width: 38px; height: 38px; background: linear-gradient(135deg, #f093fb, #f5576c); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.form-card { background: white; border-radius: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); overflow: hidden; }
+.form-section { padding: 24px 28px; border-bottom: 1px solid #f5f5f5; }
+.form-section:last-child { border-bottom: none; }
+.section-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #9ca3af; margin-bottom: 16px; }
+.field-group { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.field label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.field label .hint { font-weight: 400; color: #9ca3af; font-size: 0.73rem; }
+.field input { width: 100%; padding: 10px 13px; border: 1.5px solid #e5e7eb; border-radius: 10px; font-family: 'Outfit', sans-serif; font-size: 0.88rem; color: #1f2937; background: #fafafa; transition: all 0.2s; outline: none; }
+.field input:focus { border-color: #f5576c; background: white; box-shadow: 0 0 0 3px rgba(245,87,108,0.1); }
+.field .note { font-size: 0.72rem; color: #9ca3af; margin-top: 4px; }
+.id-current { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px 13px; font-weight: 700; color: #166534; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+.subjects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.subject-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; background: #fafafa; }
+.subject-item:hover { border-color: #f5576c; background: #fff5f5; }
+.subject-item input[type="checkbox"] { display: none; }
+.check-box { width: 17px; height: 17px; border: 2px solid #d1d5db; border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-size: 0.65rem; color: white; }
+.subject-item input:checked ~ .check-box { background: #f5576c; border-color: #f5576c; }
+.subject-item input:checked ~ .check-box::after { content: '✓'; }
+.subj-name { font-size: 0.83rem; color: #374151; font-weight: 500; }
+.form-actions { padding: 20px 28px; display: flex; gap: 10px; background: #fafafa; border-top: 1px solid #f0f0f0; }
+.btn-save { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; border: none; padding: 11px 26px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(245,87,108,0.35); }
+.btn-save:hover { transform: translateY(-1px); }
+.btn-back { background: white; color: #6b7280; border: 1.5px solid #e5e7eb; padding: 11px 20px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; text-decoration: none; transition: all 0.2s; }
+</style>
+
+<div class="form-page">
+    <div class="form-header">
+        <div class="form-title">
+            <div class="icon">✏️</div>
+            {{ teacher.first_name }} — tahrirlash
+        </div>
+    </div>
+
+    {% if messages %}{% for message in messages %}<div class="alert alert-danger mb-3">{{ message }}</div>{% endfor %}{% endif %}
+
+    <div class="form-card">
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="form-section">
+                <div class="section-label">Shaxsiy ma'lumotlar</div>
+                <div class="field-group">
+                    <div class="field">
+                        <label>To'liq ism</label>
+                        <input type="text" name="first_name" value="{{ teacher.first_name }}" placeholder="To'liq ism" required>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-label">Teacher ID</div>
+                <div class="field-group">
+                    <div class="field">
+                        <label>Mavjud ID</label>
+                        <div class="id-current">🔑 {{ teacher.teacher_id|default:"ID yo'q" }}</div>
+                        <div class="note">Hozirgi tizimga kirish ID si</div>
+                    </div>
+                    <div class="field">
+                        <label>Yangi ID <span class="hint">— o'zgartirmasangiz bo'sh qoldiring</span></label>
+                        <input type="text" name="teacher_id" placeholder="Bo'sh qolsa eski ID saqlanadi" value="">
+                        <div class="note">✏️ Faqat o'zgartirmoqchi bo'lsangiz yozing</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="section-label">O'qitiladigan fanlar</div>
+                {% if subjects %}
+                <div class="subjects-grid">
+                    {% for subj in subjects %}
+                    <label class="subject-item">
+                        <input type="checkbox" name="subjects" value="{{ subj.id }}" {% if subj.id in selected_subjects %}checked{% endif %}>
+                        <div class="check-box"></div>
+                        <span class="subj-name">{{ subj.name }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fan yo'q</p>
+                {% endif %}
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn-save">💾 Saqlash</button>
+                <a href="{% url 'teacher_list' %}" class="btn-back">← Ortga</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

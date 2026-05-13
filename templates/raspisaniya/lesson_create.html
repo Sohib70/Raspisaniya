@@ -171,16 +171,16 @@ document.addEventListener('DOMContentLoaded', function() {
     {# Guruhlar #}
     {% for gdata in all_groups %}
     {% with group_idx=forloop.counter0 student_count=gdata.students|length %}
-    <div class="border rounded p-3 mb-4 {% if student_count < 8 %}border-danger bg-danger bg-opacity-10{% else %}bg-light{% endif %}"
+    <div class="border rounded p-3 mb-4 {% if student_count < 10 %}border-danger bg-warning bg-opacity-25{% else %}bg-light{% endif %}"
          id="group_card_{{ group_idx }}">
 
-        <h5 id="group_title_{{ group_idx }}" class="{% if student_count < 8 %}text-danger{% else %}text-secondary{% endif %}">
+        <h5 id="group_title_{{ group_idx }}" class="{% if student_count < 10 %}text-danger{% else %}text-secondary{% endif %}">
             {{ forloop.counter }}-Guruh
-            <span class="badge {% if student_count < 8 %}bg-danger{% else %}bg-primary{% endif %}" id="badge_{{ group_idx }}">
+            <span class="badge {% if student_count < 10 %}bg-danger{% else %}bg-primary{% endif %}" id="badge_{{ group_idx }}">
                 {{ student_count }} ta o'quvchi
             </span>
             <span class="badge bg-info text-dark">{{ gdata.lang_name }}</span>
-            <span class="badge bg-danger" id="warn_{{ group_idx }}" {% if student_count >= 8 %}style="display:none;"{% endif %}>⚠ 8 tadan kam!</span>
+            <span class="badge bg-danger" id="warn_{{ group_idx }}" {% if student_count >= 10 %}style="display:none;"{% endif %}>⚠ 10 tadan kam! Boshqa guruhdan talaba qo'shing</span>
         </h5>
 
         {# O'qituvchi #}
@@ -218,8 +218,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="hidden" name="students_{{ group_idx }}" value="{{ student.id }}">
                     <span class="me-2 text-muted">{{ forloop.counter }}.</span>
                     <span>{{ student }}</span>
+                    <select class="form-select form-select-sm ms-auto me-1" style="max-width:130px;"
+                            onchange="moveStudentToGroup({{ group_idx }}, {{ student.id }}, '{{ student }}', this)">
+                        <option value="">— Ko'chirish —</option>
+                        {% for og in all_groups %}
+                        {% if forloop.counter0 != group_idx %}
+                        <option value="{{ forloop.counter0 }}">{{ forloop.counter }}-Guruh ({{ og.lang_name }})</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
                     <button type="button"
-                            class="btn btn-sm btn-outline-danger ms-auto px-2 py-0"
+                            class="btn btn-sm btn-outline-danger px-2 py-0"
                             onclick="removeStudent({{ group_idx }}, {{ student.id }}, '{{ student }}')">✕</button>
                 </div>
                 {% endfor %}
@@ -355,18 +364,18 @@ function updateGroupUI(groupIdx) {
     const warn = document.getElementById(`warn_${groupIdx}`);
     const card = document.getElementById(`group_card_${groupIdx}`);
     if (badge) badge.textContent = `${count} ta o'quvchi`;
-    if (count < 8) {
+    if (count < 10) {
         if (badge) badge.className = 'badge bg-danger';
         if (warn) warn.style.display = '';
         if (card) {
-            card.classList.add('border-danger', 'bg-danger', 'bg-opacity-10');
+            card.classList.add('border-danger');
             card.classList.remove('bg-light');
         }
     } else {
         if (badge) badge.className = 'badge bg-primary';
         if (warn) warn.style.display = 'none';
         if (card) {
-            card.classList.remove('border-danger', 'bg-danger', 'bg-opacity-10');
+            card.classList.remove('border-danger');
             card.classList.add('bg-light');
         }
     }
@@ -379,6 +388,15 @@ function renumberGroup(groupIdx) {
         const numSpan = row.querySelector('span.text-muted');
         if (numSpan) numSpan.textContent = `${i + 1}.`;
     });
+}
+
+function moveStudentToGroup(fromIdx, studentId, studentName, selectEl) {
+    const toIdx = parseInt(selectEl.value);
+    if (isNaN(toIdx) || toIdx === fromIdx) return;
+    selectEl.value = '';
+    addStudentDirectly(toIdx, studentId, studentName);
+    updateGroupUI(fromIdx);
+    updateGroupUI(toIdx);
 }
 
 function refreshUnassignedCount() {

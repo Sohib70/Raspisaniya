@@ -406,10 +406,10 @@ def teacher_grades(request, group_pk):
 
     if request.method == "POST":
         for student in students:
-            def parse(val):
+            def parse(val, max_val):
                 try:
                     v = float(val)
-                    return max(0.0, min(100.0, v))
+                    return max(0.0, min(float(max_val), v))
                 except (ValueError, TypeError):
                     return None
 
@@ -417,9 +417,9 @@ def teacher_grades(request, group_pk):
                 student=student,
                 course_group=group,
                 defaults={
-                    'midterm': parse(request.POST.get(f"midterm_{student.pk}", "")),
-                    'current': parse(request.POST.get(f"current_{student.pk}", "")),
-                    'final':   parse(request.POST.get(f"final_{student.pk}", "")),
+                    'midterm': parse(request.POST.get(f"midterm_{student.pk}", ""), 20),
+                    'current': parse(request.POST.get(f"current_{student.pk}", ""), 30),
+                    'final':   parse(request.POST.get(f"final_{student.pk}", ""), 50),
                 }
             )
         messages.success(request, "Baholar muvaffaqiyatli saqlandi.")

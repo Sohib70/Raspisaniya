@@ -1,0 +1,120 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container-fluid mt-4">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">
+        📊 {{ group.course.subject }} — {{ group.group_number }}-guruh
+        <small class="text-muted fs-6">({{ group.get_language_display }})</small>
+    </h4>
+    <a href="{% url 'lesson_schedule' group.course.pk %}" class="btn btn-outline-secondary btn-sm">← Dars jadvali</a>
+</div>
+
+<!-- Guruh ma'lumoti -->
+<div class="card mb-3 shadow-sm">
+    <div class="card-body py-2">
+        <div class="row text-center">
+            <div class="col">
+                <div class="text-muted small">O'qituvchi</div>
+                <div class="fw-bold">{{ group.teacher.first_name }} {{ group.teacher.last_name }}</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Talabalar</div>
+                <div class="fw-bold">{{ rows|length }} ta</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Jami darslar</div>
+                <div class="fw-bold">{{ schedules|length }} ta</div>
+            </div>
+            <div class="col">
+                <div class="text-muted small">Baho tizimi</div>
+                <div class="fw-bold" style="font-size:0.8rem;">Oraliq 20 + Joriy 30 + Yakuniy 50 = 100</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Asosiy jadval -->
+<div class="card shadow-sm">
+    <div class="card-header fw-bold" style="background:#1a237e; color:white;">
+        👥 Talabalar — baholar va davomat jadvali
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm mb-0" style="font-size:0.82rem;">
+            <thead style="background:#e8eaf6;">
+                <tr>
+                    <th rowspan="2" class="align-middle text-center" style="width:35px;">#</th>
+                    <th rowspan="2" class="align-middle">Ism Familiya</th>
+                    <!-- Davomat kunlari -->
+                    {% for sched in schedules %}
+                    <th class="text-center" style="writing-mode:vertical-rl; transform:rotate(180deg); font-size:0.68rem; padding:4px 3px; background:#e8f5e9; min-width:28px;">
+                        {{ sched.date|date:"d.m" }}
+                    </th>
+                    {% endfor %}
+                    <th rowspan="2" class="align-middle text-center">Keldi</th>
+                    <th rowspan="2" class="align-middle text-center">Kelmadi</th>
+                    <th rowspan="2" class="align-middle text-center">%</th>
+                    <!-- Baholar -->
+                    <th class="text-center" style="background:#fff3e0; color:#e67e22;">Oraliq<br><small>max 20</small></th>
+                    <th class="text-center" style="background:#e8f5e9; color:#27ae60;">Joriy<br><small>max 30</small></th>
+                    <th class="text-center" style="background:#f3e5f5; color:#8e44ad;">Yakuniy<br><small>max 50</small></th>
+                    <th class="text-center fw-bold" style="background:#e3f2fd; color:#1565c0;">Jami<br><small>max 100</small></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="text-center text-muted">{{ forloop.counter }}</td>
+                    <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
+                    <!-- Davomat katakchalar -->
+                    {% for cell in row.cells %}
+                    <td class="text-center" style="padding:2px;
+                        {% if cell == 'present' %}background:#d4edda; color:#155724;
+                        {% elif cell == 'absent' %}background:#f8d7da; color:#721c24;
+                        {% else %}background:#fafafa; color:#bbb;{% endif %}">
+                        {% if cell == 'present' %}✓{% elif cell == 'absent' %}✗{% else %}—{% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>
+                    <td class="text-center fw-bold" style="color:#721c24;">{{ row.missed }}</td>
+                    <td class="text-center">
+                        {% if row.percent is not None %}
+                        <span style="font-weight:700; color:{% if row.percent >= 70 %}#155724{% elif row.percent >= 50 %}#856404{% else %}#721c24{% endif %};">
+                            {{ row.percent }}%
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <!-- Baholar -->
+                    <td class="text-center" style="background:#fffde7;">
+                        {% if row.grade and row.grade.midterm is not None %}
+                        <span class="fw-bold" style="color:#e67e22;">{{ row.grade.midterm }}</span>
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="text-center" style="background:#f1f8e9;">
+                        {% if row.grade and row.grade.current is not None %}
+                        <span class="fw-bold" style="color:#27ae60;">{{ row.grade.current }}</span>
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="text-center" style="background:#f3e5f5;">
+                        {% if row.grade and row.grade.final is not None %}
+                        <span class="fw-bold" style="color:#8e44ad;">{{ row.grade.final }}</span>
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    <td class="text-center" style="background:#e3f2fd;">
+                        {% if row.total is not None %}
+                        <span class="fw-bold" style="font-size:0.95rem; color:{% if row.total >= 55 %}#155724{% else %}#721c24{% endif %};">
+                            {{ row.total }}
+                        </span>
+                        {% else %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="100" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</div>
+{% endblock %}

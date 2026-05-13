@@ -51,15 +51,12 @@
             <!-- Shaxsiy -->
             <div class="form-section">
                 <div class="section-label">Shaxsiy ma'lumotlar</div>
-                <div class="field-group">
-                    <div class="field">
-                        <label>Familiya *</label>
-                        <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" required>
-                    </div>
-                    <div class="field">
-                        <label>Ism *</label>
-                        <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" required>
-                    </div>
+                <div class="field">
+                    <label>F.I.SH (To'liq ism) *</label>
+                    <input type="text" name="first_name"
+                           value="{{ student.first_name }}"
+                           placeholder="Masalan: KARIMOV JASUR ALISHER O'G'LI"
+                           required style="width:100%;">
                 </div>
             </div>
 

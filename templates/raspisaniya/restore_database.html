@@ -1,48 +1,125 @@
 {% extends "raspisaniya/base.html" %}
-
 {% block content %}
-<div class="container py-5" style="max-width:600px;">
-    <div class="card border-0 shadow-lg mb-4" style="border-radius: 28px;">
-        <div class="card-header bg-success text-white text-center py-3 border-0">
-            <div class="d-flex align-items-center justify-content-center gap-2">
-                <span class="material-icons-round">storage</span>
-                <span class="fw-bold fs-5 text-uppercase">Database Boshqaruvi</span>
-            </div>
+<div class="container py-4" style="max-width:750px;">
+
+    <h4 class="fw-bold mb-4">🗄 Database Boshqaruvi</h4>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{% if msg.tags == 'error' %}danger{% else %}success{% endif %} alert-dismissible fade show">
+        {{ msg }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- BACKUP OLISH -->
+    <div class="card shadow-sm mb-4 border-0" style="border-radius:16px; overflow:hidden;">
+        <div class="card-header fw-bold text-white py-3" style="background:#2e7d32;">
+            ⬇ Nusxa olish (Backup)
         </div>
-        
         <div class="card-body p-4">
-            <div class="text-center mb-5">
-                <h5 class="fw-bold">Nusxa olish (Backup)</h5>
-                <p class="text-muted small">Hozirgi barcha ma'lumotlarni bitta faylga jamlab kompyuteringizga yuklab oling.</p>
-                <a href="{% url 'export_database' %}" class="md-button md-button-filled w-100 py-3" style="background-color: #2e7d32;">
-                    <span class="material-icons-round">download</span> Nusxa yuklab olish (.json)
-                </a>
+            <p class="text-muted small mb-3">Backupga nom bering (ixtiyoriy), keyin yuklab oling. Fayl serverda ham saqlanib qoladi.</p>
+            <form method="get" action="{% url 'export_database' %}" class="d-flex gap-2 flex-wrap">
+                <input type="text" name="name" class="form-control" style="max-width:300px;"
+                       placeholder="Backup nomi (masalan: semester_1)">
+                <button type="submit" class="btn btn-success px-4">
+                    ⬇ Yuklab olish
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- SAQLANGAN BACKUPLAR -->
+    <div class="card shadow-sm mb-4 border-0" style="border-radius:16px; overflow:hidden;">
+        <div class="card-header fw-bold text-white py-3" style="background:#1565c0;">
+            📋 Saqlangan backuplar
+        </div>
+        <div class="card-body p-0">
+            {% if backups %}
+            <table class="table table-hover mb-0" style="font-size:0.88rem;">
+                <thead style="background:#f8f9fa;">
+                    <tr>
+                        <th class="ps-3">Fayl nomi</th>
+                        <th class="text-center">Hajmi</th>
+                        <th class="text-center">Amallar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in backups %}
+                    <tr>
+                        <td class="ps-3">
+                            <span class="fw-bold">{{ b.name }}</span>
+                            <br>
+                            <small class="text-muted">{{ b.size }} KB</small>
+                        </td>
+                        <td class="text-center align-middle">
+                            <span class="badge bg-light text-dark border">{{ b.size }} KB</span>
+                        </td>
+                        <td class="text-center align-middle">
+                            <div class="d-flex gap-1 justify-content-center">
+                                <!-- Tiklash -->
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="restore_saved">
+                                    <input type="hidden" name="filename" value="{{ b.name }}">
+                                    <button type="submit" class="btn btn-sm btn-warning"
+                                            onclick="return confirm('{{ b.name }} dan bazani tiklamoqchimisiz?')">
+                                        🔄 Tiklash
+                                    </button>
+                                </form>
+                                <!-- O'chirish -->
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete_backup">
+                                    <input type="hidden" name="filename" value="{{ b.name }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            onclick="return confirm('{{ b.name }} o\'chirilsinmi?')">
+                                        🗑
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-4 text-center text-muted">
+                Hozircha saqlangan backup yo'q. Yuqoridan backup oling.
             </div>
+            {% endif %}
+        </div>
+    </div>
 
-            <div class="md-divider mb-4"></div>
-
+    <!-- FAYL YUKLASH ORQALI TIKLASH -->
+    <div class="card shadow-sm mb-4 border-0" style="border-radius:16px; overflow:hidden;">
+        <div class="card-header fw-bold text-white py-3" style="background:#c62828;">
+            ⬆ Fayldan tiklash
+        </div>
+        <div class="card-body p-4">
+            <p class="text-muted small mb-3">Kompyuteringizdan .json backup faylni tanlang. Fayl serverga ham saqlanib qoladi.</p>
             <form method="post" enctype="multipart/form-data">
                 {% csrf_token %}
-                <h5 class="fw-bold text-danger">Qayta tiklash (Restore)</h5>
-                <p class="text-muted small">Avval olingan .json faylni tanlang. Bu amal hozirgi bazani o'sha fayldagi holatga qaytaradi.</p>
-                
-                <div class="mb-4">
-                    <input type="file" name="backup_file" class="form-control border-2" accept=".json" required>
-                </div>
-
-                <div class="d-grid">
-                    <button type="submit" class="md-button md-button-filled bg-dark border-0 py-3">
-                        <span class="material-icons-round">settings_backup_restore</span> Bazani tiklash
+                <input type="hidden" name="action" value="upload">
+                <div class="d-flex gap-2 flex-wrap align-items-end">
+                    <div>
+                        <label class="form-label small fw-bold">Backup nomi (ixtiyoriy)</label>
+                        <input type="text" name="backup_name" class="form-control" style="max-width:220px;"
+                               placeholder="Masalan: eski_baza">
+                    </div>
+                    <div>
+                        <label class="form-label small fw-bold">JSON fayl</label>
+                        <input type="file" name="backup_file" class="form-control" accept=".json" required>
+                    </div>
+                    <button type="submit" class="btn btn-danger px-4"
+                            onclick="return confirm('Hozirgi baza o\'chirilib, fayldagi holatga qaytariladi. Davom etasizmi?')">
+                        🔄 Yuklash va tiklash
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="text-center">
-        <a href="{% url 'weekly_schedule' %}" class="md-chip text-decoration-none">
-            <span class="material-icons-round">arrow_back</span> Orqaga qaytish
-        </a>
-    </div>
+    <a href="{% url 'weekly_schedule' %}" class="btn btn-outline-secondary">← Orqaga qaytish</a>
 </div>
 {% endblock %}

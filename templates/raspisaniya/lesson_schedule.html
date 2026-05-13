@@ -29,16 +29,33 @@
 
     {% for item in groups_data %}
     <div class="mb-4">
-        <h5 class="mb-3">
-            👥 {{ item.group.group_number }}-Guruh
-            <span class="badge bg-info text-dark">
-                {% if item.group.language == 'uz' %}O'zbek
-                {% elif item.group.language == 'ru' %}Rus
-                {% elif item.group.language == 'qq' %}Qoraqalpoq
-                {% elif item.group.language == 'en' %}Ingliz
-                {% else %}{{ item.group.language }}{% endif %}
-            </span>
-        </h5>
+        <div class="d-flex align-items-center gap-2 mb-3">
+            <h5 class="mb-0 text-dark">
+                👥 {{ item.group.group_number }}-Guruh
+                <span class="badge bg-info text-dark">
+                    {% if item.group.language == 'uz' %}O'zbek
+                    {% elif item.group.language == 'ru' %}Rus
+                    {% elif item.group.language == 'qq' %}Qoraqalpoq
+                    {% elif item.group.language == 'en' %}Ingliz
+                    {% else %}{{ item.group.language }}{% endif %}
+                </span>
+            </h5>
+            <a href="{% url 'admin_group_grades' item.group.pk %}" class="btn btn-sm btn-outline-primary">
+                📊 Baholar &amp; davomat
+            </a>
+            {% if request.user.is_staff %}
+            <button class="btn btn-sm permit-group-btn {% if item.group.teacher_can_edit %}btn-success{% else %}btn-outline-secondary{% endif %}"
+                data-group-pk="{{ item.group.pk }}"
+                title="{% if item.group.teacher_can_edit %}Ruxsat berilgan — olish{% else %}O'qituvchiga vaqt o'zgartirish ruxsati{% endif %}">
+                {% if item.group.teacher_can_edit %}🔓 Ruxsat berilgan{% else %}🔒 Ruxsat berish{% endif %}
+            </button>
+            {% endif %}
+            <form method="post" action="{% url 'delete_course_group' item.group.pk %}"
+                  onsubmit="return confirm('Guruhni o\'chirasizmi? Talabalar qayta ro\'yxatga qaytadi.')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">🗑 Guruhni o'chirish</button>
+            </form>
+        </div>
 
         <div class="row">
             {# O'quvchilar #}
@@ -179,6 +196,7 @@
                                     <td>
                                         <button class="btn btn-sm btn-outline-warning px-2 py-0"
                                             onclick="toggleTimeEdit({{ sched_item.sched.pk }})">✏️</button>
+
                                         <div id="time-edit-{{ sched_item.sched.pk }}" style="display:none; margin-top:4px;">
                                             <form method="post" action="{% url 'change_lesson_time' sched_item.sched.pk %}" class="d-flex flex-column gap-1">
                                                 {% csrf_token %}
@@ -226,5 +244,33 @@ function toggleTimeEdit(pk) {
     const el = document.getElementById('time-edit-' + pk);
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
+
+// Admin guruh uchun ruxsat berish/olish
+document.querySelectorAll('.permit-group-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var groupPk = this.dataset.groupPk;
+        var self = this;
+        fetch('/raspisaniya/toggle-teacher-edit/' + groupPk + '/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                if (data.permitted) {
+                    self.classList.remove('btn-outline-secondary');
+                    self.classList.add('btn-success');
+                    self.textContent = '🔓 Ruxsat berilgan';
+                    self.title = 'Ruxsat berilgan — olish';
+                } else {
+                    self.classList.remove('btn-success');
+                    self.classList.add('btn-outline-secondary');
+                    self.textContent = '🔒 Ruxsat berish';
+                    self.title = "O'qituvchiga vaqt o'zgartirish ruxsati";
+                }
+            }
+        });
+    });
+});
 </script>
 {% endblock %}

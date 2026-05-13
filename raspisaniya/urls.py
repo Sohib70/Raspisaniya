@@ -53,14 +53,20 @@ urlpatterns = [
 
     path('api/stats/', views.stats_api, name='stats_api'),
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
+    path('toggle-teacher-edit/<int:group_pk>/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
 
     path('reset-database/', views.reset_database_view, name='reset_database'),
+    path('group/<int:group_pk>/grades/', views.admin_group_grades, name='admin_group_grades'),
+    path('schedule/<int:sched_pk>/toggle-permission/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
+    path('group/<int:group_pk>/delete/', views.delete_course_group, name='delete_course_group'),
+    path('move-one-student/', views.move_one_student, name='move_one_student'),
     path('export-database/', views.export_database_view, name='export_database'),  # Nusxa olish
     path('restore-database/', views.restore_database_view, name='restore_database'),  # Qayta tiklash
 
     # Statistikalar va API
     path('api/stats/', views.stats_api, name='stats_api'),
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
+    path('toggle-teacher-edit/<int:group_pk>/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
 
 
 

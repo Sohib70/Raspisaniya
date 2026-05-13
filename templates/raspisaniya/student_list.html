@@ -30,7 +30,7 @@
         {% for item in students_data %}
         <tr>
             <td>{{ forloop.counter }}</td>
-            <td>{{ item.student.first_name }} {{ item.student.last_name }}</td>
+            <td>{{ item.student.first_name }}</td>
             <td>
                 {% if item.student.language == 'uz' %}<span class="badge bg-primary">O'zbek</span>
                 {% elif item.student.language == 'ru' %}<span class="badge bg-info text-dark">Rus</span>

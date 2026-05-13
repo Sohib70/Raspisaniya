@@ -66,9 +66,9 @@
 
     <!-- Izoh -->
     <div class="d-flex gap-3 mb-3 align-items-center" style="font-size:0.82rem;">
-        <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (0–100)</span>
-        <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (0–100)</span>
-        <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (0–100)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (max 20)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (max 30)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (max 50)</span>
         <span class="text-muted ms-2">Bo'sh qoldirish = baho yo'q</span>
     </div>
 
@@ -83,15 +83,15 @@
                             <th style="width:40px;" class="text-center">#</th>
                             <th>Ism Familiya</th>
                                                         <th class="text-center" style="min-width:100px;">
-                                <span style="color:#e67e22;">Oraliq</span>
+                                <span style="color:#e67e22;">Oraliq<br><small style="font-weight:400;">max 20</small></span>
                             </th>
                             <th class="text-center" style="min-width:100px;">
-                                <span style="color:#27ae60;">Joriy</span>
+                                <span style="color:#27ae60;">Joriy<br><small style="font-weight:400;">max 30</small></span>
                             </th>
                             <th class="text-center" style="min-width:100px;">
-                                <span style="color:#8e44ad;">Yakuniy</span>
+                                <span style="color:#8e44ad;">Yakuniy<br><small style="font-weight:400;">max 50</small></span>
                             </th>
-                            <th class="text-center" style="min-width:80px;">O'rtacha</th>
+                            <th class="text-center" style="min-width:80px;">Jami (max 100)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -103,7 +103,7 @@
                                 <input type="number"
                                        name="midterm_{{ row.student.pk }}"
                                        class="grade-input midterm"
-                                       min="0" max="100" step="0.5"
+                                       min="0" max="20" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.midterm is not None %}{{ row.grade.midterm }}{% endif %}">
                             </td>
@@ -111,7 +111,7 @@
                                 <input type="number"
                                        name="current_{{ row.student.pk }}"
                                        class="grade-input current"
-                                       min="0" max="100" step="0.5"
+                                       min="0" max="30" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.current is not None %}{{ row.grade.current }}{% endif %}">
                             </td>
@@ -119,7 +119,7 @@
                                 <input type="number"
                                        name="final_{{ row.student.pk }}"
                                        class="grade-input final"
-                                       min="0" max="100" step="0.5"
+                                       min="0" max="50" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.final is not None %}{{ row.grade.final }}{% endif %}">
                             </td>
@@ -161,8 +161,8 @@ document.querySelectorAll('.grade-input').forEach(function(inp) {
         var f = parseFloat(row.querySelector('[name="final_' + pk + '"]').value);
         var avgCell = document.getElementById('avg_' + pk);
         if (!isNaN(m) && !isNaN(c) && !isNaN(f)) {
-            avgCell.textContent = ((m + c + f) / 3).toFixed(1);
-            avgCell.style.color = (m + c + f) / 3 >= 55 ? '#155724' : '#721c24';
+            avgCell.textContent = (m + c + f).toFixed(1);
+            avgCell.style.color = (m + c + f) >= 55 ? '#155724' : '#721c24';
         } else {
             avgCell.textContent = '—';
             avgCell.style.color = '#1a237e';

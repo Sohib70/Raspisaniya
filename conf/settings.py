@@ -87,16 +87,16 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     }
 # }
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'raspisaniya_db',
-#         'USER': 'postgres',
-#         'PASSWORD': 'Sohib030',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'raspisaniya_db',
+        'USER': 'postgres',
+        'PASSWORD': 'Sohib030',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
 
 # DATABASES = {
 #     'default': dj_database_url.config(
@@ -105,12 +105,12 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     )
 # }
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default='postgres://postgres:Sohib030@localhost:5432/raspisaniya_db',
-        conn_max_age=600
-    )
-}
+# DATABASES = {
+#     'default': dj_database_url.config(
+#         default='postgres://postgres:Sohib030@localhost:5432/raspisaniya_db',
+#         conn_max_age=600
+#     )
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -173,7 +173,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-LOGIN_URL = '/accounts/login/'
+LOGIN_URL = '/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 

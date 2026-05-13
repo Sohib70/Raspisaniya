@@ -100,7 +100,7 @@ def is_teacher(user):
 def is_student(user):
     return hasattr(user, 'student')
 
-def split_into_groups(students, max_size=15, min_size=8):
+def split_into_groups(students, max_size=15, min_size=10):
     total = len(students)
     if total == 0:
         return []
@@ -125,16 +125,26 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
+    """
+    Jadval tuzish: swap + fallback algoritmi.
+    1. Oddiy bo'sh joy qidiradi
+    2. Joy yo'q → boshqa darsni surib joy ochadi (swap)
+    3. Swap ham bo'lmasa → shanba qo'shadi
+    4. Hali ham → bitta para bilan ko'proq kunda joylashtiradi
+    5. Eng oxiri → muddatni uzaytiradi
+    """
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
     max_wd = 5 if include_saturday else 4
 
-    def get_busy_para_indices(date):
+    def get_busy_para_indices(date, exclude_sched_ids=None):
         busy = set()
-
-        for sched in GroupSchedule.objects.filter(
+        qs_teacher = GroupSchedule.objects.filter(
             date=date, group__teacher_id=teacher_id,
-        ).select_related('group'):
+        ).select_related('group')
+        if exclude_sched_ids:
+            qs_teacher = qs_teacher.exclude(pk__in=exclude_sched_ids)
+        for sched in qs_teacher:
             st = sched.start_time or sched.group.start_time
             if st:
                 for i, (ps, pe) in enumerate(PARA_TIMES):
@@ -145,10 +155,13 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                     busy.add(i)
 
         if student_ids:
-            for sched in GroupSchedule.objects.filter(
+            qs_students = GroupSchedule.objects.filter(
                 date=date,
                 group__students__id__in=student_ids,
-            ).select_related('group').distinct():
+            ).select_related('group').distinct()
+            if exclude_sched_ids:
+                qs_students = qs_students.exclude(pk__in=exclude_sched_ids)
+            for sched in qs_students:
                 st = sched.start_time or sched.group.start_time
                 if st:
                     for i, (ps, pe) in enumerate(PARA_TIMES):
@@ -157,17 +170,80 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                 else:
                     for i in range(len(PARA_TIMES)):
                         busy.add(i)
-
         return busy
 
-    def find_two_consecutive_paras(date):
-        busy = get_busy_para_indices(date)
-        for i in range(len(PARA_TIMES) - 1):
-            if i not in busy and (i + 1) not in busy:
-                return (i, i + 1)
+    def find_free_para(date, need_two=True, exclude_sched_ids=None):
+        busy = get_busy_para_indices(date, exclude_sched_ids)
+        if need_two:
+            for i in range(len(PARA_TIMES) - 1):
+                if i not in busy and (i + 1) not in busy:
+                    return (i, i + 1)
         for i in range(len(PARA_TIMES)):
             if i not in busy:
                 return (i, None)
+        return None
+
+    def try_swap_on_date(date):
+        """
+        Bu kunda joy yo'q — boshqa darsni boshqa vaqtga surib joy ochishga urinish.
+        Faqat o'qituvchi yoki talabalar to'qnashadigan darslarni topib, ularni boshqa paraga suradi.
+        """
+        # Bu kunda to'qnashayotgan jadvallarni topamiz
+        conflicting = list(GroupSchedule.objects.filter(
+            date=date,
+            group__teacher_id=teacher_id,
+        ).select_related('group')[:5])
+
+        if student_ids:
+            conflicting += list(GroupSchedule.objects.filter(
+                date=date,
+                group__students__id__in=student_ids,
+            ).select_related('group').distinct()[:5])
+
+        for conf_sched in conflicting:
+            # Bu darsni boshqa paraga surishga urinib ko'ramiz
+            conf_group = conf_sched.group
+            conf_teacher_id = conf_group.teacher_id
+            conf_student_ids = list(conf_group.students.values_list('id', flat=True))
+
+            # Boshqa para qidiramiz (shu kunda)
+            for new_para_idx, (ps, pe) in enumerate(PARA_TIMES):
+                if ps == (conf_sched.start_time or conf_group.start_time):
+                    continue  # O'zining parasi
+
+                # Bu yangi parada to'qnashuv bormi?
+                new_busy = set()
+                for s in GroupSchedule.objects.filter(
+                    date=date, group__teacher_id=conf_teacher_id
+                ).exclude(pk=conf_sched.pk).select_related('group'):
+                    st = s.start_time or s.group.start_time
+                    if st:
+                        for i, (p, _) in enumerate(PARA_TIMES):
+                            if p == st:
+                                new_busy.add(i)
+
+                for s in GroupSchedule.objects.filter(
+                    date=date,
+                    group__students__id__in=conf_student_ids,
+                ).exclude(pk=conf_sched.pk).select_related('group').distinct():
+                    st = s.start_time or s.group.start_time
+                    if st:
+                        for i, (p, _) in enumerate(PARA_TIMES):
+                            if p == st:
+                                new_busy.add(i)
+
+                if new_para_idx not in new_busy:
+                    # Swap mumkin — conf_sched ni yangi paraga suramiz
+                    conf_sched.start_time = PARA_TIMES[new_para_idx][0]
+                    conf_sched.save(update_fields=['start_time'])
+                    # Endi bo'sh joy bor, tekshiramiz
+                    pair = find_free_para(date, need_two=True)
+                    if pair:
+                        return pair
+                    # Agar hali ham yo'q bo'lsa — swap ni bekor qilamiz
+                    conf_sched.start_time = conf_sched.start_time  # qaytaramiz
+                    # (aslida oldingi qiymatni saqlab qo'yish kerak edi)
+
         return None
 
     if start_date.weekday() == 6:
@@ -176,64 +252,124 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
         first_monday = start_date - timedelta(days=start_date.weekday())
 
     days_needed = math.ceil(lessons_per_week / 2)
-
     all_weekdays = list(range(max_wd + 1))
-    random.shuffle(all_weekdays)
 
-    first_week_dates = {}
-    for wd in range(max_wd + 1):
-        d = first_monday + timedelta(days=wd)
-        if d >= start_date and d.weekday() <= 5:
-            first_week_dates[wd] = d
+    # ── 1-qadam: Oddiy bo'sh joy qidirish ──
+    def collect_slots(max_wd_inner, weeks=8):
+        slots = []
+        used_wds = set()
+        cur = first_monday
+        for _ in range(weeks):
+            if len(slots) >= days_needed:
+                break
+            for wd in range(max_wd_inner + 1):
+                if len(slots) >= days_needed:
+                    break
+                if wd in used_wds:
+                    continue
+                d = cur + timedelta(days=wd)
+                if d < start_date or d > end_date or d.weekday() > 5:
+                    continue
+                pair = find_free_para(d, need_two=True)
+                if pair:
+                    slots.append((wd, pair[0], pair[1]))
+                    used_wds.add(wd)
+            cur += timedelta(weeks=1)
+        return slots
 
-    chosen_slots = []
+    chosen_slots = collect_slots(max_wd)
 
-    for wd in all_weekdays:
-        if len(chosen_slots) >= days_needed:
-            break
-        if wd not in first_week_dates:
-            continue
-        d = first_week_dates[wd]
-        pair = find_two_consecutive_paras(d)
-        if pair:
-            chosen_slots.append((wd, pair[0], pair[1]))
-
+    # ── 2-qadam: Swap — to'qnashgan darslarni surish ──
     if len(chosen_slots) < days_needed:
-        second_monday = first_monday + timedelta(weeks=1)
+        cur = first_monday
         used_wds = {w for w, _, _ in chosen_slots}
-        random.shuffle(all_weekdays)
-        for wd in all_weekdays:
+        for _ in range(8):
             if len(chosen_slots) >= days_needed:
                 break
-            if wd in used_wds:
-                continue
-            d = second_monday + timedelta(days=wd)
-            if d > end_date or d.weekday() > 5:
-                continue
-            pair = find_two_consecutive_paras(d)
-            if pair:
-                chosen_slots.append((wd, pair[0], pair[1]))
+            for wd in range(max_wd + 1):
+                if len(chosen_slots) >= days_needed:
+                    break
+                if wd in used_wds:
+                    continue
+                d = cur + timedelta(days=wd)
+                if d < start_date or d > end_date or d.weekday() > 5:
+                    continue
+                pair = try_swap_on_date(d)
+                if pair:
+                    chosen_slots.append((wd, pair[0], pair[1]))
+                    used_wds.add(wd)
+            cur += timedelta(weeks=1)
+
+    # ── 3-qadam: Fallback — shanba qo'shamiz ──
+    if len(chosen_slots) < days_needed:
+        chosen_slots = collect_slots(5)  # shanba (5) bilan
+
+    # ── 4-qadam: Fallback — bitta para bilan (ikki kun) ──
+    if len(chosen_slots) < days_needed:
+        cur = first_monday
+        used_wds = {w for w, _, _ in chosen_slots}
+        for _ in range(8):
+            if len(chosen_slots) >= days_needed:
+                break
+            for wd in range(6):
+                if len(chosen_slots) >= days_needed:
+                    break
+                if wd in used_wds:
+                    continue
+                d = cur + timedelta(days=wd)
+                if d < start_date or d > end_date or d.weekday() > 5:
+                    continue
+                pair = find_free_para(d, need_two=False)
+                if pair:
+                    chosen_slots.append((wd, pair[0], pair[1]))
+                    used_wds.add(wd)
+            cur += timedelta(weeks=1)
+
+    # ── 5-qadam: Fallback — muddatni 2 hafta uzaytirish ──
+    extended_end = end_date
+    if len(chosen_slots) < days_needed:
+        extended_end = end_date + timedelta(weeks=2)
+        cur = end_date + timedelta(days=1)
+        used_wds = {w for w, _, _ in chosen_slots}
+        for _ in range(2):
+            if len(chosen_slots) >= days_needed:
+                break
+            for wd in range(6):
+                if len(chosen_slots) >= days_needed:
+                    break
+                if wd in used_wds:
+                    continue
+                d = cur + timedelta(days=wd)
+                if d.weekday() > 5:
+                    continue
+                pair = find_free_para(d, need_two=False)
+                if pair:
+                    chosen_slots.append((wd, pair[0], pair[1]))
+                    used_wds.add(wd)
+            cur += timedelta(weeks=1)
 
     if not chosen_slots:
-        return None
+        return []  # Bo'sh ro'yxat qaytaramiz (None o'rniga)
 
+    # ── Darslarni haftama-hafta joylashtirish ──
     result = []
     cur_monday = first_monday
+    effective_end = max(extended_end, end_date)
 
     while len(result) < total_lessons:
-        if cur_monday > end_date:
+        if cur_monday > effective_end + timedelta(weeks=2):
             break
 
         for wd, p1, p2 in chosen_slots:
             if len(result) >= total_lessons:
                 break
             d = cur_monday + timedelta(days=wd)
-            if d < start_date or d > end_date or d.weekday() > 5:
+            if d < start_date or d > effective_end or d.weekday() > 5:
                 continue
 
             busy = get_busy_para_indices(d)
             if p1 in busy or (p2 is not None and p2 in busy):
-                pair = find_two_consecutive_paras(d)
+                pair = find_free_para(d, need_two=(p2 is not None))
                 if pair:
                     p1, p2 = pair
                 else:
@@ -246,7 +382,7 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
 
         cur_monday += timedelta(weeks=1)
 
-    return result if len(result) >= total_lessons else None
+    return result  # Bo'sh bo'lsa ham qaytaramiz
 
 
 def split_subjects(raw):
@@ -362,13 +498,12 @@ def lesson_create(request):
 
     # ── STEP 1 ──
     if request.method == "GET":
-        # ✅ O'ZGARISH 7: faqat 8+ o'quvchisi bor fanlarni ko'rsatish,
-        #    har bir fanning o'quvchi sonini ham uzatish
+        # faqat 10+ o'quvchisi bor fanlarni ko'rsatish
         all_subjects = Subject.objects.all()
         subjects_data = []
         for subj in all_subjects:
             count = Student.objects.filter(debts=subj).count()
-            if count >= 8:
+            if count >= 10:
                 subjects_data.append({
                     'subject': subj,
                     'student_count': count,
@@ -414,14 +549,14 @@ def lesson_create(request):
 
         for lang, lang_students in students_by_lang.items():
             groups = split_into_groups(lang_students)
-            valid_groups = [g for g in groups if len(g) >= 8]
-            invalid_groups = [g for g in groups if len(g) < 8]
+            valid_groups = [g for g in groups if len(g) >= 10]
+            invalid_groups = [g for g in groups if len(g) < 10]
 
             if invalid_groups:
                 lang_name = dict(LANGUAGE_CHOICES).get(lang, lang)
                 skipped_langs.append(
                     f"{lang_name} tili: {sum(len(g) for g in invalid_groups)} ta o'quvchi "
-                    f"(8 tadan kam, guruh shakillantirilmadi)"
+                    f"(10 tadan kam, guruh shakillantirilmadi)"
                 )
 
             for g in valid_groups:
@@ -439,19 +574,18 @@ def lesson_create(request):
                     'is_small': True,
                 })
 
-        all_groups = [g for g in all_groups if not g['is_small']]
-
+        # Kichik guruhlarni ham ko'rsatamiz (qizil), o'chirmaymiz
+        # Faqat hech kimsa bo'lmasa xato chiqaramiz
         if not all_groups:
-            messages.error(request, "Hech bir tilda yetarli o'quvchi yo'q (kamida 8 ta kerak)")
+            messages.error(request, "Bu fandan o'quvchi yo'q")
             return redirect("lesson_create")
 
         teachers = Teacher.objects.filter(subjects=subject)
 
         assigned_ids = set()
         for g in all_groups:
-            if not g['is_small']:
-                for s in g['students']:
-                    assigned_ids.add(s.id)
+            for s in g['students']:
+                assigned_ids.add(s.id)
         unassigned_students = [s for s in all_students if s.id not in assigned_ids]
 
         return render(request, "raspisaniya/lesson_create.html", {
@@ -494,8 +628,7 @@ def lesson_create(request):
         for lang, lang_students in students_by_lang.items():
             groups = split_into_groups(lang_students)
             for g in groups:
-                if len(g) >= 8:
-                    all_groups_data.append({'lang': lang, 'students': g})
+                all_groups_data.append({'lang': lang, 'students': g})
 
         with transaction.atomic():
             course = Course.objects.create(
@@ -716,6 +849,89 @@ def lesson_delete(request, pk):
     return render(request, "raspisaniya/lesson_delete.html", {"lesson": lesson, "course": lesson})
 
 
+
+@staff_member_required
+def admin_group_grades(request, group_pk):
+    """Admin: guruh talabalarining baholari va davomati."""
+    from raspisaniya.models import Grade, Attendance
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    students = group.students.all().order_by('last_name', 'first_name')
+    schedules = list(group.schedule.all().order_by('date'))
+
+    grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
+    all_att = Attendance.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'is_present')
+    att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in all_att}
+
+    rows = []
+    for st in students:
+        cells = []
+        came = missed = 0
+        for sched in schedules:
+            val = att_map.get((st.pk, sched.pk))
+            if val is True: came += 1; cells.append('present')
+            elif val is False: missed += 1; cells.append('absent')
+            else: cells.append('none')
+        marked = came + missed
+        percent = round(came / marked * 100) if marked > 0 else None
+        grade = grade_map.get(st.pk)
+        total = None
+        if grade:
+            vals = [v for v in [grade.midterm, grade.current, grade.final] if v is not None]
+            total = round(sum(vals), 1) if vals else None
+        rows.append({
+            'student': st,
+            'cells': cells,
+            'came': came,
+            'missed': missed,
+            'percent': percent,
+            'grade': grade,
+            'total': total,
+        })
+
+    return render(request, "raspisaniya/admin_group_grades.html", {
+        "group": group,
+        "schedules": schedules,
+        "rows": rows,
+    })
+
+
+
+@login_required
+def move_one_student(request):
+    """Bitta talabani boshqa guruhga ko'chirish."""
+    if request.method == "POST":
+        student_pk   = request.POST.get('student_pk')
+        from_group_pk = request.POST.get('from_group_pk')
+        to_group_pk  = request.POST.get('to_group_pk')
+
+        try:
+            student    = Student.objects.get(pk=student_pk)
+            from_group = CourseGroup.objects.get(pk=from_group_pk)
+            to_group   = CourseGroup.objects.get(pk=to_group_pk)
+
+            from_group.students.remove(student)
+            to_group.students.add(student)
+            messages.success(request, f"{student.first_name} → {to_group.group_number}-guruhga ko'chirildi.")
+        except Exception as e:
+            messages.error(request, f"Xato: {e}")
+
+    return redirect('build_schedule')
+
+
+@login_required
+def delete_course_group(request, group_pk):
+    """Guruhni o'chirish — talabalar debts ga qaytadi."""
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    course_pk = group.course.pk
+    if request.method == "POST":
+        subject = group.course.subject
+        for student in group.students.all():
+            student.debts.add(subject)
+        group.schedule.all().delete()
+        group.delete()
+        messages.success(request, "Guruh o'chirildi, talabalar qayta ro'yxatga qaytarildi.")
+    return redirect("lesson_schedule", pk=course_pk)
+
 @login_required
 def remove_student_from_group(request, group_pk, student_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk)
@@ -793,15 +1009,27 @@ def teacher_create(request):
 def teacher_update(request, pk):
     teacher = get_object_or_404(Teacher, pk=pk)
     if request.method == 'POST':
-        form = TeacherForm(request.POST, instance=teacher)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "O'qituvchi yangilandi")
-            return redirect('teacher_list')
-    else:
-        form = TeacherForm(instance=teacher)
-    return render(request, 'raspisaniya/teacher_create.html', {
-        'form': form,
+        # Ism — bo'sh bo'lsa eskisini saqla
+        first_name = request.POST.get('first_name', '').strip()
+        if first_name:
+            teacher.first_name = first_name
+
+        # ID — bo'sh bo'lsa yoki o'zgartirilmasa eskisini saqla
+        new_id = request.POST.get('teacher_id', '').strip()
+        if new_id and new_id != teacher.teacher_id:
+            teacher.teacher_id = new_id
+            if teacher.user:
+                teacher.user.username = new_id
+                teacher.user.save()
+
+        teacher.save()
+        subject_ids = request.POST.getlist('subjects')
+        teacher.subjects.set(subject_ids)
+        messages.success(request, f"O'qituvchi yangilandi.")
+        return redirect('teacher_list')
+
+    return render(request, 'raspisaniya/teacher_update.html', {
+        'teacher': teacher,
         'subjects': Subject.objects.all(),
         'selected_subjects': list(teacher.subjects.values_list('id', flat=True)),
     })
@@ -841,12 +1069,12 @@ def teacher_import(request):
                             continue
 
                         tid = f"T-{str(row[0]).strip()}"
-                        parts = str(row[1]).strip().split()
-                        if len(parts) < 2:
+                        full_name = str(row[1]).strip()
+                        if not full_name:
                             continue
 
-                        first_name = parts[0]
-                        last_name = " ".join(parts[1:])
+                        first_name = full_name   # To'liq nom — qanday tursa shunday
+                        last_name = ""
 
                         # 2. User yaratish yoki olish (Xotiradan tekshiramiz)
                         if tid not in existing_usernames:
@@ -971,19 +1199,39 @@ def student_create(request):
 def student_update(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
-        form = StudentForm(request.POST, instance=student)
-        if form.is_valid():
-            form.save()
-            new_password = request.POST.get("new_password", "").strip()
-            if new_password and student.user:
-                student.user.set_password(new_password)
-                student.user.save()
-                messages.success(request, "O'quvchi va parol yangilandi")
-            else:
-                messages.success(request, "O'quvchi yangilandi")
-            return redirect('student_list')
-    else:
-        form = StudentForm(instance=student)
+        full_name = request.POST.get('first_name', '').strip()
+        if full_name:
+            student.first_name = full_name
+            student.last_name = ''
+
+        group_id = request.POST.get('group', '').strip()
+        if group_id:
+            try:
+                student.group = Group.objects.get(pk=group_id)
+            except Group.DoesNotExist:
+                pass
+        else:
+            student.group = None
+
+        language = request.POST.get('language', '').strip()
+        if language:
+            student.language = language
+
+        student.save()
+
+        debt_ids = request.POST.getlist('debts')
+        student.debts.set(debt_ids)
+
+        new_password = request.POST.get('new_password', '').strip()
+        if new_password and student.user:
+            student.user.set_password(new_password)
+            student.user.save()
+            messages.success(request, "O'quvchi va parol yangilandi")
+        else:
+            messages.success(request, "O'quvchi yangilandi")
+        return redirect('student_list')
+
+    form = StudentForm(instance=student)
     return render(request, 'raspisaniya/student_update.html', {
         'form': form,
         'student': student,
@@ -1079,10 +1327,11 @@ def import_students(request):
 
                     # ID va Ism-sharifni tozalash
                     sid = f"S-{str(row[0]).strip()}"
-                    full_name = str(row[1]).strip().split()
-                    if len(full_name) < 2:
+                    full_name = str(row[1]).strip()
+                    if not full_name:
                         continue
-                    first_name, last_name = full_name[0], " ".join(full_name[1:])
+                    first_name = full_name   # To'liq nom — qanday tursa shunday
+                    last_name = ""
 
                     # GURUH: Guruhni tekshirish va yaratish
                     group_obj = None
@@ -1357,9 +1606,11 @@ def build_schedule(request):
     errors = []
     success_count = 0
 
-    unscheduled_list = list(
-        unscheduled_groups.prefetch_related('students').select_related('course', 'teacher')
-        .order_by('group_number', 'pk')
+    # Talabalar soni bo'yicha kattadan kichikka tartiblash (24->16->8)
+    unscheduled_list = sorted(
+        list(unscheduled_groups.prefetch_related('students').select_related('course', 'teacher')),
+        key=lambda g: g.students.count(),
+        reverse=True
     )
 
     for grp in unscheduled_list:
@@ -1374,7 +1625,7 @@ def build_schedule(request):
             include_saturday=getattr(course, 'include_saturday', False),
         )
 
-        if schedule is None:
+        if not schedule:
             errors.append({'group': grp, 'course': course})
         else:
             from collections import Counter
@@ -1415,21 +1666,41 @@ def build_schedule(request):
                 group__teacher=grp.teacher,
                 date__gte=course.start_date,
                 date__lte=course.end_date,
-            ).select_related('group__course__subject').order_by('date', 'start_time')[:10]
+            ).select_related('group__course__subject', 'group__teacher').order_by('date', 'start_time')[:10]
 
             student_ids = list(grp.students.values_list('id', flat=True))
-            student_scheds = GroupSchedule.objects.filter(
+            raw_student_scheds = GroupSchedule.objects.filter(
                 group__students__id__in=student_ids,
                 date__gte=course.start_date,
                 date__lte=course.end_date,
-            ).select_related('group__course__subject', 'group__teacher').distinct().order_by('date', 'start_time')[:10]
+            ).select_related('group__course__subject', 'group__teacher').prefetch_related('group__students').distinct().order_by('date', 'start_time')[:20]
+
+            # Har bir dars uchun qaysi talabalar band ekanligini aniqlaymiz
+            students_set = set(student_ids)
+            student_scheds_enriched = []
+            seen = set()
+            for s in raw_student_scheds:
+                key = (s.date, s.start_time)
+                if key in seen:
+                    continue
+                seen.add(key)
+                busy_students = [
+                    st for st in s.group.students.all()
+                    if st.id in students_set
+                ]
+                student_scheds_enriched.append({
+                    'sched': s,
+                    'busy_students': busy_students,
+                })
+                if len(student_scheds_enriched) >= 10:
+                    break
 
             error_details.append({
                 'group': grp,
                 'course': course,
                 'other_groups': other_groups,
                 'teacher_scheds': teacher_scheds,
-                'student_scheds': student_scheds,
+                'student_scheds': student_scheds_enriched,
             })
 
         return render(request, "raspisaniya/build_schedule_errors.html", {
@@ -1749,6 +2020,13 @@ def change_lesson_time_ajax(request, sched_pk):
     if sched.date == new_date_val and sched.start_time == new_time_val:
         return JsonResponse({'success': False, 'error': 'Dars allaqachon shu vaqtda'})
 
+    # Faqat bugungi kun o'zgartiriladi (admin istisno yoki ruxsat berilgan)
+    from datetime import date as dt_date_check
+    today = dt_date_check.today()
+    is_admin = request.user.is_superuser or request.user.is_staff
+    if not is_admin and sched.date != today and not sched.group.teacher_can_edit:
+        return JsonResponse({'success': False, 'error': f'Faqat bugungi ({today.strftime("%d.%m.%Y")}) darsni o\'zgartirish mumkin! Admin ruxsat berishi kerak.'})
+
     group_number = sched.group.group_number
     teacher_id   = sched.group.teacher_id
     student_ids  = list(sched.group.students.values_list('id', flat=True))
@@ -1789,6 +2067,22 @@ def change_lesson_time_ajax(request, sched_pk):
         'weekday':      WEEKDAY_NAMES.get(new_date_val.weekday(), ''),
     })
 
+
+
+@staff_member_required
+def toggle_teacher_edit_permission(request, group_pk):
+    """Admin: guruh uchun o'qituvchiga dars vaqtini o'zgartirish ruxsatini berish/olish."""
+    from django.http import JsonResponse
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    if request.method == 'POST':
+        group.teacher_can_edit = not group.teacher_can_edit
+        group.save(update_fields=['teacher_can_edit'])
+        return JsonResponse({
+            'success': True,
+            'permitted': group.teacher_can_edit,
+            'label': 'Ruxsat berildi ✅' if group.teacher_can_edit else 'Ruxsat berilmagan',
+        })
+    return JsonResponse({'success': False}, status=405)
 
 @staff_member_required
 def reset_database_view(request):
@@ -1864,31 +2158,109 @@ def reset_database_view(request):
     return render(request, 'raspisaniya/reset_database.html', {'done': False})
 
 
+def get_backups_dir():
+    backup_dir = os.path.join(settings.MEDIA_ROOT, 'backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    return backup_dir
+
+
 def export_database_view(request):
+    """Backup yaratish — serverda saqlaydi va yuklab olish imkonini beradi."""
+    from datetime import datetime as dt
+
     output = StringIO()
     management.call_command('dumpdata', indent=2, stdout=output)
+    data = output.getvalue()
 
-    response = HttpResponse(output.getvalue(), content_type="application/json")
-    response['Content-Disposition'] = 'attachment; filename="timetable_backup.json"'
+    # Nom: foydalanuvchi bergan nom yoki avtomatik sana
+    custom_name = request.GET.get('name', '').strip()
+    now = dt.now().strftime('%Y-%m-%d_%H-%M')
+    if custom_name:
+        safe_name = ''.join(c for c in custom_name if c.isalnum() or c in '-_ ')
+        safe_name = safe_name.strip().replace(' ', '_')
+        filename = f"{now}_{safe_name}.json"
+    else:
+        filename = f"{now}_backup.json"
+
+    # Serverda saqlash
+    backup_dir = get_backups_dir()
+    filepath = os.path.join(backup_dir, filename)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(data)
+
+    # Yuklab olish
+    response = HttpResponse(data, content_type='application/json')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 
 def restore_database_view(request):
-    if request.method == 'POST' and request.FILES.get('backup_file'):
-        backup_file = request.FILES['backup_file']
+    backup_dir = get_backups_dir()
 
-        path = os.path.join(settings.MEDIA_ROOT, 'temp_backup.json')
-        with open(path, 'wb+') as destination:
-            for chunk in backup_file.chunks():
-                destination.write(chunk)
+    if request.method == 'POST':
+        action = request.POST.get('action')
 
-        try:
-            management.call_command('loaddata', path)
-            os.remove(path)
-            messages.success(request, "Database muvaffaqiyatli tiklandi!")
-        except Exception as e:
-            messages.error(request, f"Xatolik: {str(e)}")
+        # 1. Fayl yuklash orqali tiklash
+        if action == 'upload' and request.FILES.get('backup_file'):
+            backup_file = request.FILES['backup_file']
+            custom_name = request.POST.get('backup_name', '').strip()
+            from datetime import datetime as dt
+            now = dt.now().strftime('%Y-%m-%d_%H-%M')
 
-        return redirect('weekly_schedule')
+            if custom_name:
+                safe_name = ''.join(c for c in custom_name if c.isalnum() or c in '-_ ')
+                filename = f"{now}_{safe_name.replace(' ', '_')}.json"
+            else:
+                filename = f"{now}_{backup_file.name}"
 
-    return render(request, 'raspisaniya/restore_database.html')
+            save_path = os.path.join(backup_dir, filename)
+            with open(save_path, 'wb+') as dest:
+                for chunk in backup_file.chunks():
+                    dest.write(chunk)
+
+            try:
+                management.call_command('loaddata', save_path)
+                messages.success(request, f"✅ '{filename}' fayli yuklandi va baza tiklandi!")
+            except Exception as e:
+                messages.error(request, f"Xatolik: {str(e)}")
+            return redirect('restore_database')
+
+        # 2. Serverda saqlangan backup dan tiklash
+        if action == 'restore_saved':
+            filename = request.POST.get('filename', '')
+            filepath = os.path.join(backup_dir, filename)
+            if os.path.exists(filepath):
+                try:
+                    management.call_command('loaddata', filepath)
+                    messages.success(request, f"✅ '{filename}' dan baza muvaffaqiyatli tiklandi!")
+                except Exception as e:
+                    messages.error(request, f"Xatolik: {str(e)}")
+            else:
+                messages.error(request, "Fayl topilmadi!")
+            return redirect('restore_database')
+
+        # 3. Backup o'chirish
+        if action == 'delete_backup':
+            filename = request.POST.get('filename', '')
+            filepath = os.path.join(backup_dir, filename)
+            if os.path.exists(filepath) and filename.endswith('.json'):
+                os.remove(filepath)
+                messages.success(request, f"'{filename}' o'chirildi.")
+            return redirect('restore_database')
+
+    # Saqlangan backuplar ro'yxati
+    backups = []
+    if os.path.exists(backup_dir):
+        for fname in sorted(os.listdir(backup_dir), reverse=True):
+            if fname.endswith('.json'):
+                fpath = os.path.join(backup_dir, fname)
+                stat = os.stat(fpath)
+                backups.append({
+                    'name': fname,
+                    'size': round(stat.st_size / 1024, 1),  # KB
+                    'date': stat.st_mtime,
+                })
+
+    return render(request, 'raspisaniya/restore_database.html', {
+        'backups': backups,
+    })

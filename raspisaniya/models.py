@@ -38,7 +38,7 @@ class Student(models.Model):
     debts = models.ManyToManyField(Subject, related_name='debt_students', blank=True)
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} {self.student_id}"
+        return self.first_name or self.student_id or "Talaba"
 
 
 class Teacher(models.Model):
@@ -49,7 +49,7 @@ class Teacher(models.Model):
     subjects = models.ManyToManyField(Subject, related_name='teachers', blank=True)
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} {self.teacher_id}"
+        return self.first_name or self.teacher_id or "O'qituvchi"
 
 
 class Course(models.Model):
@@ -86,6 +86,7 @@ class CourseGroup(models.Model):
     language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
     is_scheduled = models.BooleanField(default=False)
     room = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL)
+    teacher_can_edit = models.BooleanField(default=False)  # Admin ruxsat bergan
 
     def __str__(self):
         return f"{self.course.subject} — {self.group_number}-guruh"
@@ -95,8 +96,7 @@ class GroupSchedule(models.Model):
     group = models.ForeignKey(CourseGroup, on_delete=models.CASCADE, related_name='schedule')
     date = models.DateField()
     lesson_number = models.IntegerField(default=1)
-    start_time = models.TimeField(null=True, blank=True)  # ← QO'SHING
-
+    start_time = models.TimeField(null=True, blank=True)
     class Meta:
         ordering = ['date']
 
@@ -105,21 +105,30 @@ class GroupSchedule(models.Model):
 
 
 class Attendance(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    schedule = models.ForeignKey(GroupSchedule, on_delete=models.CASCADE)
-    is_present = models.BooleanField(default=True)
+    """Har bir dars uchun talaba davomati."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='attendances')
+    schedule = models.ForeignKey(GroupSchedule, on_delete=models.CASCADE, related_name='attendances')
+    is_present = models.BooleanField(default=True)  # True=Keldi, False=Kelmadi
 
     class Meta:
         unique_together = ('student', 'schedule')
+        ordering = ['schedule__date']
 
-# Baho
+    def __str__(self):
+        status = "✓" if self.is_present else "✗"
+        return f"{status} {self.student} — {self.schedule.date}"
+
+
 class Grade(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    course_group = models.ForeignKey(CourseGroup, on_delete=models.CASCADE)
-    midterm = models.FloatField(null=True, blank=True)   # Oraliq
-    current = models.FloatField(null=True, blank=True)   # Joriy
-    final = models.FloatField(null=True, blank=True)     # Yakuniy
+    """Talabaning guruh bo'yicha baholari."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='grades')
+    course_group = models.ForeignKey(CourseGroup, on_delete=models.CASCADE, related_name='grades')
+    midterm = models.FloatField(null=True, blank=True)   # Oraliq baho
+    current = models.FloatField(null=True, blank=True)   # Joriy baho
+    final = models.FloatField(null=True, blank=True)     # Yakuniy baho
 
     class Meta:
         unique_together = ('student', 'course_group')
 
+    def __str__(self):
+        return f"{self.student} — {self.course_group}"
