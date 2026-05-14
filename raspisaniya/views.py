@@ -2170,7 +2170,14 @@ def export_database_view(request):
     from datetime import datetime as dt
 
     output = StringIO()
-    management.call_command('dumpdata', indent=2, stdout=output)
+    management.call_command(
+        'dumpdata',
+        'raspisaniya', 'accounts', 'auth.user',
+        indent=2,
+        stdout=output,
+        natural_foreign=True,
+        natural_primary=True,
+    )
     data = output.getvalue()
 
     # Nom: foydalanuvchi bergan nom yoki avtomatik sana
@@ -2220,7 +2227,7 @@ def restore_database_view(request):
                     dest.write(chunk)
 
             try:
-                management.call_command('loaddata', save_path)
+                management.call_command('loaddata', save_path, ignorenonexistent=True)
                 messages.success(request, f"✅ '{filename}' fayli yuklandi va baza tiklandi!")
             except Exception as e:
                 messages.error(request, f"Xatolik: {str(e)}")
@@ -2232,7 +2239,7 @@ def restore_database_view(request):
             filepath = os.path.join(backup_dir, filename)
             if os.path.exists(filepath):
                 try:
-                    management.call_command('loaddata', filepath)
+                    management.call_command('loaddata', filepath, ignorenonexistent=True)
                     messages.success(request, f"✅ '{filename}' dan baza muvaffaqiyatli tiklandi!")
                 except Exception as e:
                     messages.error(request, f"Xatolik: {str(e)}")
