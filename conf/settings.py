@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-d6447_-38u3#%q&7=94s!n$s+3=ixljl&l4x+f96)di!9zphit
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ['ro.pharmi.uz', 'www.ro.pharmi.uz', 'localhost', '127.0.0.1']
 
 
 # Application definition
@@ -166,9 +166,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://z17.tuit.uz',
-    'http://z17.tuit.uz',
-    'http://z17.tuit.uz:810',
+    'https://ro.pharmi.uz',
+    'http://ro.pharmi.uz',
 ]
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
