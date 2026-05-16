@@ -849,7 +849,6 @@ def lesson_delete(request, pk):
     return render(request, "raspisaniya/lesson_delete.html", {"lesson": lesson, "course": lesson})
 
 
-
 @staff_member_required
 def admin_group_grades(request, group_pk):
     """Admin: guruh talabalarining baholari va davomati."""
@@ -857,6 +856,7 @@ def admin_group_grades(request, group_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk)
     students = group.students.all().order_by('last_name', 'first_name')
     schedules = list(group.schedule.all().order_by('date'))
+    total_lessons = len(schedules)
 
     grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
     all_att = Attendance.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'is_present')
@@ -868,32 +868,38 @@ def admin_group_grades(request, group_pk):
         came = missed = 0
         for sched in schedules:
             val = att_map.get((st.pk, sched.pk))
-            if val is True: came += 1; cells.append('present')
-            elif val is False: missed += 1; cells.append('absent')
-            else: cells.append('none')
-        marked = came + missed
-        percent = round(came / marked * 100) if marked > 0 else None
+            if val is True:
+                came += 1
+                cells.append('present')
+            elif val is False:
+                missed += 1
+                cells.append('absent')
+            else:
+                cells.append('none')
+        missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
         grade = grade_map.get(st.pk)
-        total = None
+        total_grade = None
         if grade:
             vals = [v for v in [grade.midterm, grade.current, grade.final] if v is not None]
-            total = round(sum(vals), 1) if vals else None
+            total_grade = round(sum(vals), 1) if vals else None
         rows.append({
             'student': st,
             'cells': cells,
             'came': came,
             'missed': missed,
-            'percent': percent,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
             'grade': grade,
-            'total': total,
+            'total': total_grade,
         })
 
     return render(request, "raspisaniya/admin_group_grades.html", {
         "group": group,
         "schedules": schedules,
         "rows": rows,
+        "total_lessons": total_lessons,
     })
-
 
 
 @login_required
@@ -2025,9 +2031,20 @@ def change_lesson_time_ajax(request, sched_pk):
     from datetime import date as dt_date_check
     today = dt_date_check.today()
     is_admin = request.user.is_superuser or request.user.is_staff
-    if not is_admin and sched.date != today and not sched.group.teacher_can_edit:
-        return JsonResponse({'success': False, 'error': f'Faqat bugungi ({today.strftime("%d.%m.%Y")}) darsni o\'zgartirish mumkin! Admin ruxsat berishi kerak.'})
 
+    if not is_admin:
+        if sched.date == today:
+            # Bugungi kun — o'zgartirish mumkin, ruxsat shart emas
+            pass
+        elif sched.group.teacher_can_edit:
+            # Admin ruxsat bergan — o'zgartirish mumkin
+            pass
+        else:
+            # Boshqa kun + ruxsat yo'q — bloklash
+            return JsonResponse({
+                'success': False,
+                'error': f'Faqat bugungi ({today.strftime("%d.%m.%Y")}) darsni o\'zgartirish mumkin! Boshqa kunlar uchun admin ruxsat berishi kerak.'
+            })
     group_number = sched.group.group_number
     teacher_id   = sched.group.teacher_id
     student_ids  = list(sched.group.students.values_list('id', flat=True))
@@ -2070,10 +2087,11 @@ def change_lesson_time_ajax(request, sched_pk):
 
 
 
-@staff_member_required
+@login_required
 def toggle_teacher_edit_permission(request, group_pk):
     """Admin: guruh uchun o'qituvchiga dars vaqtini o'zgartirish ruxsatini berish/olish."""
-    from django.http import JsonResponse
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'success': False, 'error': 'Ruxsat yo\'q'}, status=403)
     group = get_object_or_404(CourseGroup, pk=group_pk)
     if request.method == 'POST':
         group.teacher_can_edit = not group.teacher_can_edit
@@ -2205,6 +2223,35 @@ def export_database_view(request):
 def restore_database_view(request):
     backup_dir = get_backups_dir()
 
+    def do_restore(filepath):
+        """Bazani tiklash — avval eski ma'lumotlarni tozalab, keyin yuklaymiz."""
+        from django.contrib.auth.models import User
+        from raspisaniya.models import (
+            Student, Teacher, Subject, CourseGroup,
+            GroupSchedule, Room, Course, Attendance, Grade
+        )
+        try:
+            # Ketma-ketlikda tozalaymiz (foreign key tartibida)
+            Attendance.objects.all().delete()
+            Grade.objects.all().delete()
+            GroupSchedule.objects.all().delete()
+            CourseGroup.objects.all().delete()
+            Course.objects.all().delete()
+            Student.objects.all().delete()
+            Teacher.objects.all().delete()
+            Room.objects.all().delete()
+            Subject.objects.all().delete()
+            # Auth userlarni ham tozalaymiz (superuser qolsin)
+            User.objects.filter(is_superuser=False).delete()
+        except Exception as e:
+            return f"Tozalashda xato: {e}"
+
+        try:
+            management.call_command('loaddata', filepath, ignorenonexistent=True)
+            return None  # Xato yo'q
+        except Exception as e:
+            return str(e)
+
     if request.method == 'POST':
         action = request.POST.get('action')
 
@@ -2226,11 +2273,11 @@ def restore_database_view(request):
                 for chunk in backup_file.chunks():
                     dest.write(chunk)
 
-            try:
-                management.call_command('loaddata', save_path, ignorenonexistent=True)
-                messages.success(request, f"✅ '{filename}' fayli yuklandi va baza tiklandi!")
-            except Exception as e:
-                messages.error(request, f"Xatolik: {str(e)}")
+            err = do_restore(save_path)
+            if err:
+                messages.error(request, f"Xatolik: {err}")
+            else:
+                messages.success(request, f"✅ '{filename}' yuklandi va baza tiklandi!")
             return redirect('restore_database')
 
         # 2. Serverda saqlangan backup dan tiklash
@@ -2238,11 +2285,11 @@ def restore_database_view(request):
             filename = request.POST.get('filename', '')
             filepath = os.path.join(backup_dir, filename)
             if os.path.exists(filepath):
-                try:
-                    management.call_command('loaddata', filepath, ignorenonexistent=True)
+                err = do_restore(filepath)
+                if err:
+                    messages.error(request, f"Xatolik: {err}")
+                else:
                     messages.success(request, f"✅ '{filename}' dan baza muvaffaqiyatli tiklandi!")
-                except Exception as e:
-                    messages.error(request, f"Xatolik: {str(e)}")
             else:
                 messages.error(request, "Fayl topilmadi!")
             return redirect('restore_database')
@@ -2265,7 +2312,7 @@ def restore_database_view(request):
                 stat = os.stat(fpath)
                 backups.append({
                     'name': fname,
-                    'size': round(stat.st_size / 1024, 1),  # KB
+                    'size': round(stat.st_size / 1024, 1),
                     'date': stat.st_mtime,
                 })
 

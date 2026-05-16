@@ -17,6 +17,7 @@
         .att-none    { background: #f5f5f5; color: #aaa; text-align: center; font-size: 0.8rem; }
         th.date-th   { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72rem; padding: 6px 4px; white-space: nowrap; background: #e8eaf6; }
         td, th { vertical-align: middle !important; }
+        .blocked-row { background: #fff0f0 !important; }
     </style>
 </head>
 <body>
@@ -24,7 +25,7 @@
 <div class="topbar">
     <h5>📋 Davomat jadvali</h5>
     <div class="d-flex align-items-center gap-3">
-        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <span>👤 {{ teacher.first_name }}</span>
         <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-sm btn-outline-light">← Guruhga qaytish</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
@@ -32,40 +33,42 @@
 
 <div class="container-fluid mt-4 px-4">
 
-    <!-- Guruh info -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="text-muted small">Fan</div>
                 <div class="fw-bold">{{ group.course.subject }}</div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="text-muted small">Guruh</div>
                 <div class="fw-bold">{{ group.group_number }}-guruh</div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="text-muted small">Jami darslar</div>
                 <div class="fw-bold">{{ schedules|length }} ta</div>
+            </div>
+            <div class="col-md-3">
+                <div class="text-muted small">Bloklash chegarasi</div>
+                <div class="fw-bold text-danger">25% qoldirsa</div>
             </div>
         </div>
     </div>
 
-    <!-- Izoh -->
-    <div class="d-flex gap-3 mb-3 align-items-center" style="font-size:0.85rem;">
+    <div class="d-flex gap-3 mb-3 align-items-center flex-wrap" style="font-size:0.85rem;">
         <span class="px-3 py-1 rounded" style="background:#d4edda; color:#155724; font-weight:600;">✓ Keldi</span>
         <span class="px-3 py-1 rounded" style="background:#f8d7da; color:#721c24; font-weight:600;">✗ Kelmadi</span>
         <span class="px-3 py-1 rounded" style="background:#f5f5f5; color:#aaa;">— Belgilanmagan</span>
+        <span class="px-3 py-1 rounded" style="background:#fff0f0; color:#c62828; font-weight:600; border:1px solid #ef9a9a;">🚫 Bloklangan (>25%)</span>
         <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-auto">📝 Baholar</a>
     </div>
 
-    <!-- Davomat jadvali -->
     <div class="card info-card mb-4">
         <div class="section-header">Davomat jadvali — {{ group.course.subject }} {{ group.group_number }}-guruh</div>
         <div class="table-responsive">
             <table class="table table-bordered mb-0" style="font-size:0.82rem;">
                 <thead>
                     <tr>
-                        <th style="min-width:160px;">#  Talaba</th>
+                        <th style="min-width:180px;"># Talaba</th>
                         {% for sched in schedules %}
                         <th class="date-th">
                             <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
@@ -76,16 +79,20 @@
                             </a>
                         </th>
                         {% endfor %}
-                        <th class="text-center" style="min-width:70px;">Keldi</th>
-                        <th class="text-center" style="min-width:70px;">Kelmadi</th>
+                        <th class="text-center" style="min-width:60px;">Keldi</th>
+                        <th class="text-center" style="min-width:60px;">Kelmadi</th>
+                        <th class="text-center" style="min-width:80px;">Qoldirgan %</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
-                    <tr>
+                    <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
                         <td>
                             <span class="text-muted me-1">{{ forloop.counter }}.</span>
-                            <b>{{ row.student.last_name }} {{ row.student.first_name }}</b>
+                            <b>{{ row.student.first_name }}</b>
+                            {% if row.is_blocked %}
+                            <span class="badge bg-danger ms-1" style="font-size:0.65rem;">🚫</span>
+                            {% endif %}
                         </td>
                         {% for cell in row.cells %}
                         <td class="{% if cell == 'present' %}att-present{% elif cell == 'absent' %}att-absent{% else %}att-none{% endif %}">
@@ -94,6 +101,9 @@
                         {% endfor %}
                         <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>
                         <td class="text-center fw-bold" style="color:#721c24;">{{ row.missed }}</td>
+                        <td class="text-center fw-bold" style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
+                            {{ row.missed_percent }}%
+                        </td>
                     </tr>
                     {% empty %}
                     <tr><td colspan="100" class="text-center text-muted py-4">Talabalar yo'q</td></tr>

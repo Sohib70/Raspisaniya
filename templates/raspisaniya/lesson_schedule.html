@@ -43,7 +43,7 @@
             <a href="{% url 'admin_group_grades' item.group.pk %}" class="btn btn-sm btn-outline-primary">
                 📊 Baholar &amp; davomat
             </a>
-            {% if request.user.is_staff %}
+            {% if request.user.is_staff or request.user.is_superuser %}
             <button class="btn btn-sm permit-group-btn {% if item.group.teacher_can_edit %}btn-success{% else %}btn-outline-secondary{% endif %}"
                 data-group-pk="{{ item.group.pk }}"
                 title="{% if item.group.teacher_can_edit %}Ruxsat berilgan — olish{% else %}O'qituvchiga vaqt o'zgartirish ruxsati{% endif %}">

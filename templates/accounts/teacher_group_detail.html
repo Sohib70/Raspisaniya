@@ -15,8 +15,8 @@
         .badge-came { background: #d4edda; color: #155724; font-weight: 600; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
         .badge-missed { background: #f8d7da; color: #721c24; font-weight: 600; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; }
         .grade-val { font-weight: 700; color: #1a237e; }
-        .progress-bar-custom { height: 6px; border-radius: 4px; background: #e0e0e0; overflow: hidden; margin-top: 4px; }
-        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .blocked-row { background: #fff0f0 !important; }
+        td, th { vertical-align: middle !important; }
     </style>
 </head>
 <body>
@@ -24,7 +24,7 @@
 <div class="topbar">
     <h5>🎓 O'qituvchi kabineti</h5>
     <div class="d-flex align-items-center gap-3">
-        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <span>👤 {{ teacher.first_name }}</span>
         <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-light">← Dashboard</a>
         <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
@@ -74,9 +74,9 @@
                     <tr>
                         <th style="width:40px;" class="text-center">#</th>
                         <th>Ism Familiya</th>
-                                                <th class="text-center">Keldi</th>
+                        <th class="text-center">Keldi</th>
                         <th class="text-center">Kelmadi</th>
-                        <th class="text-center" style="width:130px;">Davomat %</th>
+                        <th class="text-center" style="width:130px;">Qoldirgan %</th>
                         <th class="text-center">Oraliq</th>
                         <th class="text-center">Joriy</th>
                         <th class="text-center">Yakuniy</th>
@@ -85,19 +85,22 @@
                 </thead>
                 <tbody>
                     {% for row in students_data %}
-                    <tr>
+                    <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
                         <td class="text-center text-muted">{{ forloop.counter }}</td>
-                        <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
-                                                <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
+                        <td>
+                            <b>{{ row.student.first_name }}</b>
+                            {% if row.is_blocked %}
+                            <span class="badge bg-danger ms-1" style="font-size:0.68rem;">🚫 Bloklangan</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
                         <td class="text-center"><span class="badge-missed">{{ row.missed }}</span></td>
                         <td class="text-center">
-                            {% if row.percent is not None %}
-                                <span class="grade-val">{{ row.percent }}%</span>
-                                <div class="progress-bar-custom">
-                                    <div class="progress-fill" style="width:{{ row.percent }}%; background:{% if row.percent >= 70 %}#28a745{% elif row.percent >= 50 %}#ffc107{% else %}#dc3545{% endif %};"></div>
-                                </div>
-                            {% else %}
-                                <span class="text-muted">—</span>
+                            <span class="fw-bold" style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
+                                {{ row.missed_percent }}%
+                            </span>
+                            {% if row.missed_percent > 25 %}
+                            <div style="font-size:0.68rem; color:#dc3545;">qoldirgan</div>
                             {% endif %}
                         </td>
                         <td class="text-center">
@@ -126,7 +129,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="10" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

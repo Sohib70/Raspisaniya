@@ -36,7 +36,7 @@ def login_view(request):
                 elif is_student:
                     return redirect('student_dashboard')
             else:
-                messages.error(request, "Hisobingizga hech qanday rol biriktirilmagan. Ma'muriyatga murojaat qiling.")
+                messages.error(request, "Hisobingizga hech qanday rol biriktirilmagan.")
         else:
             messages.error(request, "Bunday foydalanuvchi topilmadi. ID yoki parolni qayta tekshiring.")
 
@@ -119,7 +119,7 @@ def student_dashboard(request):
                 grid[key] = {
                     'subject': str(grp.course.subject),
                     'teacher': str(grp.teacher),
-                    'teacher_name': f"{grp.teacher.first_name} {grp.teacher.last_name}",
+                    'teacher_name': f"{grp.teacher.first_name}",
                     'room': str(grp.room) if grp.room else '',
                 }
 
@@ -139,11 +139,8 @@ def student_dashboard(request):
     prev_week = (week_start - timedelta(weeks=1)).isoformat()
     next_week = (week_start + timedelta(weeks=1)).isoformat()
 
-    # Baholar
-    from raspisaniya.models import Grade, Attendance
     grade_map = {g.course_group_id: g for g in Grade.objects.filter(student=student)}
 
-    # Davomat va qoldirilgan darslar
     groups_data = []
     for grp in my_groups:
         total = grp.schedule.count()
@@ -154,15 +151,17 @@ def student_dashboard(request):
                 attendance__is_present=False
             ).order_by('date').values('date', 'lesson_number')
         )
-        marked = Attendance.objects.filter(student=student, schedule__group=grp).count()
-        percent = round(came / marked * 100) if marked > 0 else None
+        missed = len(missed_list)
+        missed_percent = round(missed / total * 100) if total > 0 else 0
+        is_blocked = missed_percent > 25 and not grp.teacher_can_edit
         groups_data.append({
             'group': grp,
             'total': total,
             'came': came,
-            'missed': len(missed_list),
+            'missed': missed,
             'missed_list': missed_list,
-            'percent': percent,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
             'grade': grade_map.get(grp.pk),
         })
 
@@ -177,10 +176,6 @@ def student_dashboard(request):
         "groups_data": groups_data,
     })
 
-
-# ─────────────────────────────────────────────────────────────
-# O'QITUVCHI VIEWS
-# ─────────────────────────────────────────────────────────────
 
 @login_required
 def teacher_dashboard(request):
@@ -264,9 +259,25 @@ def teacher_dashboard(request):
     })
 
 
+def _student_attendance_info(student, group):
+    """Talabaning guruh bo'yicha davomat ma'lumoti."""
+    total = group.schedule.count()
+    came = Attendance.objects.filter(student=student, schedule__group=group, is_present=True).count()
+    missed = Attendance.objects.filter(student=student, schedule__group=group, is_present=False).count()
+    missed_percent = round(missed / total * 100) if total > 0 else 0
+    # Bloklangan: 25% dan oshgan VA admin ruxsat bermagan
+    is_blocked = missed_percent > 25 and not group.teacher_can_edit
+    return {
+        'came': came,
+        'missed': missed,
+        'total': total,
+        'missed_percent': missed_percent,
+        'is_blocked': is_blocked,
+    }
+
+
 @login_required
 def teacher_group_detail(request, group_pk):
-    """Guruh sahifasi: talabalar, umumiy davomat va baho jadvali."""
     try:
         teacher = request.user.teacher
     except Exception:
@@ -289,13 +300,14 @@ def teacher_group_detail(request, group_pk):
     students_data = []
     for st in students:
         att = att_map.get(st.pk, {'came': 0, 'missed': 0})
-        marked = att['came'] + att['missed']
-        percent = round(att['came'] / marked * 100) if marked > 0 else None
+        missed_percent = round(att['missed'] / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
         students_data.append({
             'student': st,
             'came': att['came'],
             'missed': att['missed'],
-            'percent': percent,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
             'grade': grade_map.get(st.pk),
         })
 
@@ -310,7 +322,6 @@ def teacher_group_detail(request, group_pk):
 
 @login_required
 def teacher_attendance(request, group_pk, sched_pk):
-    """Bitta dars uchun davomat belgilash."""
     try:
         teacher = request.user.teacher
     except Exception:
@@ -321,6 +332,22 @@ def teacher_attendance(request, group_pk, sched_pk):
     students = group.students.all().order_by('last_name', 'first_name')
 
     if request.method == "POST":
+        from datetime import date as today_date
+        today = today_date.today()
+        is_admin = request.user.is_superuser or request.user.is_staff
+
+        # Bugungi kun → mumkin
+        # Admin → mumkin
+        # Admin ruxsat bergan (teacher_can_edit) → mumkin
+        # Qolgan hollarda → bloklash
+        if not is_admin and schedule.date != today and not group.teacher_can_edit:
+            messages.error(
+                request,
+                f"Faqat bugungi ({today.strftime('%d.%m.%Y')}) dars davomatini o'zgartirish mumkin! "
+                f"Boshqa kunlar uchun admin 🔓 Ruxsat berish tugmasini bosishi kerak."
+            )
+            return redirect('teacher_attendance_overview', group_pk=group_pk)
+
         for student in students:
             is_present = request.POST.get(f"present_{student.pk}") == "1"
             Attendance.objects.update_or_create(
@@ -336,12 +363,20 @@ def teacher_attendance(request, group_pk, sched_pk):
         for a in Attendance.objects.filter(schedule=schedule, student__in=students)
     }
 
+    from datetime import date as today_date
+    today = today_date.today()
+    is_admin = request.user.is_superuser or request.user.is_staff
+    can_edit = is_admin or schedule.date == today or group.teacher_can_edit
+
     students_list = []
     for st in students:
+        att_info = _student_attendance_info(st, group)
         students_list.append({
             'student': st,
             'is_present': existing.get(st.pk, True),
             'already_marked': st.pk in existing,
+            'missed_percent': att_info['missed_percent'],
+            'is_blocked': att_info['is_blocked'],
         })
 
     return render(request, "accounts/teacher_attendance.html", {
@@ -349,12 +384,13 @@ def teacher_attendance(request, group_pk, sched_pk):
         "group": group,
         "schedule": schedule,
         "students_list": students_list,
+        "can_edit": can_edit,
+        "is_today": schedule.date == today,
     })
 
 
 @login_required
 def teacher_attendance_overview(request, group_pk):
-    """Guruhning barcha darslar davomati jadvali."""
     try:
         teacher = request.user.teacher
     except Exception:
@@ -363,6 +399,7 @@ def teacher_attendance_overview(request, group_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk, teacher=teacher)
     students = list(group.students.all().order_by('last_name', 'first_name'))
     schedules = list(group.schedule.all().order_by('date'))
+    total_lessons = len(schedules)
 
     all_att = Attendance.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'is_present')
     att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in all_att}
@@ -382,7 +419,17 @@ def teacher_attendance_overview(request, group_pk):
                 cells.append('absent')
             else:
                 cells.append('none')
-        rows.append({'student': st, 'cells': cells, 'came': came, 'missed': missed})
+        missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
+        rows.append({
+            'student': st,
+            'cells': cells,
+            'came': came,
+            'missed': missed,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
+            'total': total_lessons,
+        })
 
     return render(request, "accounts/teacher_attendance_overview.html", {
         "teacher": teacher,
@@ -390,12 +437,12 @@ def teacher_attendance_overview(request, group_pk):
         "students": students,
         "schedules": schedules,
         "rows": rows,
+        "total_lessons": total_lessons,
     })
 
 
 @login_required
 def teacher_grades(request, group_pk):
-    """Guruh talabalarining baholarini kiritish."""
     try:
         teacher = request.user.teacher
     except Exception:
@@ -405,7 +452,20 @@ def teacher_grades(request, group_pk):
     students = group.students.all().order_by('last_name', 'first_name')
 
     if request.method == "POST":
+        # Davomat tekshiruvi — bloklangan talabaga baho qo'yib bo'lmaydi
+        att_map_blocked = {}
+        total_lessons = group.schedule.count()
+        for st in students:
+            missed = Attendance.objects.filter(
+                student=st, schedule__group=group, is_present=False
+            ).count()
+            missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+            att_map_blocked[st.pk] = missed_percent > 25 and not group.teacher_can_edit
+
         for student in students:
+            if att_map_blocked.get(student.pk):
+                continue  # Bloklangan — o'tkazib yuboramiz
+
             def parse(val, max_val):
                 try:
                     v = float(val)
@@ -425,11 +485,28 @@ def teacher_grades(request, group_pk):
         messages.success(request, "Baholar muvaffaqiyatli saqlandi.")
         return redirect('teacher_grades', group_pk=group_pk)
 
+    # Har bir talabaning davomat holatini olamiz
+    total_lessons = group.schedule.count()
     grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
-    students_grades = [{'student': st, 'grade': grade_map.get(st.pk)} for st in students]
+    att_counts = {}
+    for a in Attendance.objects.filter(schedule__group=group, is_present=False):
+        att_counts[a.student_id] = att_counts.get(a.student_id, 0) + 1
+
+    students_grades = []
+    for st in students:
+        missed = att_counts.get(st.pk, 0)
+        missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
+        students_grades.append({
+            'student': st,
+            'grade': grade_map.get(st.pk),
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
+        })
 
     return render(request, "accounts/teacher_grades.html", {
         "teacher": teacher,
         "group": group,
         "students_grades": students_grades,
+        "grade_blocked_by_attendance": not group.teacher_can_edit,
     })

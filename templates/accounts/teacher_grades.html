@@ -17,9 +17,10 @@
         .grade-input.midterm:focus { border-color: #e67e22; box-shadow: 0 0 0 2px rgba(230,126,34,0.15); }
         .grade-input.current:focus { border-color: #27ae60; box-shadow: 0 0 0 2px rgba(39,174,96,0.15); }
         .grade-input.final:focus { border-color: #8e44ad; box-shadow: 0 0 0 2px rgba(142,68,173,0.15); }
+        .grade-input:disabled { background: #f5f5f5; cursor: not-allowed; opacity: 0.5; }
         td, th { vertical-align: middle !important; }
-        .col-label { font-size: 0.75rem; color: #888; display: block; margin-bottom: 2px; }
         .messages-area { margin-bottom: 1rem; }
+        .blocked-row { background: #fff0f0 !important; }
     </style>
 </head>
 <body>
@@ -27,7 +28,7 @@
 <div class="topbar">
     <h5>📝 Baholar kiritish</h5>
     <div class="d-flex align-items-center gap-3">
-        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
+        <span>👤 {{ teacher.first_name }}</span>
         <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-sm btn-outline-light">← Guruhga qaytish</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
@@ -39,8 +40,7 @@
     <div class="messages-area">
         {% for msg in messages %}
         <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
-            {{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
         {% endfor %}
     </div>
@@ -65,11 +65,15 @@
     </div>
 
     <!-- Izoh -->
-    <div class="d-flex gap-3 mb-3 align-items-center" style="font-size:0.82rem;">
+    <div class="d-flex gap-3 mb-3 align-items-center flex-wrap" style="font-size:0.82rem;">
         <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (max 20)</span>
         <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (max 30)</span>
         <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (max 50)</span>
-        <span class="text-muted ms-2">Bo'sh qoldirish = baho yo'q</span>
+        {% if grade_blocked_by_attendance %}
+        <span class="px-3 py-1 rounded fw-bold" style="background:#fdecea; color:#c62828; border:1px solid #ef9a9a;">
+            🚫 25% dan oshgan talabalar blokda — admin ruxsat berishi kerak
+        </span>
+        {% endif %}
     </div>
 
     <form method="post">
@@ -82,7 +86,7 @@
                         <tr>
                             <th style="width:40px;" class="text-center">#</th>
                             <th>Ism Familiya</th>
-                                                        <th class="text-center" style="min-width:100px;">
+                            <th class="text-center" style="min-width:100px;">
                                 <span style="color:#e67e22;">Oraliq<br><small style="font-weight:400;">max 20</small></span>
                             </th>
                             <th class="text-center" style="min-width:100px;">
@@ -96,45 +100,56 @@
                     </thead>
                     <tbody>
                         {% for row in students_grades %}
-                        <tr>
+                        <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
                             <td class="text-center text-muted">{{ forloop.counter }}</td>
-                            <td><b>{{ row.student.last_name }} {{ row.student.first_name }}</b></td>
-                                                        <td class="text-center">
-                                <input type="number"
-                                       name="midterm_{{ row.student.pk }}"
-                                       class="grade-input midterm"
-                                       min="0" max="20" step="0.5"
+                            <td>
+                                <b>{{ row.student.first_name }}</b>
+                                {% if row.is_blocked %}
+                                <span class="badge bg-danger ms-1" style="font-size:0.7rem;">
+                                    🚫 {{ row.missed_percent }}% qoldirgan
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row.is_blocked %}
+                                <span class="text-muted">—</span>
+                                {% else %}
+                                <input type="number" name="midterm_{{ row.student.pk }}"
+                                       class="grade-input midterm" min="0" max="20" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.midterm is not None %}{{ row.grade.midterm }}{% endif %}">
+                                {% endif %}
                             </td>
                             <td class="text-center">
-                                <input type="number"
-                                       name="current_{{ row.student.pk }}"
-                                       class="grade-input current"
-                                       min="0" max="30" step="0.5"
+                                {% if row.is_blocked %}
+                                <span class="text-muted">—</span>
+                                {% else %}
+                                <input type="number" name="current_{{ row.student.pk }}"
+                                       class="grade-input current" min="0" max="30" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.current is not None %}{{ row.grade.current }}{% endif %}">
+                                {% endif %}
                             </td>
                             <td class="text-center">
-                                <input type="number"
-                                       name="final_{{ row.student.pk }}"
-                                       class="grade-input final"
-                                       min="0" max="50" step="0.5"
+                                {% if row.is_blocked %}
+                                <span class="text-muted">—</span>
+                                {% else %}
+                                <input type="number" name="final_{{ row.student.pk }}"
+                                       class="grade-input final" min="0" max="50" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.final is not None %}{{ row.grade.final }}{% endif %}">
+                                {% endif %}
                             </td>
                             <td class="text-center fw-bold" id="avg_{{ row.student.pk }}" style="color:#1a237e;">
-                                {% if row.grade %}
-                                    {% with m=row.grade.midterm c=row.grade.current f=row.grade.final %}
-                                    {% if m is not None and c is not None and f is not None %}
-                                        {{ m|add:c|add:f }}
-                                    {% else %}—{% endif %}
-                                    {% endwith %}
+                                {% if row.is_blocked %}
+                                <span class="text-danger" style="font-size:0.75rem;">Davomat yetarli emas</span>
+                                {% elif row.grade and row.grade.midterm is not None and row.grade.current is not None and row.grade.final is not None %}
+                                    {{ row.grade.midterm|add:row.grade.current|add:row.grade.final }}
                                 {% else %}—{% endif %}
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="7" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
+                        <tr><td colspan="6" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -151,7 +166,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// Real-vaqt o'rtacha hisoblash
 document.querySelectorAll('.grade-input').forEach(function(inp) {
     inp.addEventListener('input', function() {
         var row = this.closest('tr');
