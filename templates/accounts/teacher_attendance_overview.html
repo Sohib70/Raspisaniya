@@ -15,9 +15,21 @@
         .att-present { background: #d4edda; color: #155724; font-weight: 700; text-align: center; font-size: 0.85rem; }
         .att-absent  { background: #f8d7da; color: #721c24; font-weight: 700; text-align: center; font-size: 0.85rem; }
         .att-none    { background: #f5f5f5; color: #aaa; text-align: center; font-size: 0.8rem; }
-        th.date-th   { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.72rem; padding: 6px 4px; white-space: nowrap; background: #e8eaf6; }
-        td, th { vertical-align: middle !important; }
         .blocked-row { background: #fff0f0 !important; }
+        td, th { vertical-align: middle !important; }
+
+        /* Sana ustunlari */
+        th.date-th {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            font-size: 0.72rem;
+            padding: 6px 4px;
+            white-space: nowrap;
+        }
+        th.date-marked   { background: #c8f7c5; }  /* Davomat belgilangan — yashil */
+        th.date-missed   { background: #ffd5d5; }  /* O'tib ketgan, belgilanmagan — qizil */
+        th.date-future   { background: #e8eaf6; }  /* Kelgusi — oddiy */
+        th.date-today    { background: #fff9c4; }  /* Bugun — sariq */
     </style>
 </head>
 <body>
@@ -54,11 +66,14 @@
         </div>
     </div>
 
-    <div class="d-flex gap-3 mb-3 align-items-center flex-wrap" style="font-size:0.85rem;">
-        <span class="px-3 py-1 rounded" style="background:#d4edda; color:#155724; font-weight:600;">✓ Keldi</span>
-        <span class="px-3 py-1 rounded" style="background:#f8d7da; color:#721c24; font-weight:600;">✗ Kelmadi</span>
-        <span class="px-3 py-1 rounded" style="background:#f5f5f5; color:#aaa;">— Belgilanmagan</span>
-        <span class="px-3 py-1 rounded" style="background:#fff0f0; color:#c62828; font-weight:600; border:1px solid #ef9a9a;">🚫 Bloklangan (>25%)</span>
+    <!-- Izoh -->
+    <div class="d-flex gap-2 mb-3 align-items-center flex-wrap" style="font-size:0.82rem;">
+        <span class="px-2 py-1 rounded" style="background:#d4edda; color:#155724; font-weight:600;">✓ Keldi</span>
+        <span class="px-2 py-1 rounded" style="background:#f8d7da; color:#721c24; font-weight:600;">✗ Kelmadi</span>
+        <span class="px-2 py-1 rounded" style="background:#f5f5f5; color:#aaa;">— Belgilanmagan</span>
+        <span class="px-2 py-1 rounded" style="background:#c8f7c5; color:#155724; font-weight:600;">📅 Davomat belgilangan</span>
+        <span class="px-2 py-1 rounded" style="background:#ffd5d5; color:#c62828; font-weight:600;">⚠ O'tib ketgan, belgilanmagan</span>
+        <span class="px-2 py-1 rounded" style="background:#fff9c4; color:#856404; font-weight:600;">📌 Bugun</span>
         <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-auto">📝 Baholar</a>
     </div>
 
@@ -70,17 +85,18 @@
                     <tr>
                         <th style="min-width:180px;"># Talaba</th>
                         {% for sched in schedules %}
-                        <th class="date-th">
+                        <th class="date-th {{ sched.date_class }}"
+                            title="{{ sched.date|date:'d.m.Y' }} — {% if sched.is_marked %}Davomat belgilangan{% elif sched.is_past %}O'tib ketgan, belgilanmagan{% elif sched.is_today %}Bugun{% else %}Kelgusi dars{% endif %}">
                             <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
-                               style="color:#1a237e; text-decoration:none;"
-                               title="{{ sched.date }} uchun davomatni tahrirlash">
+                               style="color:inherit; text-decoration:none;">
                                 {{ sched.date|date:"d.m" }}<br>
                                 <span style="font-size:0.65rem;">{{ sched.lesson_number }}-dars</span>
+                                {% if sched.is_marked %}✓{% elif sched.is_past %}!{% endif %}
                             </a>
                         </th>
                         {% endfor %}
-                        <th class="text-center" style="min-width:60px;">Keldi</th>
-                        <th class="text-center" style="min-width:60px;">Kelmadi</th>
+                        <th class="text-center" style="min-width:55px;">Keldi</th>
+                        <th class="text-center" style="min-width:55px;">Kelmadi</th>
                         <th class="text-center" style="min-width:80px;">Qoldirgan %</th>
                     </tr>
                 </thead>
@@ -101,7 +117,8 @@
                         {% endfor %}
                         <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>
                         <td class="text-center fw-bold" style="color:#721c24;">{{ row.missed }}</td>
-                        <td class="text-center fw-bold" style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
+                        <td class="text-center fw-bold"
+                            style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
                             {{ row.missed_percent }}%
                         </td>
                     </tr>

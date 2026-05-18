@@ -4,13 +4,21 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h4>Darslar ro'yxati</h4>
         <div class="d-flex gap-2">
-            <a href="{% url 'build_schedule' %}" class="btn btn-warning">🗓 Jadval tuzish</a>
-            <a href="{% url 'lesson_create' %}" class="btn btn-primary">+ Yangi dars</a>
-            <a href="{% url 'weekly_schedule' %}" class="btn btn-info">📅 Haftalik jadval</a>
+            <!-- O'qituvchilar ro'yxatidan ko'chirib kelingan ruxsatnomalar boshqaruvi -->
+            <button class="btn btn-success btn-sm" onclick="toggleAllPermit(true)">🔓 Hammaga ruxsat</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleAllPermit(false)">🔒 Hammadan olish</button>
+
+            <a href="{% url 'build_schedule' %}" class="btn btn-warning btn-sm">🗓 Jadval tuzish</a>
+            <a href="{% url 'lesson_create' %}" class="btn btn-primary btn-sm">+ Yangi dars</a>
+            <a href="{% url 'weekly_schedule' %}" class="btn btn-info btn-sm">📅 Haftalik jadval</a>
         </div>
     </div>
 
     <form method="get" class="mb-3">
+        <!-- Qidiruv vaqtida saralash yo'qolib ketmasligi uchun hidden inputlar -->
+        <input type="hidden" name="sort_by" value="{{ sort_by|default:'subject' }}">
+        <input type="hidden" name="direction" value="{{ direction|default:'asc' }}">
+
         <div class="input-group">
             <input type="text" name="q" value="{{ q }}" class="form-control"
                    placeholder="Fan nomi bo'yicha qidirish...">
@@ -26,24 +34,49 @@
     {% endif %}
 
     {% if courses_data %}
-    <table class="table table-bordered table-hover">
+    <table class="table table-bordered table-hover align-middle">
         <thead class="table-dark">
             <tr>
-                <th>T/R</th>
-                <th>Fan</th>
-                <th>Guruhlar</th>
-                <th>Jadval holati</th>
-                <th>Jami dars</th>
-                <th>Boshlanish</th>
-                <th>Tugash</th>
-                <th>Amallar</th>
+                <th style="width: 70px; color: white;">T/R</th>
+
+                <!-- Fan nomi Ustuni (Oq rangli strelkali saralash) -->
+                <th>
+                    <a href="?q={{ q }}&sort_by=subject&direction={% if sort_by == 'subject' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
+                        Fan
+                        {% if sort_by == 'subject' %}
+                            {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
+                        {% else %}
+                            <span class="text-white" style="opacity: 0.5;">↕</span>
+                        {% endif %}
+                    </a>
+                </th>
+
+                <th class="text-white">Guruhlar</th>
+                <th class="text-white">Jadval holati</th>
+                <th class="text-white">Jami dars</th>
+                <th class="text-white">Boshlanish</th>
+                <th class="text-white">Tugash</th>
+
+                <!-- Qarzdor o'quvchilar Ustuni (Oq rangli strelkali saralash) -->
+                <th>
+                    <a href="?q={{ q }}&sort_by=debt&direction={% if sort_by == 'debt' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
+                        Qarzdor o'quvchilar
+                        {% if sort_by == 'debt' %}
+                            {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
+                        {% else %}
+                            <span class="text-white" style="opacity: 0.5;">↕</span>
+                        {% endif %}
+                    </a>
+                </th>
+
+                <th style="width: 200px; color: white;">Amallar</th>
             </tr>
         </thead>
         <tbody>
             {% for item in courses_data %}
             <tr>
                 <td>{{ forloop.counter }}</td>
-                <td>{{ item.course.subject }}</td>
+                <td>{{ item.course.subject.name }}</td>
                 <td>{{ item.total_groups }} ta guruh</td>
                 <td>
                     {% if item.scheduled_groups == item.total_groups and item.total_groups > 0 %}
@@ -57,6 +90,16 @@
                 <td>{{ item.course.total_lessons }} para</td>
                 <td>{{ item.course.start_date|date:"d.m.Y" }}</td>
                 <td>{{ item.course.end_date|date:"d.m.Y" }}</td>
+
+                <!-- Qarzdor talabalar miqdori -->
+                <td>
+                    {% if item.debt_students_count > 0 %}
+                        <span class="badge bg-danger">{{ item.debt_students_count }} ta o'quvchi</span>
+                    {% else %}
+                        <span class="badge bg-success">Qarzdorlar yo'q</span>
+                    {% endif %}
+                </td>
+
                 <td>
                     <a href="{% url 'lesson_schedule' item.course.pk %}" class="btn btn-sm btn-info">Jadval</a>
                     <a href="{% url 'course_update' item.course.pk %}" class="btn btn-sm btn-warning">✏️</a>
@@ -70,4 +113,38 @@
         <p class="text-muted">{% if q %}"{{ q }}" bo'yicha hech narsa topilmadi.{% else %}Hali dars yo'q.{% endif %}</p>
     {% endif %}
 </div>
+
+<!-- Toast xabarnomasi (AJAX muvaffaqiyatli yakunlansa pastki burchakda chiqadi) -->
+<div id="permitToast" class="position-fixed bottom-0 end-0 p-3" style="z-index:9999; display:none;">
+    <div class="toast show" id="permitToastBody">
+        <div class="toast-body fw-bold" id="permitToastMsg"></div>
+    </div>
+</div>
+
+<!-- Ruxsatnomalarni yuborish uchun JavaScript mantiqi -->
+<script>
+function toggleAllPermit(permitted) {
+    var msg = permitted
+        ? 'Barcha guruhlarga ruxsat berilsinmi?'
+        : 'Barcha guruhlardan ruxsat olinsinmi?';
+    if (!confirm(msg)) return;
+
+    fetch('/raspisaniya/toggle-all-teacher-edit/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({permitted: permitted})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            var toast = document.getElementById('permitToast');
+            var toastBody = document.getElementById('permitToastBody');
+            toastBody.className = 'toast show ' + (permitted ? 'bg-success text-white' : 'bg-secondary text-white');
+            document.getElementById('permitToastMsg').textContent = data.label;
+            toast.style.display = 'block';
+            setTimeout(function() { toast.style.display = 'none'; }, 3000);
+        }
+    });
+}
+</script>
 {% endblock %}

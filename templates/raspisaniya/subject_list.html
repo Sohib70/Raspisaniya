@@ -4,7 +4,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <a href="{% url 'subject_create' %}" class="btn btn-success">➕ Fan qo'shish</a>
+
     <form method="get" class="d-flex gap-2" style="min-width:300px;">
+        <!-- Qidiruv vaqtida saralash parametrlari yo'qolib ketmasligi uchun hidden inputlar -->
+        <input type="hidden" name="sort_by" value="{{ sort_by|default:'subject' }}">
+        <input type="hidden" name="direction" value="{{ direction|default:'asc' }}">
+
         <input type="text" name="q" value="{{ q }}" class="form-control"
                placeholder="Fan nomi bo'yicha qidirish...">
         <button type="submit" class="btn btn-primary">🔍</button>
@@ -12,38 +17,65 @@
     </form>
 </div>
 
-<table class="table table-striped table-hover">
+{% if subjects_data %}
+<table class="table table-striped table-hover align-middle">
     <thead class="table-dark">
         <tr>
-            <th>#</th>
-            <th>Fan nomi</th>
-            <th>Qarzdor o'quvchilar</th>
-            <th>Amallar</th>
+            <th style="width: 70px; color: white;">#</th>
+
+            <!-- Fan nomi Ustuni -->
+            <th>
+                <a href="?q={{ q }}&sort_by=subject&direction={% if sort_by == 'subject' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
+                    Fan nomi
+                    {% if sort_by == 'subject' %}
+                        {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
+                    {% else %}
+                        <span class="text-white" style="opacity: 0.5;">↕</span>
+                    {% endif %}
+                </a>
+            </th>
+
+            <!-- Qarzdor o'quvchilar Ustuni -->
+            <th>
+                <a href="?q={{ q }}&sort_by=debt&direction={% if sort_by == 'debt' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
+                    Qarzdor o'quvchilar
+                    {% if sort_by == 'debt' %}
+                        {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
+                    {% else %}
+                        <span class="text-white" style="opacity: 0.5;">↕</span>
+                    {% endif %}
+                </a>
+            </th>
+
+            <th style="width: 150px; color: white;">Amallar</th>
         </tr>
     </thead>
     <tbody>
-        {% for subject in subjects %}
+        {% for item in subjects_data %}
         <tr>
             <td>{{ forloop.counter }}</td>
-            <td>{{ subject.name }}</td>
+            <td>{{ item.subject.name }}</td>
             <td>
-                <a href="{% url 'subject_students' subject.pk %}"
-                   class="badge bg-danger text-decoration-none">
-                    {{ subject.debt_students.count }} ta
-                </a>
+                {% if item.debt_count > 0 %}
+                    <a href="{% url 'subject_students' item.subject.pk %}" class="badge bg-danger text-decoration-none">
+                        {{ item.debt_count }} ta o'quvchi
+                    </a>
+                {% else %}
+                    <span class="badge bg-success">Qarzdorlar yo'q</span>
+                {% endif %}
             </td>
             <td>
-                <a href="{% url 'subject_update' subject.pk %}" class="btn btn-sm btn-warning">✏️</a>
-                <a href="{% url 'subject_delete' subject.pk %}" class="btn btn-sm btn-danger">🗑️</a>
-            </td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="4" class="text-center text-muted">
-                {% if q %}"{{ q }}" bo'yicha hech narsa topilmadi.{% else %}Fanlar yo'q.{% endif %}
+                <a href="{% url 'subject_update' item.subject.pk %}" class="btn btn-sm btn-warning">✏️</a>
+                <a href="{% url 'subject_delete' item.subject.pk %}" class="btn btn-sm btn-danger">🗑️</a>
             </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+{% else %}
+<div class="alert alert-info">
+    {% if q %}"{{ q }}" bo'yicha hech narsa topilmadi.{% else %}Hozircha fanlar mavjud emas.{% endif %}
+</div>
+{% endif %}
+
 {% endblock %}

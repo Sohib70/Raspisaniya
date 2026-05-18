@@ -12,13 +12,14 @@
 .form-section { padding: 24px 28px; border-bottom: 1px solid #f5f5f5; }
 .form-section:last-child { border-bottom: none; }
 .section-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #9ca3af; margin-bottom: 16px; }
-.field-group { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; } /* Idlar yonma-yon chiroyli turishi uchun 1fr 1fr qilindi */
+@media (max-width: 576px) { .field-group { grid-template-columns: 1fr; } } /* Mobil qurilmalar uchun */
 .field label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
 .field label .hint { font-weight: 400; color: #9ca3af; font-size: 0.73rem; }
 .field input { width: 100%; padding: 10px 13px; border: 1.5px solid #e5e7eb; border-radius: 10px; font-family: 'Outfit', sans-serif; font-size: 0.88rem; color: #1f2937; background: #fafafa; transition: all 0.2s; outline: none; }
 .field input:focus { border-color: #f5576c; background: white; box-shadow: 0 0 0 3px rgba(245,87,108,0.1); }
 .field .note { font-size: 0.72rem; color: #9ca3af; margin-top: 4px; }
-.id-current { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px 13px; font-weight: 700; color: #166534; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+.id-current { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px 13px; font-weight: 700; color: #166534; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; height: 43px; } /* Bo'yi tenglashdi */
 .subjects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
 .subject-item { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1.5px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.15s; background: #fafafa; }
 .subject-item:hover { border-color: #f5576c; background: #fff5f5; }
@@ -41,25 +42,28 @@
         </div>
     </div>
 
-    {% if messages %}{% for message in messages %}<div class="alert alert-danger mb-3">{{ message }}</div>{% endfor %}{% endif %}
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-danger mb-3">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
 
     <div class="form-card">
         <form method="post">
             {% csrf_token %}
 
+            <!-- SECTION 1: Shaxsiy ma'lumotlar -->
             <div class="form-section">
                 <div class="section-label">Shaxsiy ma'lumotlar</div>
-                <div class="field-group">
-                    <div class="field">
-                        <label>To'liq ism</label>
-                        <input type="text" name="first_name" value="{{ teacher.first_name }}" placeholder="To'liq ism" required>
-                    </div>
-
+                <div class="field">
+                    <label>To'liq ism</label>
+                    <input type="text" name="first_name" value="{{ teacher.first_name }}" placeholder="To'liq ism" required>
                 </div>
             </div>
 
+            <!-- SECTION 2: Tizim ID raqamlari (Yonma-yon joylashish tartibi) -->
             <div class="form-section">
-                <div class="section-label">Teacher ID</div>
+                <div class="section-label">Teacher ID sozlamalari</div>
                 <div class="field-group">
                     <div class="field">
                         <label>Mavjud ID</label>
@@ -74,6 +78,17 @@
                 </div>
             </div>
 
+            <!-- SECTION 3: Xavfsizlik / Parol -->
+            <div class="form-section">
+                <div class="section-label">Xavfsizlik</div>
+                <div class="field">
+                    <label>Yangi parol <span class="hint">— o'zgartirmasangiz bo'sh qoldiring</span></label>
+                    <input type="password" name="new_password" placeholder="Bo'sh qolsa eski parol saqlanadi" value="">
+                    <div class="note">✏️ Faqat o'zgartirmoqchi bo'lsangiz yozing (min 4 belgi)</div>
+                </div>
+            </div>
+
+            <!-- SECTION 4: Fanlar -->
             <div class="form-section">
                 <div class="section-label">O'qitiladigan fanlar</div>
                 {% if subjects %}
@@ -87,10 +102,11 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fan yo'q</p>
+                <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fanlar mavjud emas</p>
                 {% endif %}
             </div>
 
+            <!-- ACTIONS: Tugmalar -->
             <div class="form-actions">
                 <button type="submit" class="btn-save">💾 Saqlash</button>
                 <a href="{% url 'teacher_list' %}" class="btn-back">← Ortga</a>

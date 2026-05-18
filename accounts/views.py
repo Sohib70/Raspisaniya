@@ -398,17 +398,50 @@ def teacher_attendance_overview(request, group_pk):
 
     group = get_object_or_404(CourseGroup, pk=group_pk, teacher=teacher)
     students = list(group.students.all().order_by('last_name', 'first_name'))
-    schedules = list(group.schedule.all().order_by('date'))
-    total_lessons = len(schedules)
+    raw_schedules = list(group.schedule.all().order_by('date'))
+    total_lessons = len(raw_schedules)
 
-    all_att = Attendance.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'is_present')
+    all_att = Attendance.objects.filter(schedule__group=group).values(
+        'student_id', 'schedule_id', 'is_present'
+    )
     att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in all_att}
+
+    # Har bir dars uchun davomat belgilanganmi tekshiramiz
+    from datetime import date as today_date
+    today = today_date.today()
+
+    # Sched uchun belgilanganmi — birinchi talaba davomat yozuvi bormi
+    marked_sched_ids = set(
+        Attendance.objects.filter(schedule__group=group)
+        .values_list('schedule_id', flat=True)
+        .distinct()
+    )
+
+    schedules = []
+    for sched in raw_schedules:
+        is_marked = sched.pk in marked_sched_ids
+        is_today = sched.date == today
+        is_past = sched.date < today and not is_marked
+
+        if is_marked:
+            date_class = 'date-marked'
+        elif is_today:
+            date_class = 'date-today'
+        elif is_past:
+            date_class = 'date-missed'
+        else:
+            date_class = 'date-future'
+
+        sched.is_marked = is_marked
+        sched.is_today = is_today
+        sched.is_past = is_past
+        sched.date_class = date_class
+        schedules.append(sched)
 
     rows = []
     for st in students:
         cells = []
-        came = 0
-        missed = 0
+        came = missed = 0
         for sched in schedules:
             val = att_map.get((st.pk, sched.pk))
             if val is True:

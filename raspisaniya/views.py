@@ -124,18 +124,30 @@ def get_lesson_dates(start_date, weekdays, total):
         cur += timedelta(days=1)
     return result
 
-def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
-    """
-    Jadval tuzish: swap + fallback algoritmi.
-    1. Oddiy bo'sh joy qidiradi
-    2. Joy yo'q → boshqa darsni surib joy ochadi (swap)
-    3. Swap ham bo'lmasa → shanba qo'shadi
-    4. Hali ham → bitta para bilan ko'proq kunda joylashtiradi
-    5. Eng oxiri → muddatni uzaytiradi
-    """
+
+def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1,
+                            include_saturday=False):
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
     max_wd = 5 if include_saturday else 4
+
+    # ── Dars soniga qarab preferred kunlar ──
+    if total_lessons >= 20:
+        # Katta kurs (24 para): Dushanba, Chorshanba, Juma
+        preferred_weekdays = [0, 2, 4]
+        fallback_weekdays = [1, 3, 5]
+    elif total_lessons >= 12:
+        # O'rta kurs (16 para): Seshanba, Payshanba
+        preferred_weekdays = [1, 3]
+        fallback_weekdays = [0, 2, 4, 5]
+    else:
+        # Kichik kurs (8 para): istalgan kun
+        preferred_weekdays = [0, 1, 2, 3, 4]
+        fallback_weekdays = [5]
+
+    if not include_saturday:
+        preferred_weekdays = [d for d in preferred_weekdays if d <= 4]
+        fallback_weekdays = [d for d in fallback_weekdays if d <= 4]
 
     def get_busy_para_indices(date, exclude_sched_ids=None):
         busy = set()
@@ -183,86 +195,22 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                 return (i, None)
         return None
 
-    def try_swap_on_date(date):
-        """
-        Bu kunda joy yo'q — boshqa darsni boshqa vaqtga surib joy ochishga urinish.
-        Faqat o'qituvchi yoki talabalar to'qnashadigan darslarni topib, ularni boshqa paraga suradi.
-        """
-        # Bu kunda to'qnashayotgan jadvallarni topamiz
-        conflicting = list(GroupSchedule.objects.filter(
-            date=date,
-            group__teacher_id=teacher_id,
-        ).select_related('group')[:5])
-
-        if student_ids:
-            conflicting += list(GroupSchedule.objects.filter(
-                date=date,
-                group__students__id__in=student_ids,
-            ).select_related('group').distinct()[:5])
-
-        for conf_sched in conflicting:
-            # Bu darsni boshqa paraga surishga urinib ko'ramiz
-            conf_group = conf_sched.group
-            conf_teacher_id = conf_group.teacher_id
-            conf_student_ids = list(conf_group.students.values_list('id', flat=True))
-
-            # Boshqa para qidiramiz (shu kunda)
-            for new_para_idx, (ps, pe) in enumerate(PARA_TIMES):
-                if ps == (conf_sched.start_time or conf_group.start_time):
-                    continue  # O'zining parasi
-
-                # Bu yangi parada to'qnashuv bormi?
-                new_busy = set()
-                for s in GroupSchedule.objects.filter(
-                    date=date, group__teacher_id=conf_teacher_id
-                ).exclude(pk=conf_sched.pk).select_related('group'):
-                    st = s.start_time or s.group.start_time
-                    if st:
-                        for i, (p, _) in enumerate(PARA_TIMES):
-                            if p == st:
-                                new_busy.add(i)
-
-                for s in GroupSchedule.objects.filter(
-                    date=date,
-                    group__students__id__in=conf_student_ids,
-                ).exclude(pk=conf_sched.pk).select_related('group').distinct():
-                    st = s.start_time or s.group.start_time
-                    if st:
-                        for i, (p, _) in enumerate(PARA_TIMES):
-                            if p == st:
-                                new_busy.add(i)
-
-                if new_para_idx not in new_busy:
-                    # Swap mumkin — conf_sched ni yangi paraga suramiz
-                    conf_sched.start_time = PARA_TIMES[new_para_idx][0]
-                    conf_sched.save(update_fields=['start_time'])
-                    # Endi bo'sh joy bor, tekshiramiz
-                    pair = find_free_para(date, need_two=True)
-                    if pair:
-                        return pair
-                    # Agar hali ham yo'q bo'lsa — swap ni bekor qilamiz
-                    conf_sched.start_time = conf_sched.start_time  # qaytaramiz
-                    # (aslida oldingi qiymatni saqlab qo'yish kerak edi)
-
-        return None
-
     if start_date.weekday() == 6:
         first_monday = start_date + timedelta(days=1)
     else:
         first_monday = start_date - timedelta(days=start_date.weekday())
 
     days_needed = math.ceil(lessons_per_week / 2)
-    all_weekdays = list(range(max_wd + 1))
 
-    # ── 1-qadam: Oddiy bo'sh joy qidirish ──
-    def collect_slots(max_wd_inner, weeks=8):
+    def collect_slots(weekday_order, weeks=8):
+        """Berilgan hafta kunlari tartibida slot qidirish."""
         slots = []
         used_wds = set()
         cur = first_monday
         for _ in range(weeks):
             if len(slots) >= days_needed:
                 break
-            for wd in range(max_wd_inner + 1):
+            for wd in weekday_order:
                 if len(slots) >= days_needed:
                     break
                 if wd in used_wds:
@@ -277,41 +225,30 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
             cur += timedelta(weeks=1)
         return slots
 
-    chosen_slots = collect_slots(max_wd)
+    # ── 1-qadam: Preferred kunlarda slot qidirish ──
+    chosen_slots = collect_slots(preferred_weekdays)
 
-    # ── 2-qadam: Swap — to'qnashgan darslarni surish ──
+    # ── 2-qadam: Yetmasa fallback kunlarda ──
+    if len(chosen_slots) < days_needed:
+        extra = collect_slots(fallback_weekdays)
+        used_wds = {w for w, _, _ in chosen_slots}
+        for slot in extra:
+            if slot[0] not in used_wds and len(chosen_slots) < days_needed:
+                chosen_slots.append(slot)
+                used_wds.add(slot[0])
+
+    # ── 3-qadam: Shanba qo'shamiz ──
+    if len(chosen_slots) < days_needed:
+        chosen_slots = collect_slots(preferred_weekdays + [5])
+
+    # ── 4-qadam: Bitta para bilan ──
     if len(chosen_slots) < days_needed:
         cur = first_monday
         used_wds = {w for w, _, _ in chosen_slots}
         for _ in range(8):
             if len(chosen_slots) >= days_needed:
                 break
-            for wd in range(max_wd + 1):
-                if len(chosen_slots) >= days_needed:
-                    break
-                if wd in used_wds:
-                    continue
-                d = cur + timedelta(days=wd)
-                if d < start_date or d > end_date or d.weekday() > 5:
-                    continue
-                pair = try_swap_on_date(d)
-                if pair:
-                    chosen_slots.append((wd, pair[0], pair[1]))
-                    used_wds.add(wd)
-            cur += timedelta(weeks=1)
-
-    # ── 3-qadam: Fallback — shanba qo'shamiz ──
-    if len(chosen_slots) < days_needed:
-        chosen_slots = collect_slots(5)  # shanba (5) bilan
-
-    # ── 4-qadam: Fallback — bitta para bilan (ikki kun) ──
-    if len(chosen_slots) < days_needed:
-        cur = first_monday
-        used_wds = {w for w, _, _ in chosen_slots}
-        for _ in range(8):
-            if len(chosen_slots) >= days_needed:
-                break
-            for wd in range(6):
+            for wd in preferred_weekdays + fallback_weekdays + [5]:
                 if len(chosen_slots) >= days_needed:
                     break
                 if wd in used_wds:
@@ -325,7 +262,7 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                     used_wds.add(wd)
             cur += timedelta(weeks=1)
 
-    # ── 5-qadam: Fallback — muddatni 2 hafta uzaytirish ──
+    # ── 5-qadam: Muddatni 2 hafta uzaytirish ──
     extended_end = end_date
     if len(chosen_slots) < days_needed:
         extended_end = end_date + timedelta(weeks=2)
@@ -349,7 +286,7 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
             cur += timedelta(weeks=1)
 
     if not chosen_slots:
-        return []  # Bo'sh ro'yxat qaytaramiz (None o'rniga)
+        return []
 
     # ── Darslarni haftama-hafta joylashtirish ──
     result = []
@@ -382,7 +319,7 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
 
         cur_monday += timedelta(weeks=1)
 
-    return result  # Bo'sh bo'lsa ham qaytaramiz
+    return result
 
 
 def split_subjects(raw):
@@ -955,17 +892,46 @@ def remove_student_from_group(request, group_pk, student_pk):
 @login_required
 def teacher_list(request):
     q = request.GET.get('q', '').strip()
-    teachers = Teacher.objects.all().order_by('last_name')
+    sort = request.GET.get('sort', 'name_asc')
+
+    teachers = Teacher.objects.prefetch_related('subjects').all()
+
     if q:
-        teachers = teachers.filter(
-            first_name__icontains=q
-        ) | teachers.filter(
-            last_name__icontains=q
-        ) | teachers.filter(
-            teacher_id__icontains=q
-        )
-        teachers = teachers.order_by('last_name')
-    return render(request, 'raspisaniya/teacher_list.html', {'teachers': teachers, 'q': q})
+        teachers = teachers.filter(first_name__icontains=q) | \
+                   teachers.filter(last_name__icontains=q) | \
+                   teachers.filter(teacher_id__icontains=q) | \
+                   teachers.filter(subjects__name__icontains=q)
+
+    teachers = teachers.distinct()
+
+    # ID bo'yicha saralashda T- dan keyingi raqamni olib raqam sifatida tartiblash
+    if sort in ('id_asc', 'id_desc'):
+        import re
+        def extract_num(t):
+            m = re.search(r'\d+', t.teacher_id or '')
+            return int(m.group()) if m else 0
+        reverse = (sort == 'id_desc')
+        teachers = sorted(teachers, key=extract_num, reverse=reverse)
+    elif sort == 'name_asc':
+        teachers = teachers.order_by('first_name')
+    elif sort == 'name_desc':
+        teachers = teachers.order_by('-first_name')
+    elif sort == 'subj_asc':
+        teachers = teachers.order_by('subjects__name', 'first_name')
+    elif sort == 'subj_desc':
+        teachers = teachers.order_by('-subjects__name', 'first_name')
+    else:
+        teachers = teachers.order_by('first_name')
+
+    subjects = Subject.objects.all().order_by('name')
+
+    return render(request, 'raspisaniya/teacher_list.html', {
+        'teachers': teachers,
+        'q': q,
+        'subjects': subjects,
+        'selected_subject': request.GET.get('subject', ''),
+        'sort': sort,
+    })
 
 
 @login_required
@@ -1015,12 +981,10 @@ def teacher_create(request):
 def teacher_update(request, pk):
     teacher = get_object_or_404(Teacher, pk=pk)
     if request.method == 'POST':
-        # Ism — bo'sh bo'lsa eskisini saqla
         first_name = request.POST.get('first_name', '').strip()
         if first_name:
             teacher.first_name = first_name
 
-        # ID — bo'sh bo'lsa yoki o'zgartirilmasa eskisini saqla
         new_id = request.POST.get('teacher_id', '').strip()
         if new_id and new_id != teacher.teacher_id:
             teacher.teacher_id = new_id
@@ -1028,10 +992,16 @@ def teacher_update(request, pk):
                 teacher.user.username = new_id
                 teacher.user.save()
 
+        # Parol — bo'sh bo'lsa o'zgartirmaymiz
+        new_password = request.POST.get('new_password', '').strip()
+        if new_password and teacher.user:
+            teacher.user.set_password(new_password)
+            teacher.user.save()
+
         teacher.save()
         subject_ids = request.POST.getlist('subjects')
         teacher.subjects.set(subject_ids)
-        messages.success(request, f"O'qituvchi yangilandi.")
+        messages.success(request, "O'qituvchi yangilandi.")
         return redirect('teacher_list')
 
     return render(request, 'raspisaniya/teacher_update.html', {
@@ -1130,10 +1100,17 @@ def teacher_import(request):
 @login_required
 def student_list(request):
     q = request.GET.get('q', '').strip()
+
+    # Saralash parametrlari
+    sort_by = request.GET.get('sort_by', 'fio')  # fio, lang, subject
+    direction = request.GET.get('direction', 'asc')  # asc yoki desc
+
     students = Student.objects.prefetch_related(
         'debts',
         'coursegroup_set__course__subject',
-    ).select_related('group').order_by('last_name')
+    ).select_related('group').all()
+
+    # 1. Qidiruv filtri
     if q:
         students = students.filter(
             first_name__icontains=q
@@ -1144,15 +1121,44 @@ def student_list(request):
         ) | students.filter(
             group__name__icontains=q
         )
-        students = students.prefetch_related(
-            'debts', 'coursegroup_set__course__subject'
-        ).select_related('group').order_by('last_name').distinct()
+        students = students.distinct()
 
+    # 2. Ma'lumotlarni yig'ish (Sizning eski tsiklingiz)
     students_data = []
     for student in students:
         completed = list({grp.course.subject for grp in student.coursegroup_set.all()})
-        students_data.append({'student': student, 'completed': completed})
-    return render(request, 'raspisaniya/student_list.html', {'students_data': students_data, 'q': q})
+
+        # Saralash oson bo'lishi uchun fanlar nomini bitta matnga birlashtiramiz (masalan: "Matematika, Fizika")
+        subjects_text = ", ".join(sorted([subj.name for subj in completed]))
+
+        students_data.append({
+            'student': student,
+            'completed': completed,
+            'subjects_text': subjects_text  # Saralash uchun kerak
+        })
+
+    # 3. Python orqali mukammal saralash (Gibrid mantiq)
+    is_reverse = (direction == 'desc')
+
+    if sort_by == 'fio':
+        # Familiya va Ism bo'yicha saralash
+        students_data.sort(key=lambda x: (x['student'].last_name.lower(), x['student'].first_name.lower()),
+                           reverse=is_reverse)
+
+    elif sort_by == 'lang':
+        # Ta'lim tili bo'yicha saralash (uz, ru, en...)
+        students_data.sort(key=lambda x: (x['student'].language or '').lower(), reverse=is_reverse)
+
+    elif sort_by == 'subject':
+        # Biriktirilgan fanlar matni bo'yicha saralash
+        students_data.sort(key=lambda x: x['subjects_text'].lower(), reverse=is_reverse)
+
+    return render(request, 'raspisaniya/student_list.html', {
+        'students_data': students_data,
+        'q': q,
+        'sort_by': sort_by,
+        'direction': direction,
+    })
 
 
 @login_required
@@ -1309,11 +1315,9 @@ def import_students(request):
         if form.is_valid():
             file = request.FILES["file"]
             try:
-                # Excelni xotirani tejash rejimida o'qiymiz
                 wb = load_workbook(file, read_only=True, data_only=True)
                 ws = wb.active
 
-                # 1. Mavjud ma'lumotlarni bir marta yuklaymiz (Xotira orqali tekshirish uchun)
                 existing_users = {u.username: u for u in User.objects.filter(username__startswith='S-')}
                 existing_groups = {g.name: g for g in Group.objects.all()}
                 existing_subjects = {s.name: s for s in Subject.objects.all()}
@@ -1322,24 +1326,32 @@ def import_students(request):
                 new_users_to_create = []
                 students_to_create = []
                 students_to_update = []
+                student_debts_collector = {}
 
-                # Talaba ID va uning barcha qarzlarini yig'ish uchun
-                # Hatto bitta talaba 10 ta qatorda kelsa ham, shunda yig'iladi
-                student_debts_collector = {}  # { 'S-101': set(subj_obj1, subj_obj2) }
+                # Til mapping — Excel da qanday yozilsa shunga mos
+                LANG_MAP = {
+                    'o\'zbek': 'uz', 'uzbek': 'uz', 'uz': 'uz', "o'zbek": 'uz',
+                    'рус': 'ru', 'rus': 'ru', 'ru': 'ru', 'russian': 'ru',
+                    'қорақалпоқ': 'qq', 'karakalpak': 'qq', 'qq': 'qq',
+                    'ingliz': 'en', 'english': 'en', 'en': 'en',
+                }
 
                 for row in ws.iter_rows(min_row=2, values_only=True):
                     if not row or not row[0] or not row[1]:
                         continue
 
-                    # ID va Ism-sharifni tozalash
                     sid = f"S-{str(row[0]).strip()}"
                     full_name = str(row[1]).strip()
                     if not full_name:
                         continue
-                    first_name = full_name   # To'liq nom — qanday tursa shunday
+                    first_name = full_name
                     last_name = ""
 
-                    # GURUH: Guruhni tekshirish va yaratish
+                    # Ta'lim tili — F ustuni (row[5])
+                    lang_raw = str(row[5]).strip().lower() if len(row) > 5 and row[5] else 'uz'
+                    language = LANG_MAP.get(lang_raw, 'uz')
+
+                    # Guruh — E ustuni (row[4])
                     group_obj = None
                     if len(row) > 4 and row[4]:
                         g_name = str(row[4]).strip()
@@ -1349,38 +1361,36 @@ def import_students(request):
                         else:
                             group_obj = existing_groups[g_name]
 
-                    # USER: Userni tekshirish va ro'yxatga qo'shish
                     if sid not in existing_users:
                         user_obj = User(username=sid)
                         user_obj.set_password(sid)
                         new_users_to_create.append(user_obj)
-                        existing_users[sid] = user_obj  # Keyingi qatorlarda ishlatish uchun
+                        existing_users[sid] = user_obj
                     else:
                         user_obj = existing_users[sid]
 
-                    # TALABA: Talaba obyektini aniqlash (yaratish yoki yangilash)
                     if sid not in existing_students:
                         st_obj = Student(
                             user=user_obj, student_id=sid,
                             first_name=first_name, last_name=last_name,
-                            group=group_obj, language='uz'
+                            group=group_obj, language=language
                         )
                         students_to_create.append(st_obj)
-                        existing_students[sid] = st_obj  # Muhim: xotiraga saqlaymiz
+                        existing_students[sid] = st_obj
                     else:
                         st_obj = existing_students[sid]
-                        st_obj.first_name, st_obj.last_name, st_obj.group = first_name, last_name, group_obj
+                        st_obj.first_name = first_name
+                        st_obj.last_name = last_name
+                        st_obj.group = group_obj
+                        st_obj.language = language
                         if st_obj not in students_to_update:
                             students_to_update.append(st_obj)
 
-                    # QARZ FANLAR: Har bir qatordagi fanlarni yig'amiz
+                    # Fanlar — I ustuni (row[8])
                     if len(row) > 8 and row[8]:
-                        # split_subjects va process_subject o'rniga oddiyroq split ishlatamiz
                         raw_subjects = [s.strip() for s in str(row[8]).split(";") if s.strip()]
-
                         if sid not in student_debts_collector:
                             student_debts_collector[sid] = set()
-
                         for s_name in raw_subjects:
                             if s_name not in existing_subjects:
                                 subj = Subject.objects.create(name=s_name)
@@ -1389,33 +1399,25 @@ def import_students(request):
                                 subj = existing_subjects[s_name]
                             student_debts_collector[sid].add(subj)
 
-                # --- BAZAGA OMMAVIY YOZISH (BULK OPERATIONS) ---
-
-                # 1. Userlarni yaratish
+                # Bulk create users
                 if new_users_to_create:
                     User.objects.bulk_create(new_users_to_create, ignore_conflicts=True)
-                    # Userlar PK olishi uchun qayta yuklash (Faqat yangilarini)
                     created_users = {u.username: u for u in
                                      User.objects.filter(username__in=[u.username for u in new_users_to_create])}
                     for s in students_to_create:
                         s.user = created_users.get(s.student_id)
 
-                # 2. Talabalarni yaratish va yangilash
                 if students_to_create:
                     Student.objects.bulk_create(students_to_create)
 
                 if students_to_update:
-                    Student.objects.bulk_update(students_to_update, ['first_name', 'last_name', 'group'])
+                    Student.objects.bulk_update(students_to_update, ['first_name', 'last_name', 'group', 'language'])
 
-                # 3. Many-to-Many (Debts) bog'lamalarini bulk yaratish
                 if student_debts_collector:
-                    # Bazadagi haqiqiy talaba ID-larini olish
                     db_students = {s.student_id: s for s in
                                    Student.objects.filter(student_id__in=student_debts_collector.keys())}
-
                     StudentDebtModel = Student.debts.through
                     debt_relations = []
-
                     for sid, subjects in student_debts_collector.items():
                         st_obj = db_students.get(sid)
                         if st_obj:
@@ -1423,9 +1425,6 @@ def import_students(request):
                                 debt_relations.append(
                                     StudentDebtModel(student_id=st_obj.pk, subject_id=subj_obj.pk)
                                 )
-
-                    # Eskilarini o'chirib yangilash yoki shunchaki yangilarini qo'shish
-                    # Biz yangilarini qo'shamiz, ignore_conflicts dublikatlarni tashlab ketadi
                     StudentDebtModel.objects.bulk_create(debt_relations, ignore_conflicts=True)
 
                 messages.success(request, f"Import yakunlandi! {len(students_to_create)} yangi talaba qo'shildi.")
@@ -1523,10 +1522,42 @@ def assign_room(request, group_pk):
 @login_required
 def subject_list(request):
     q = request.GET.get('q', '').strip()
-    subjects = Subject.objects.all().order_by('name')
+
+    # Saralash parametrlari (default holatda Fan nomi bo'yicha ASC)
+    sort_by = request.GET.get('sort_by', 'subject')  # subject yoki debt
+    direction = request.GET.get('direction', 'asc')  # asc yoki desc
+
+    # Fanlarni va ularga tegishli qarzdorlarni bazadan yuklash
+    subjects_queryset = Subject.objects.prefetch_related('debt_students').all()
+
     if q:
-        subjects = subjects.filter(name__icontains=q)
-    return render(request, 'raspisaniya/subject_list.html', {'subjects': subjects, 'q': q})
+        subjects_queryset = subjects_queryset.filter(name__icontains=q)
+
+    # Saralash mantiqi aniq ishlashi uchun ma'lumotlar ro'yxatini yig'amiz
+    subjects_data = []
+    for subj in subjects_queryset:
+        subjects_data.append({
+            'subject': subj,
+            'debt_count': subj.debt_students.count()  # Qarzdorlar soni
+        })
+
+    # Python orqali mukammal saralash
+    is_reverse = (direction == 'desc')
+
+    if sort_by == 'subject':
+        # Fan nomi bo'yicha saralash
+        subjects_data.sort(key=lambda x: (x['subject'].name or '').lower(), reverse=is_reverse)
+
+    elif sort_by == 'debt':
+        # Qarzdor o'quvchilar soni bo'yicha saralash
+        subjects_data.sort(key=lambda x: x['debt_count'], reverse=is_reverse)
+
+    return render(request, 'raspisaniya/subject_list.html', {
+        'subjects_data': subjects_data,
+        'q': q,
+        'sort_by': sort_by,
+        'direction': direction,
+    })
 
 
 @login_required
@@ -2319,3 +2350,42 @@ def restore_database_view(request):
     return render(request, 'raspisaniya/restore_database.html', {
         'backups': backups,
     })
+
+
+@login_required
+def admin_change_teacher_password(request, pk):
+    """Admin: o'qituvchi parolini o'zgartirish."""
+    teacher = get_object_or_404(Teacher, pk=pk)
+    if request.method == "POST":
+        new_password = request.POST.get("new_password", "").strip()
+        if not new_password:
+            messages.error(request, "Parol bo'sh bo'lmasin")
+        elif not teacher.user:
+            messages.error(request, "Bu o'qituvchining tizim akkaunti yo'q")
+        else:
+            teacher.user.set_password(new_password)
+            teacher.user.save()
+            messages.success(request, f"{teacher.first_name} ning paroli o'zgartirildi")
+    return redirect("teacher_list")
+
+
+@login_required
+def toggle_all_teacher_edit_permission(request):
+    """Admin: barcha guruhlarga bir vaqtda ruxsat berish/olish."""
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({'success': False, 'error': 'Ruxsat yo\'q'}, status=403)
+    if request.method == 'POST':
+        import json as _json
+        body = _json.loads(request.body)
+        permitted = body.get('permitted', True)
+        CourseGroup.objects.filter(is_scheduled=True).update(teacher_can_edit=permitted)
+        count = CourseGroup.objects.filter(is_scheduled=True).count()
+        return JsonResponse({
+            'success': True,
+            'permitted': permitted,
+            'count': count,
+            'label': f'Hammaga ruxsat berildi ✅ ({count} guruh)' if permitted else f'Hammadan ruxsat olindi ({count} guruh)',
+        })
+    return JsonResponse({'success': False}, status=405)
+
+

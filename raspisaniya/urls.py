@@ -67,6 +67,8 @@ urlpatterns = [
     path('api/stats/', views.stats_api, name='stats_api'),
     path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
     path('toggle-teacher-edit/<int:group_pk>/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
+    path('teacher/<int:pk>/change-password/', views.admin_change_teacher_password, name='admin_change_teacher_password'),
+    path('toggle-all-teacher-edit/', views.toggle_all_teacher_edit_permission, name='toggle_all_teacher_edit'),
 
 
 

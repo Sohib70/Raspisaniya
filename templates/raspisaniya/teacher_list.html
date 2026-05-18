@@ -3,15 +3,23 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2>👨‍🏫 O'qituvchilar ro'yxati</h2>
-    <a href="{% url 'teacher_create' %}" class="btn btn-success">➕ O'qituvchi qo'shish</a>
+    <div class="d-flex gap-2">
+        <!-- Ruxsat berish tugmalari olib tashlandi -->
+        <a href="{% url 'teacher_create' %}" class="btn btn-success">➕ O'qituvchi qo'shish</a>
+    </div>
 </div>
 
-<form method="get" class="mb-3">
-    <div class="input-group">
+<!-- Filter -->
+<form method="get" class="mb-3 w-100">
+    <input type="hidden" name="sort" value="{{ sort|default:'name_asc' }}">
+
+    <div class="input-group w-100">
         <input type="text" name="q" value="{{ q }}" class="form-control"
-               placeholder="Ism, familiya yoki ID bo'yicha qidirish...">
+               placeholder="Ism, ID yoki fan nomi bo'yicha qidirish...">
         <button type="submit" class="btn btn-primary">🔍 Qidirish</button>
-        {% if q %}<a href="{% url 'teacher_list' %}" class="btn btn-outline-secondary">✕</a>{% endif %}
+        {% if q or selected_subject %}
+            <a href="{% url 'teacher_list' %}" class="btn btn-outline-secondary">✕</a>
+        {% endif %}
     </div>
 </form>
 
@@ -19,18 +27,61 @@
 <table class="table table-striped table-hover align-middle">
     <thead class="table-dark">
         <tr>
-            <th>T/R</th>
-            <th>F.I.O</th>
-            <th>ID</th>
-            <th>Fanlar</th>
-            <th>Amallar</th>
+            <th style="width: 70px; color: white;">T/R</th>
+
+            <!-- F.I.O Ustuni -->
+            <th>
+                <a href="?q={{ q }}&sort={% if sort == 'name_asc' %}name_desc{% else %}name_asc{% endif %}"
+                   class="text-white text-decoration-none d-inline-flex align-items-center gap-1">
+                    F.I.O
+                    {% if sort == 'name_asc' %}
+                        <span class="text-white">▲</span>
+                    {% elif sort == 'name_desc' %}
+                        <span class="text-white">▼</span>
+                    {% else %}
+                        <span class="text-white" style="opacity: 0.5;">↕</span>
+                    {% endif %}
+                </a>
+            </th>
+
+            <!-- ID Ustuni -->
+            <th>
+                <a href="?q={{ q }}&sort={% if sort == 'id_asc' %}id_desc{% else %}id_asc{% endif %}"
+                   class="text-white text-decoration-none d-inline-flex align-items-center gap-1">
+                    ID
+                    {% if sort == 'id_asc' %}
+                        <span class="text-white">▲</span>
+                    {% elif sort == 'id_desc' %}
+                        <span class="text-white">▼</span>
+                    {% else %}
+                        <span class="text-white" style="opacity: 0.5;">↕</span>
+                    {% endif %}
+                </a>
+            </th>
+
+            <!-- Fanlar Ustuni -->
+            <th>
+                <a href="?q={{ q }}&sort={% if sort == 'subj_asc' %}subj_desc{% else %}subj_asc{% endif %}"
+                   class="text-white text-decoration-none d-inline-flex align-items-center gap-1">
+                    Fanlar
+                    {% if sort == 'subj_asc' %}
+                        <span class="text-white">▲</span>
+                    {% elif sort == 'subj_desc' %}
+                        <span class="text-white">▼</span>
+                    {% else %}
+                        <span class="text-white" style="opacity: 0.5;">↕</span>
+                    {% endif %}
+                </a>
+            </th>
+
+            <th style="width: 150px; color: white;">Amallar</th>
         </tr>
     </thead>
     <tbody>
         {% for teacher in teachers %}
         <tr>
             <td>{{ forloop.counter }}</td>
-            <td>{{ teacher.last_name }} {{ teacher.first_name }}</td>
+            <td>{{ teacher.first_name }}</td>
             <td><code>{{ teacher.teacher_id|default:"—" }}</code></td>
             <td>
                 {% for subj in teacher.subjects.all %}
@@ -42,6 +93,9 @@
             <td>
                 <a href="{% url 'teacher_update' teacher.pk %}" class="btn btn-sm btn-warning">✏️</a>
                 <a href="{% url 'teacher_delete' teacher.pk %}" class="btn btn-sm btn-danger">🗑️</a>
+                <button class="btn btn-sm btn-outline-info"
+                        onclick="openPasswordModal({{ teacher.pk }}, '{{ teacher.first_name|escapejs }}')"
+                        title="Parol o'zgartirish">🔑</button>
             </td>
         </tr>
         {% endfor %}
@@ -54,4 +108,36 @@
 </div>
 {% endif %}
 
+<!-- Parol modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">🔑 Parol o'zgartirish</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="passwordForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p class="text-muted small mb-2" id="passwordTeacherName"></p>
+                    <input type="password" name="new_password" class="form-control"
+                           placeholder="Yangi parol (min 4 belgi)" minlength="4" required>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="submit" class="btn btn-warning btn-sm">💾 Saqlash</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Bekor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openPasswordModal(pk, name) {
+    document.getElementById('passwordTeacherName').textContent = name + ' uchun yangi parol:';
+    document.getElementById('passwordForm').action = '/raspisaniya/teacher/' + pk + '/change-password/';
+    new bootstrap.Modal(document.getElementById('passwordModal')).show();
+}
+// toggleAllPermit funksiyasi bu yerdan olib tashlandi
+</script>
 {% endblock %}
