@@ -34,11 +34,15 @@
 </head>
 <body>
 
-<div class="topbar">
-    <h5>📋 Davomat jadvali</h5>
-    <div class="d-flex align-items-center gap-3">
-        <span>👤 {{ teacher.first_name }}</span>
-        <a href="{% url 'teacher_group_detail' group.pk %}" class="btn btn-sm btn-outline-light">← Guruhga qaytish</a>
+<div class="topbar" style="background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex !important; align-items: center !important; gap: 15px;">
+        <h5 style="margin: 0; font-weight: 700; color: white !important;">📋 Davomat jadvali</h5>
+        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
+            🏠 Bosh sahifa
+        </a>
+    </div>
+    <div style="display: flex !important; align-items: center !important; gap: 16px;">
+        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
 </div>

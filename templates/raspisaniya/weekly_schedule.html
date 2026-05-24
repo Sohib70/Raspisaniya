@@ -1,25 +1,67 @@
 {% extends "raspisaniya/base.html" %}
 
 {% block content %}
+<style>
+  #lessonInfoModal .modal-title,
+  #lessonInfoModal #modalSubject {
+    color: #1e293b !important;
+    font-weight: 700;
+  }
+  #lessonInfoModal #modalGroup {
+    color: #475569 !important;
+    font-weight: 500;
+  }
+  #modalStudents span {
+    color: #0f172a !important;
+  }
+  #modalStudents .text-muted {
+    color: #64748b !important;
+  }
+  /* Boshqa dars kunlari uchun uslublar */
+  .other-day-badge {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: inline-block;
+  }
+  /* Talabalar tillari badge uslubi */
+  .lang-badge-uz {
+    background-color: #0d6efd;
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+  }
+  .lang-badge-ru {
+    background-color: #dc3545;
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+  }
+</style>
+
 <div class="container-fluid px-3 py-3">
 
-  <!-- Hafta navigatsiyasi -->
   <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <a href="?week={{ prev_week }}" class="btn btn-outline-secondary btn-sm">← Oldingi hafta</a>
     <h5 class="mb-0 fw-bold px-3 py-1 rounded" style="background:#dc3545;color:#fff;">📅 {{ week_start_str }} — {{ week_end_str }}</h5>
     <a href="?week={{ next_week }}" class="btn btn-outline-secondary btn-sm">Keyingi hafta →</a>
   </div>
 
-  <!-- Drag & Drop yordam xabari -->
   <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2" role="alert">
     <span>💡</span>
-    <span>Darsni boshqa vaqtga ko'chirish uchun <strong>sudrab olib boring</strong> va bo'sh katakka tashlang.</span>
+    <span>Darsni boshqa vaqtga ko'chirish uchun <strong>sudrab olib boring</strong> va bo'sh katakka tashlang. Ma'lumot uchun <strong>bir marta bosing</strong>.</span>
   </div>
 
-  <!-- Toast xabarnoma -->
   <div id="toast-container" style="position:fixed;top:80px;right:20px;z-index:9999;min-width:300px;"></div>
 
-  <!-- Jadval -->
   <div class="table-responsive">
     <table class="table table-bordered align-middle text-center mb-0" id="weekly-table"
            style="font-size:13px; min-width: {{ group_numbers|length|add:2 }}00px;">
@@ -60,6 +102,13 @@
                        draggable="true"
                        data-sched-id="{{ cell.sched_id }}"
                        data-sched-url="{% url 'change_lesson_time_ajax' cell.sched_id %}"
+                       data-subject="{{ cell.subject }}"
+                       data-teacher="{{ cell.teacher }}"
+                       data-room="{{ cell.room }}"
+                       data-group="{{ cell.group_number }}"
+                       data-time="{{ row.time }}"
+                       data-day="{{ row.day }}"
+                       data-date="{{ row.iso_date }}"
                        style="background:{{ cell.bg }};
                               color:{{ cell.text }};
                               border:1.5px solid {{ cell.border }};
@@ -69,10 +118,10 @@
                               user-select:none;
                               transition:opacity 0.2s, box-shadow 0.2s;">
                     <div class="fw-bold" style="font-size:12px;">
-                          {{ cell.subject }}
-                          {% if cell.group_number %}
-                            <span style="font-size:10px;opacity:0.7;">({{ cell.group_number }}-guruh)</span>
-                          {% endif %}
+                      {{ cell.subject }}
+                      {% if cell.group_number %}
+                        <span style="font-size:10px;opacity:0.7;">({{ cell.group_number }}-guruh)</span>
+                      {% endif %}
                     </div>
                     <div style="font-size:11px;opacity:0.85;">{{ cell.teacher }}</div>
                     {% if cell.room %}
@@ -88,19 +137,76 @@
     </table>
   </div>
 
-  <!-- Excel yuklab olish -->
   <div class="mt-3">
     <a href="{% url 'weekly_schedule_excel' %}?week={{ week_start|date:'Y-m-d' }}"
-       class="btn btn-success btn-sm">
-      📥 Excel yuklab olish
-    </a>
+       class="btn btn-success btn-sm">📥 Excel yuklab olish</a>
   </div>
 
 </div>
 
+<div class="modal fade" id="lessonInfoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px; overflow:hidden; border:none; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+      <div class="modal-header py-3" id="modalHeader" style="border-bottom:none;">
+        <div>
+          <h5 class="modal-title fw-bold mb-0" id="modalSubject"></h5>
+          <div id="modalGroup" class="badge bg-light text-dark mt-1" style="font-size: 12px;"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-3" style="background: #fdfdfd;">
+        <div class="d-flex flex-column gap-3">
+
+          <div class="p-3 rounded" style="background:#f8f9ff; border: 1px solid #eef2ff;">
+            <div class="row text-center">
+              <div class="col-6 border-end">
+                <div class="text-muted small">📅 Tanlangan kun</div>
+                <div class="fw-bold mt-1" id="modalDay" style="color:#0f172a; font-size:14px;"></div>
+              </div>
+              <div class="col-6">
+                <div class="text-muted small">⏰ Vaqt (Para)</div>
+                <div class="fw-bold mt-1" id="modalTime" style="color:#0f172a; font-size:14px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="p-3 rounded text-center" style="background:#f0fdf4; border: 1px solid #dcfce7;">
+                <div class="text-muted small">👨‍🏫 O'qituvchi</div>
+                <div class="fw-bold mt-1" id="modalTeacher" style="color:#14532d; font-size:13px;"></div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="p-3 rounded text-center" style="background:#f0f4ff; border: 1px solid #e0e7ff;">
+                <div class="text-muted small">🏫 Xona</div>
+                <div class="fw-bold mt-1" id="modalRoom" style="color:#1e3a8a; font-size:13px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-muted small mb-2 fw-bold text-primary" style="font-size: 12px;">🔁 USHBU HAFTADAGI BARCHA DARS KUNLARI:</div>
+            <div id="modalOtherDays" class="d-flex flex-wrap gap-2 p-2 rounded border bg-light align-items-center" style="min-height: 45px;">
+              <div class="text-muted small">Yuklanmoqda...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-muted small mb-2 fw-bold text-secondary" style="font-size: 12px;">👥 TALABALAR RO'YXATI (TA'LIM TILI BILAN):</div>
+            <div id="modalStudents" class="p-2 rounded border" style="max-height:200px; overflow-y:auto; background:#fff;">
+              <div class="text-muted text-center py-2">Yuklanmoqda...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
-  // ─── CSRF ───
   function getCookie(name) {
     let v = null;
     document.cookie.split(';').forEach(c => {
@@ -111,27 +217,19 @@
   }
   const CSRF = getCookie('csrftoken');
 
-  // ─── Toast ───
   function showToast(message, type) {
     type = type || 'success';
     const container = document.getElementById('toast-container');
     const id = 'toast-' + Date.now();
     const color = type === 'success' ? '#198754' : '#dc3545';
-    const icon  = type === 'success' ? '\u2705' : '\u274C';
+    const icon  = type === 'success' ? '✅' : '❌';
     const div = document.createElement('div');
     div.id = id;
     div.style.cssText = [
-      'background:' + color,
-      'color:#fff',
-      'padding:12px 16px',
-      'border-radius:10px',
-      'margin-bottom:8px',
-      'box-shadow:0 4px 12px rgba(0,0,0,0.2)',
-      'font-size:14px',
-      'display:flex',
-      'align-items:center',
-      'gap:8px',
-      'transition:opacity .3s'
+      'background:' + color, 'color:#fff', 'padding:12px 16px',
+      'border-radius:10px', 'margin-bottom:8px',
+      'box-shadow:0 4px 12px rgba(0,0,0,0.2)', 'font-size:14px',
+      'display:flex', 'align-items:center', 'gap:8px', 'transition:opacity .3s'
     ].join(';');
     div.innerHTML = '<span>' + icon + '</span><span>' + message + '</span>';
     container.appendChild(div);
@@ -141,12 +239,99 @@
     }, 4000);
   }
 
-  // ─── STATE ───
+  // ── INFO MODAL (BIR MARTA BOSGANDA) ──
+  var isDragging = false;
+
+  document.addEventListener('dragstart', function(e) {
+    if (e.target.closest('.lesson-card')) isDragging = true;
+  });
+  document.addEventListener('dragend', function() {
+    setTimeout(function() { isDragging = false; }, 100);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (isDragging) return;
+    var card = e.target.closest('.lesson-card');
+    if (!card) return;
+
+    var subject  = card.dataset.subject || '—';
+    var teacher  = card.dataset.teacher || '—';
+    var room     = card.dataset.room    || '—';
+    var group    = card.dataset.group   || '';
+    var day      = card.dataset.day     || '—';
+    var time     = card.dataset.time    || '—';
+    var schedId  = card.dataset.schedId || '';
+    var bg       = card.style.background || '#f0f4ff';
+
+    document.getElementById('modalSubject').textContent = subject;
+    document.getElementById('modalGroup').textContent   = group ? group + '-guruh' : '';
+    document.getElementById('modalDay').textContent     = day;
+    document.getElementById('modalTime').textContent    = time;
+    document.getElementById('modalTeacher').textContent = teacher;
+    document.getElementById('modalRoom').textContent    = room;
+    document.getElementById('modalHeader').style.background = bg;
+
+    var studentsEl = document.getElementById('modalStudents');
+    var otherDaysEl = document.getElementById('modalOtherDays');
+
+    studentsEl.innerHTML = '<div class="text-muted text-center py-2">Yuklanmoqda...</div>';
+    otherDaysEl.innerHTML = '<div class="text-muted small py-1">Yuklanmoqda...</div>';
+
+    if (schedId) {
+      // Backend so'rovi
+      fetch('/raspisaniya/sched-info/' + schedId + '/')
+        .then(r => r.json())
+        .then(data => {
+          // 1. Talabalar ro'yxatini va dars tilini chiqarish
+          if (data.students && data.students.length > 0) {
+            var html = '<div class="row g-1">';
+            data.students.forEach(function(st, i) {
+              // Til belgisiga ko'ra rangli klass tanlash
+              var badgeClass = st.lang === 'RUS' ? 'lang-badge-ru' : 'lang-badge-uz';
+
+              html += '<div class="col-12 py-1 border-bottom d-flex align-items-center justify-content-between" style="border-color:#f1f5f9 !important;">' +
+                '<div>' +
+                  '<span class="text-muted me-2" style="font-size:0.8rem; font-weight:600;">' + (i+1) + '.</span>' +
+                  '<span style="font-size:0.85rem; font-weight:500; color:#0f172a;">' + st.name + '</span>' +
+                '</div>' +
+                '<div><span class="' + badgeClass + '">' + st.lang + '</span></div>' +
+              '</div>';
+            });
+            html += '</div>';
+            html += '<div class="text-muted small mt-2 text-end fw-bold">Jami: ' + data.students.length + ' ta talaba</div>';
+            studentsEl.innerHTML = html;
+          } else {
+            studentsEl.innerHTML = '<div class="text-muted text-center py-2">Talabalar topilmadi</div>';
+          }
+
+          // 2. Ushbu fanning haftalik boshqa dars kunlarini chiqarish
+          if (data.other_days && data.other_days.length > 0) {
+            var daysHtml = '';
+            data.other_days.forEach(function(dayStr) {
+                daysHtml += '<span class="other-day-badge">📆 ' + dayStr + '</span>';
+            });
+            otherDaysEl.innerHTML = daysHtml;
+          } else {
+            otherDaysEl.innerHTML = '<div class="text-muted small py-1">Ushbu haftada boshqa dars yo\'q</div>';
+          }
+        })
+        .catch(function() {
+          studentsEl.innerHTML = '<div class="text-danger text-center py-2">Yuklab bo\'lmadi</div>';
+          otherDaysEl.innerHTML = '<div class="text-danger small py-1">Xatolik yuz berdi</div>';
+        });
+    } else {
+      studentsEl.innerHTML = '<div class="text-muted text-center py-2">—</div>';
+      otherDaysEl.innerHTML = '<div class="text-muted small py-1">—</div>';
+    }
+
+    new bootstrap.Modal(document.getElementById('lessonInfoModal')).show();
+  });
+
+  // ── DRAG & DROP QISMI (O'ZGARISHSIZ) ──
   var draggedCard = null;
   var sourceCell  = null;
   var isFetching  = false;
 
-  // ─── DRAG START ───
   document.addEventListener('dragstart', function (e) {
     var card = e.target.closest('.lesson-card');
     if (!card) return;
@@ -157,7 +342,6 @@
     e.dataTransfer.effectAllowed = 'move';
   });
 
-  // ─── DRAG END ───
   document.addEventListener('dragend', function (e) {
     var card = e.target.closest('.lesson-card');
     if (!card) return;
@@ -165,9 +349,7 @@
     card.style.boxShadow = '';
   });
 
-  // ─── DROP ZONES ───
   document.querySelectorAll('.drop-zone').forEach(function (td) {
-
     td.addEventListener('dragover', function (e) {
       e.preventDefault();
       var occupied = td.classList.contains('has-lesson') && td !== sourceCell;
@@ -197,7 +379,7 @@
         showToast('Sana yoki vaqt topilmadi', 'error');
         return;
       }
-      // ✅ Vaqt bir xil bo'lsa — faqat DOM ko'chadi, server chaqirilmaydi
+
       if (newDate === sourceCell.dataset.date && newTime === sourceCell.dataset.time) {
         sourceCell.classList.remove('has-lesson');
         td.classList.add('has-lesson');
@@ -206,7 +388,6 @@
         return;
       }
 
-      // Optimistik ko'chirish
       isFetching = true;
       var prevSource = sourceCell;
       var cardRef    = draggedCard;
@@ -221,10 +402,7 @@
 
       fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': CSRF
-        },
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         body: JSON.stringify({ new_date: newDate, new_time: newTime })
       })
       .then(function (r) { return r.json(); })
@@ -232,11 +410,9 @@
         cardRef.style.opacity = '1';
         cardRef.setAttribute('draggable', 'true');
         isFetching = false;
-
         if (data.success) {
-          showToast('Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\u02BCchirildi', 'success');
+          showToast('Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\'chirildi', 'success');
         } else {
-          // Rollback
           td.classList.remove('has-lesson');
           prevSource.classList.add('has-lesson');
           prevSource.appendChild(cardRef);
@@ -245,7 +421,6 @@
         }
       })
       .catch(function () {
-        // Rollback
         td.classList.remove('has-lesson');
         prevSource.classList.add('has-lesson');
         prevSource.appendChild(cardRef);
@@ -253,7 +428,7 @@
         cardRef.style.opacity = '1';
         cardRef.setAttribute('draggable', 'true');
         isFetching = false;
-        showToast('Server bilan aloqa yo\u02BCq', 'error');
+        showToast('Server bilan aloqa yo\'q', 'error');
       });
     });
   });
@@ -265,5 +440,4 @@
 
 })();
 </script>
-
 {% endblock %}

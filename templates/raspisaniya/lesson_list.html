@@ -57,18 +57,6 @@
                 <th class="text-white">Boshlanish</th>
                 <th class="text-white">Tugash</th>
 
-                <!-- Qarzdor o'quvchilar Ustuni (Oq rangli strelkali saralash) -->
-                <th>
-                    <a href="?q={{ q }}&sort_by=debt&direction={% if sort_by == 'debt' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
-                        Qarzdor o'quvchilar
-                        {% if sort_by == 'debt' %}
-                            {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
-                        {% else %}
-                            <span class="text-white" style="opacity: 0.5;">↕</span>
-                        {% endif %}
-                    </a>
-                </th>
-
                 <th style="width: 200px; color: white;">Amallar</th>
             </tr>
         </thead>
@@ -90,15 +78,6 @@
                 <td>{{ item.course.total_lessons }} para</td>
                 <td>{{ item.course.start_date|date:"d.m.Y" }}</td>
                 <td>{{ item.course.end_date|date:"d.m.Y" }}</td>
-
-                <!-- Qarzdor talabalar miqdori -->
-                <td>
-                    {% if item.debt_students_count > 0 %}
-                        <span class="badge bg-danger">{{ item.debt_students_count }} ta o'quvchi</span>
-                    {% else %}
-                        <span class="badge bg-success">Qarzdorlar yo'q</span>
-                    {% endif %}
-                </td>
 
                 <td>
                     <a href="{% url 'lesson_schedule' item.course.pk %}" class="btn btn-sm btn-info">Jadval</a>

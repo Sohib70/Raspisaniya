@@ -17,15 +17,30 @@
         .grade-val { font-weight: 700; color: #1a237e; }
         .blocked-row { background: #fff0f0 !important; }
         td, th { vertical-align: middle !important; }
+
+        /* Davomat tugma ranglari */
+        .att-btn { font-size: 0.68rem; padding: 2px 5px; margin: 1px; border-radius: 4px; text-decoration: none; display: inline-block; border-width: 1px; border-style: solid; }
+        .att-btn.btn-success { background:#28a745; border-color:#28a745; color:white; }
+        .att-btn.btn-warning { background:#ffc107; border-color:#ffc107; color:#212529; }
+        .att-btn.btn-danger  { background:#dc3545; border-color:#dc3545; color:white; }
+        .att-btn.btn-outline-secondary { background:white; border-color:#ccc; color:#555; }
+
+        /* Izoh */
+        .legend-item { display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; }
+        .legend-dot { width:12px; height:12px; border-radius:3px; }
     </style>
 </head>
 <body>
 
-<div class="topbar">
-    <h5>🎓 O'qituvchi kabineti</h5>
-    <div class="d-flex align-items-center gap-3">
+<div class="topbar" style="background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex !important; align-items: center !important; gap: 15px;">
+        <h5 style="margin: 0; font-weight: 700; color: white !important;">🎓 O'qituvchi kabineti</h5>
+        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
+            🏠 Bosh sahifa
+        </a>
+    </div>
+    <div style="display: flex !important; align-items: center !important; gap: 12px;">
         <span>👤 {{ teacher.first_name }}</span>
-        <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-light">← Dashboard</a>
         <a href="{% url 'change_password' %}" class="btn btn-sm btn-outline-warning">🔑 Parol</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
@@ -33,7 +48,6 @@
 
 <div class="container-fluid mt-4 px-4">
 
-    <!-- Guruh ma'lumoti -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
             <div class="col-md-3">
@@ -55,32 +69,36 @@
         </div>
     </div>
 
-    <!-- Havolalar -->
-    <div class="d-flex gap-2 mb-3">
-        <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-primary">
+    <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+        <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-primary btn-sm">
             📋 Davomat jadvali
         </a>
-        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success">
+        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm">
             📝 Baholar kiritish
         </a>
+        <div class="ms-auto d-flex gap-3">
+            <span class="legend-item"><span class="legend-dot" style="background:#28a745;"></span>Belgilangan</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#ffc107;"></span>Bugun</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#dc3545;"></span>O'tib ketgan</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#ccc;"></span>Kelgusi</span>
+        </div>
     </div>
 
-    <!-- Talabalar jadvali -->
     <div class="card info-card mb-4">
         <div class="section-header">👥 Talabalar ro'yxati</div>
         <div class="table-responsive">
-            <table class="table table-hover mb-0" style="font-size: 0.88rem;">
+            <table class="table table-hover mb-0" style="font-size: 0.86rem;">
                 <thead style="background:#f8f9fa;">
                     <tr>
-                        <th style="width:40px;" class="text-center">#</th>
+                        <th style="width:35px;" class="text-center">#</th>
                         <th>Ism Familiya</th>
                         <th class="text-center">Keldi</th>
                         <th class="text-center">Kelmadi</th>
-                        <th class="text-center" style="width:130px;">Qoldirgan %</th>
+                        <th class="text-center">Qoldirgan %</th>
                         <th class="text-center">Oraliq</th>
                         <th class="text-center">Joriy</th>
                         <th class="text-center">Yakuniy</th>
-                        <th class="text-center">Davomat</th>
+                        <th>Davomat kunlari</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -88,9 +106,9 @@
                     <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
                         <td class="text-center text-muted">{{ forloop.counter }}</td>
                         <td>
-                            <b>{{ row.student.first_name }}</b>
+                            <b>{{ row.student.last_name }} {{ row.student.first_name }}</b>
                             {% if row.is_blocked %}
-                            <span class="badge bg-danger ms-1" style="font-size:0.68rem;">🚫 Bloklangan</span>
+                            <span class="badge bg-danger ms-1" style="font-size:0.65rem;">🚫</span>
                             {% endif %}
                         </td>
                         <td class="text-center"><span class="badge-came">{{ row.came }}</span></td>
@@ -99,9 +117,6 @@
                             <span class="fw-bold" style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
                                 {{ row.missed_percent }}%
                             </span>
-                            {% if row.missed_percent > 25 %}
-                            <div style="font-size:0.68rem; color:#dc3545;">qoldirgan</div>
-                            {% endif %}
                         </td>
                         <td class="text-center">
                             {% if row.grade and row.grade.midterm is not None %}
@@ -118,12 +133,12 @@
                                 <span class="grade-val">{{ row.grade.final }}</span>
                             {% else %}<span class="text-muted">—</span>{% endif %}
                         </td>
-                        <td class="text-center">
-                            {% for sched in schedules %}
-                            <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
-                               class="btn btn-sm btn-outline-secondary py-0 px-1"
-                               style="font-size:0.7rem;" title="{{ sched.date }}">
-                                {{ sched.date|date:"d.m" }}
+                        <td>
+                            {% for s in schedules %}
+                            <a href="{% url 'teacher_attendance' group.pk s.sched.pk %}"
+                               class="att-btn {{ s.css }}"
+                               title="{{ s.sched.date|date:'d.m.Y' }} — {% if s.is_marked %}Belgilangan✓{% elif s.is_today %}Bugun📌{% elif s.is_past %}O'tib ketgan⚠{% else %}Kelgusi{% endif %}">
+                                {{ s.sched.date|date:"d.m" }}
                             </a>
                             {% endfor %}
                         </td>

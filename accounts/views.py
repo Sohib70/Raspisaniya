@@ -230,6 +230,7 @@ def teacher_dashboard(request):
                     'group_pk': grp.pk,
                     'students_json': json.dumps(students_data, ensure_ascii=False),
                     'students_count': len(students_data),
+                    'group_number': grp.group_number if grp.group_number else 1,
                 }
 
     table_data = []
@@ -285,8 +286,41 @@ def teacher_group_detail(request, group_pk):
 
     group = get_object_or_404(CourseGroup, pk=group_pk, teacher=teacher)
     students = group.students.all().order_by('last_name', 'first_name')
-    schedules = group.schedule.all().order_by('date')
-    total_lessons = schedules.count()
+    total_lessons = group.schedule.count()
+
+    from datetime import date as today_date
+    today = today_date.today()
+
+    # Har bir sched uchun davomat belgilanganmi
+    marked_sched_ids = set(
+        Attendance.objects.filter(schedule__group=group)
+        .values_list('schedule_id', flat=True).distinct()
+    )
+
+    # Schedlarni rangi bilan birga tayyorlaymiz
+    schedules_with_status = []
+    for sched in group.schedule.all().order_by('date'):
+        is_marked = sched.pk in marked_sched_ids
+        is_today  = sched.date == today
+        is_past   = sched.date < today and not is_marked
+        is_future = sched.date > today
+
+        if is_marked:
+            css = 'btn-success'        # Yashil — belgilangan
+        elif is_today:
+            css = 'btn-warning'        # Sariq — bugun
+        elif is_past:
+            css = 'btn-danger'         # Qizil — o'tib ketgan
+        else:
+            css = 'btn-outline-secondary'  # Oddiy — kelgusi
+
+        schedules_with_status.append({
+            'sched': sched,
+            'css': css,
+            'is_marked': is_marked,
+            'is_today': is_today,
+            'is_past': is_past,
+        })
 
     grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
     att_map = {}
@@ -315,7 +349,7 @@ def teacher_group_detail(request, group_pk):
         "teacher": teacher,
         "group": group,
         "students_data": students_data,
-        "schedules": schedules,
+        "schedules": schedules_with_status,
         "total_lessons": total_lessons,
     })
 

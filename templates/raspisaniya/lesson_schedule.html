@@ -113,25 +113,34 @@
                             </form>
                         </div>
 
-                        <table class="table table-sm table-bordered mb-0">
+                        <table class="table table-sm table-bordered align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
+                                    <th style="width: 40px;">#</th>
                                     <th>O'quvchi</th>
-                                    <th>O'chirish</th>
+                                    <th style="width: 50px;" class="text-center">O'chirish</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for student in item.group.students.all %}
                                 <tr>
                                     <td>{{ forloop.counter }}</td>
-                                    <td>{{ student }}</td>
                                     <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>{{ student }}</span>
+                                            {% if student.group.language == 'ru' or 'rus' in student.group.name|lower or '(ru)' in student|lower %}
+                                                <span class="badge bg-danger text-white px-2 py-1" style="font-size: 10px;">RU</span>
+                                            {% else %}
+                                                <span class="badge bg-primary text-white px-2 py-1" style="font-size: 10px;">UZ</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
                                         <form method="post"
                                               action="{% url 'remove_student_from_group' item.group.pk student.pk %}"
                                               onsubmit="return confirm('{{ student }} ni guruhdan o\'chirasizmi?')">
                                             {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-danger">✕</button>
+                                            <button type="submit" class="btn btn-sm btn-danger py-0 px-2">✕</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -145,17 +154,24 @@
 
                         {# Talaba qo'shish #}
                         {% if item.addable_students %}
-                        <div class="px-3 py-2 border-top">
-                            <label class="fw-bold mb-1 text-success">➕ Talaba qo'shish</label>
+                        <div class="px-3 py-2 border-top bg-light">
+                            <label class="fw-bold mb-1 text-success" style="font-size:13px;">➕ Talaba qo'shish</label>
                             <form method="post" action="{% url 'add_student_to_group' item.group.pk %}" class="d-flex gap-2">
                                 {% csrf_token %}
-                                <select name="student_id" class="form-select form-select-sm">
-                                    <option value="">— tanlang —</option>
+                                <select name="student_id" class="form-select form-select-sm" required>
+                                    <option value="">— tanlang (Ism yonida tili ko'rsatilgan) —</option>
                                     {% for st in item.addable_students %}
-                                    <option value="{{ st.id }}">{{ st }}</option>
+                                        <option value="{{ st.id }}">
+                                            {{ st }}
+                                            {% if st.group.language == 'ru' or 'rus' in st.group.name|lower or '(ru)' in st|lower %}
+                                                [RU GURUH]
+                                            {% else %}
+                                                [UZB GURUH]
+                                            {% endif %}
+                                        </option>
                                     {% endfor %}
                                 </select>
-                                <button type="submit" class="btn btn-sm btn-success">Qo'sh</button>
+                                <button type="submit" class="btn btn-sm btn-success px-3">Qo'sh</button>
                             </form>
                         </div>
                         {% endif %}

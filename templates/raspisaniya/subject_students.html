@@ -12,22 +12,35 @@
 </div>
 
 {% if students %}
-<table class="table table-bordered table-hover">
+<table class="table table-bordered table-hover align-middle">
     <thead class="table-dark">
         <tr>
-            <th>T/R</th>
-            <th>Ism Sharif</th>
-            <th>Familiya</th>
+            <th style="width: 70px;">T/R</th>
+            <th>F.I.SH.</th>
             <th>Guruh</th>
+            <th>Ta'lim tili</th>
         </tr>
     </thead>
     <tbody>
         {% for student in students %}
         <tr>
             <td>{{ forloop.counter }}</td>
-            <td>{{ student.last_name }}</td>
-            <td>{{ student.first_name }}</td>
+            <td>{{ student.last_name }} {{ student.first_name }}</td>
             <td>{{ student.group|default:"—" }}</td>
+            <!-- Ikkinchi fayldagi ta'lim tili mantiqi shu yerga ko'chirildi -->
+            <td>
+                {% if student.language == 'uz' %}
+                    <span class="badge bg-primary">O'zbek</span>
+                {% elif student.language == 'ru' %}
+                    <span class="badge bg-info text-dark">Rus</span>
+                {% elif student.language == 'qq' %}
+                    <span class="badge bg-warning text-dark">Qoraqalpoq</span>
+                {% elif student.language == 'en' %}
+                    <span class="badge bg-secondary">Ingliz</span>
+                {% else %}
+                    <span class="badge bg-secondary">{{ student.language|default:"—" }}</span>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </tbody>

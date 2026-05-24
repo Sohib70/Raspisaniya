@@ -29,18 +29,21 @@
 </head>
 <body>
 
-<div class="topbar">
-    <h5>📋 Davomat belgilash</h5>
-    <div class="d-flex align-items-center gap-3">
+<div class="topbar" style="background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="display: flex !important; align-items: center !important; gap: 15px;">
+        <h5 style="margin: 0; font-weight: 700; color: white !important;">📋 Davomat jadvali</h5>
+        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
+            🏠 Bosh sahifa
+        </a>
+    </div>
+    <div style="display: flex !important; align-items: center !important; gap: 16px;">
         <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
-        <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-sm btn-outline-light">← Davomat jadvali</a>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
 </div>
 
 <div class="container mt-4" style="max-width:700px;">
 
-    <!-- Info -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
             <div class="col-4">
@@ -58,7 +61,6 @@
         </div>
     </div>
 
-    <!-- Hammasi keldi / kelmadi tugmalari -->
     <div class="d-flex gap-2 mb-3">
         <button type="button" class="btn btn-outline-success btn-sm all-btn" onclick="setAll(1)">✓ Hammasi keldi</button>
         <button type="button" class="btn btn-outline-danger btn-sm all-btn" onclick="setAll(0)">✗ Hammasi kelmadi</button>
@@ -73,6 +75,7 @@
                  — ⏰ {{ schedule.start_time|time:"H:i" }}
                 {% endif %}
             </div>
+
             {% for row in students_list %}
             <div class="student-row">
                 <div>
@@ -96,7 +99,7 @@
 
         <div class="d-flex gap-3 mb-5">
             <button type="submit" class="btn btn-primary px-5">💾 Saqlash</button>
-            <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-outline-secondary">Bekor qilish</a>
+            <a href="/teacher/" class="btn btn-outline-secondary">Bekor qilish</a>
         </div>
     </form>
 

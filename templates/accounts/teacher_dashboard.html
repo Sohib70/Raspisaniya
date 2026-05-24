@@ -24,6 +24,7 @@
         .student-list { max-height: 400px; overflow-y: auto; }
         .student-item { padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
         .student-item:last-child { border-bottom: none; }
+        .group-badge { background-color: #e74c3c; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -39,7 +40,6 @@
 
 <div class="container-fluid mt-4 px-4">
 
-    <!-- Info -->
     <div class="card info-card mb-3 p-3">
         <div class="row text-center">
             <div class="col-md-4">
@@ -57,7 +57,6 @@
         </div>
     </div>
 
-    <!-- Guruhlar ro'yxati -->
     <div class="card info-card mb-3">
         <div class="schedule-header">📚 Mening guruhlarim</div>
         <div class="p-3">
@@ -82,7 +81,6 @@
         </div>
     </div>
 
-    <!-- Jadval -->
     <div class="card info-card mb-4">
         <div class="schedule-header">🗓 Haftalik jadvalim</div>
 
@@ -118,11 +116,20 @@
                             data-day="{{ row.day }}"
                             data-group-pk="{{ row.info.group_pk }}"
                             data-sched-id="{{ row.info.sched_id }}"
-                            data-students='{{ row.info.students_json|safe }}'>
+                            data-students='{{ row.info.students_json|safe }}'
+                            data-group-number="{{ row.info.group_number }}">
+
                             <div class="subject-name">{{ row.info.subject }}</div>
-                            {% if row.info.room %}
-                            <div class="room-name">🏫 {{ row.info.room }}</div>
-                            {% endif %}
+
+                            <div class="d-flex justify-content-center align-items-center gap-2 mt-1 flex-wrap">
+                                <span class="group-badge">👥 {{ row.info.group_number }}-guruh</span>
+                                {% if row.info.room %}
+                                <span class="room-name">🏫 {{ row.info.room }}</span>
+                                {% else %}
+                                <span class="room-name text-secondary">🏫 Biriktirilmagan</span>
+                                {% endif %}
+                            </div>
+
                             <div class="student-count">👥 {{ row.info.students_count }} o'quvchi</div>
                         </td>
                         {% else %}
@@ -136,7 +143,6 @@
     </div>
 </div>
 
-<!-- Modal: O'quvchilar ro'yxati -->
 <div class="modal fade" id="studentsModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -160,6 +166,7 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
     var room = btn.dataset.room;
     var time = btn.dataset.time;
     var day = btn.dataset.day;
+    var groupNumber = btn.dataset.groupNumber; // views.py dan kelayotgan guruh raqami
 
     var students = [];
     try {
@@ -168,10 +175,13 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
         console.error("students JSON xatosi:", err, btn.dataset.students);
     }
 
-    document.getElementById('modalTitle').textContent = subject + ' — o\'quvchilar';
+    // Sarlavhaga guruh raqami qo'shildi
+    document.getElementById('modalTitle').textContent = subject + ' (' + groupNumber + '-guruh) — o\'quvchilar';
+
     document.getElementById('modalInfo').innerHTML =
+        '<b>🔊 Guruh: ' + groupNumber + '-guruh</b><br>' +
         '<b>📅 ' + day + '</b> | <b>⏰ ' + time + '</b>' +
-        (room ? ' | <b>🏫 ' + room + '</b>' : '') +
+        (room ? ' | <b>🏫 ' + room + '</b>' : ' | <b>🏫 Biriktirilmagan</b>') +
         ' | <b>' + students.length + ' o\'quvchi</b>';
 
     var list = document.getElementById('studentsList');
@@ -183,7 +193,7 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
             list.innerHTML +=
                 '<div class="student-item">' +
                 '<span class="text-muted me-2">' + (i + 1) + '.</span>' +
-                '<b>' + (st.first_name || '') + ' ' + (st.last_name || '') + '</b>' +
+                '<b>' + (st.last_name || '') + ' ' + (st.first_name || '') + '</b>' +
                 '</div>';
         });
     }

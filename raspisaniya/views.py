@@ -125,67 +125,66 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 
-def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1,
-                            include_saturday=False):
+def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
+    """
+    Jadval tuzish:
+    - 24+ para → Dush(0), Chor(2), Juma(4)
+    - 12-23 para → Sesh(1), Paysh(3)
+    - <12 para → istalgan kun
+    - Iloji boricha ketma-ket kunlar bo'lmasin
+    - Joy bo'lmasa fallback: boshqa kunlar → shanba → bitta para → muddat uzaytirish
+    """
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
     max_wd = 5 if include_saturday else 4
 
-    # ── Dars soniga qarab preferred kunlar ──
+    # Dars soniga qarab preferred kunlar
     if total_lessons >= 20:
-        # Katta kurs (24 para): Dushanba, Chorshanba, Juma
-        preferred_weekdays = [0, 2, 4]
-        fallback_weekdays = [1, 3, 5]
+        preferred = [0, 2, 4]   # Dush, Chor, Juma
+        fallback  = [1, 3, 5]   # Sesh, Paysh, Shanba
     elif total_lessons >= 12:
-        # O'rta kurs (16 para): Seshanba, Payshanba
-        preferred_weekdays = [1, 3]
-        fallback_weekdays = [0, 2, 4, 5]
+        preferred = [1, 3]      # Sesh, Paysh
+        fallback  = [0, 2, 4, 5]
     else:
-        # Kichik kurs (8 para): istalgan kun
-        preferred_weekdays = [0, 1, 2, 3, 4]
-        fallback_weekdays = [5]
+        preferred = [0, 1, 2, 3, 4]  # Istalgan
+        fallback  = [5]
 
     if not include_saturday:
-        preferred_weekdays = [d for d in preferred_weekdays if d <= 4]
-        fallback_weekdays = [d for d in fallback_weekdays if d <= 4]
+        preferred = [d for d in preferred if d <= 4]
+        fallback  = [d for d in fallback  if d <= 4]
 
     def get_busy_para_indices(date, exclude_sched_ids=None):
         busy = set()
-        qs_teacher = GroupSchedule.objects.filter(
-            date=date, group__teacher_id=teacher_id,
+        qs_t = GroupSchedule.objects.filter(
+            date=date, group__teacher_id=teacher_id
         ).select_related('group')
         if exclude_sched_ids:
-            qs_teacher = qs_teacher.exclude(pk__in=exclude_sched_ids)
-        for sched in qs_teacher:
+            qs_t = qs_t.exclude(pk__in=exclude_sched_ids)
+        for sched in qs_t:
             st = sched.start_time or sched.group.start_time
             if st:
-                for i, (ps, pe) in enumerate(PARA_TIMES):
-                    if ps == st:
-                        busy.add(i)
+                for i, (ps, _) in enumerate(PARA_TIMES):
+                    if ps == st: busy.add(i)
             else:
-                for i in range(len(PARA_TIMES)):
-                    busy.add(i)
+                for i in range(len(PARA_TIMES)): busy.add(i)
 
         if student_ids:
-            qs_students = GroupSchedule.objects.filter(
-                date=date,
-                group__students__id__in=student_ids,
+            qs_s = GroupSchedule.objects.filter(
+                date=date, group__students__id__in=student_ids
             ).select_related('group').distinct()
             if exclude_sched_ids:
-                qs_students = qs_students.exclude(pk__in=exclude_sched_ids)
-            for sched in qs_students:
+                qs_s = qs_s.exclude(pk__in=exclude_sched_ids)
+            for sched in qs_s:
                 st = sched.start_time or sched.group.start_time
                 if st:
-                    for i, (ps, pe) in enumerate(PARA_TIMES):
-                        if ps == st:
-                            busy.add(i)
+                    for i, (ps, _) in enumerate(PARA_TIMES):
+                        if ps == st: busy.add(i)
                 else:
-                    for i in range(len(PARA_TIMES)):
-                        busy.add(i)
+                    for i in range(len(PARA_TIMES)): busy.add(i)
         return busy
 
-    def find_free_para(date, need_two=True, exclude_sched_ids=None):
-        busy = get_busy_para_indices(date, exclude_sched_ids)
+    def find_free_para(date, need_two=True):
+        busy = get_busy_para_indices(date)
         if need_two:
             for i in range(len(PARA_TIMES) - 1):
                 if i not in busy and (i + 1) not in busy:
@@ -202,10 +201,17 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
 
     days_needed = math.ceil(lessons_per_week / 2)
 
-    def collect_slots(weekday_order, weeks=8):
-        """Berilgan hafta kunlari tartibida slot qidirish."""
+    def collect_slots(weekday_order, used_wds=None, weeks=8, allow_consecutive=False):
+        """
+        Berilgan hafta kunlari tartibida slot qidirish.
+        allow_consecutive=False bo'lsa ketma-ket kunlardan qochadi.
+        """
         slots = []
-        used_wds = set()
+        if used_wds is None:
+            used_wds = set()
+        else:
+            used_wds = set(used_wds)
+
         cur = first_monday
         for _ in range(weeks):
             if len(slots) >= days_needed:
@@ -215,6 +221,13 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                     break
                 if wd in used_wds:
                     continue
+
+                # Ketma-ket kun tekshiruvi
+                if not allow_consecutive:
+                    all_wds = used_wds | {s[0] for s in slots}
+                    if (wd - 1) in all_wds or (wd + 1) in all_wds:
+                        continue  # Qo'shni kun — o'tkazib yuboramiz
+
                 d = cur + timedelta(days=wd)
                 if d < start_date or d > end_date or d.weekday() > 5:
                     continue
@@ -225,33 +238,60 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
             cur += timedelta(weeks=1)
         return slots
 
-    # ── 1-qadam: Preferred kunlarda slot qidirish ──
-    chosen_slots = collect_slots(preferred_weekdays)
+    # ── 1-qadam: Preferred kunlarda, ketma-ket bo'lmay ──
+    chosen_slots = collect_slots(preferred, allow_consecutive=False)
 
-    # ── 2-qadam: Yetmasa fallback kunlarda ──
+    # ── 2-qadam: Yetmasa fallback kunlarda, ketma-ket bo'lmay ──
     if len(chosen_slots) < days_needed:
-        extra = collect_slots(fallback_weekdays)
-        used_wds = {w for w, _, _ in chosen_slots}
+        used = {s[0] for s in chosen_slots}
+        extra = collect_slots(fallback, used_wds=used, allow_consecutive=False)
         for slot in extra:
-            if slot[0] not in used_wds and len(chosen_slots) < days_needed:
-                chosen_slots.append(slot)
-                used_wds.add(slot[0])
+            if len(chosen_slots) >= days_needed:
+                break
+            chosen_slots.append(slot)
 
-    # ── 3-qadam: Shanba qo'shamiz ──
+    # ── 3-qadam: Ketma-ket ruxsat berish (preferred) ──
     if len(chosen_slots) < days_needed:
-        chosen_slots = collect_slots(preferred_weekdays + [5])
+        used = {s[0] for s in chosen_slots}
+        extra = collect_slots(preferred, used_wds=used, allow_consecutive=True)
+        for slot in extra:
+            if len(chosen_slots) >= days_needed:
+                break
+            if slot[0] not in {s[0] for s in chosen_slots}:
+                chosen_slots.append(slot)
 
-    # ── 4-qadam: Bitta para bilan ──
+    # ── 4-qadam: Ketma-ket ruxsat berish (fallback) ──
+    if len(chosen_slots) < days_needed:
+        used = {s[0] for s in chosen_slots}
+        extra = collect_slots(fallback, used_wds=used, allow_consecutive=True)
+        for slot in extra:
+            if len(chosen_slots) >= days_needed:
+                break
+            if slot[0] not in {s[0] for s in chosen_slots}:
+                chosen_slots.append(slot)
+
+    # ── 5-qadam: Shanba qo'shamiz ──
+    if len(chosen_slots) < days_needed:
+        all_wds = list(range(6))
+        used = {s[0] for s in chosen_slots}
+        extra = collect_slots(all_wds, used_wds=used, allow_consecutive=True)
+        for slot in extra:
+            if len(chosen_slots) >= days_needed:
+                break
+            if slot[0] not in {s[0] for s in chosen_slots}:
+                chosen_slots.append(slot)
+
+    # ── 6-qadam: Bitta para bilan ──
     if len(chosen_slots) < days_needed:
         cur = first_monday
-        used_wds = {w for w, _, _ in chosen_slots}
+        used = {s[0] for s in chosen_slots}
         for _ in range(8):
             if len(chosen_slots) >= days_needed:
                 break
-            for wd in preferred_weekdays + fallback_weekdays + [5]:
+            for wd in list(range(6)):
                 if len(chosen_slots) >= days_needed:
                     break
-                if wd in used_wds:
+                if wd in used:
                     continue
                 d = cur + timedelta(days=wd)
                 if d < start_date or d > end_date or d.weekday() > 5:
@@ -259,22 +299,22 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                 pair = find_free_para(d, need_two=False)
                 if pair:
                     chosen_slots.append((wd, pair[0], pair[1]))
-                    used_wds.add(wd)
+                    used.add(wd)
             cur += timedelta(weeks=1)
 
-    # ── 5-qadam: Muddatni 2 hafta uzaytirish ──
+    # ── 7-qadam: Muddatni 2 hafta uzaytirish ──
     extended_end = end_date
     if len(chosen_slots) < days_needed:
         extended_end = end_date + timedelta(weeks=2)
         cur = end_date + timedelta(days=1)
-        used_wds = {w for w, _, _ in chosen_slots}
+        used = {s[0] for s in chosen_slots}
         for _ in range(2):
             if len(chosen_slots) >= days_needed:
                 break
             for wd in range(6):
                 if len(chosen_slots) >= days_needed:
                     break
-                if wd in used_wds:
+                if wd in used:
                     continue
                 d = cur + timedelta(days=wd)
                 if d.weekday() > 5:
@@ -282,7 +322,7 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                 pair = find_free_para(d, need_two=False)
                 if pair:
                     chosen_slots.append((wd, pair[0], pair[1]))
-                    used_wds.add(wd)
+                    used.add(wd)
             cur += timedelta(weeks=1)
 
     if not chosen_slots:
@@ -296,14 +336,12 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
     while len(result) < total_lessons:
         if cur_monday > effective_end + timedelta(weeks=2):
             break
-
         for wd, p1, p2 in chosen_slots:
             if len(result) >= total_lessons:
                 break
             d = cur_monday + timedelta(days=wd)
             if d < start_date or d > effective_end or d.weekday() > 5:
                 continue
-
             busy = get_busy_para_indices(d)
             if p1 in busy or (p2 is not None and p2 in busy):
                 pair = find_free_para(d, need_two=(p2 is not None))
@@ -311,12 +349,10 @@ def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_wee
                     p1, p2 = pair
                 else:
                     continue
-
             if len(result) < total_lessons:
                 result.append((d, PARA_TIMES[p1][0], PARA_TIMES[p1][1]))
             if p2 is not None and len(result) < total_lessons:
                 result.append((d, PARA_TIMES[p2][0], PARA_TIMES[p2][1]))
-
         cur_monday += timedelta(weeks=1)
 
     return result
@@ -2389,3 +2425,166 @@ def toggle_all_teacher_edit_permission(request):
     return JsonResponse({'success': False}, status=405)
 
 
+@login_required
+def sched_info(request, sched_pk):
+    """Dars haqida talabalar ro'yxati — modal uchun JSON."""
+    sched = get_object_or_404(GroupSchedule, pk=sched_pk)
+    students = list(
+        sched.group.students.all()
+        .order_by('first_name')
+        .values_list('first_name', flat=True)
+    )
+    return JsonResponse({
+        'students': students,
+        'total': len(students),
+        'subject': str(sched.group.course.subject),
+        'teacher': str(sched.group.teacher),
+        'room': str(sched.group.room) if sched.group.room else '—',
+        'group_number': sched.group.group_number,
+    })
+
+@login_required
+def sched_info(request, sched_pk):
+    """Dars haqida talabalar ro'yxati — modal uchun JSON."""
+    sched = get_object_or_404(GroupSchedule, pk=sched_pk)
+    students = list(
+        sched.group.students.all()
+        .order_by('first_name')
+        .values_list('first_name', flat=True)
+    )
+    return JsonResponse({
+        'students': students,
+        'total': len(students),
+        'subject': str(sched.group.course.subject),
+        'teacher': str(sched.group.teacher),
+        'room': str(sched.group.room) if sched.group.room else '—',
+        'group_number': sched.group.group_number,
+    })
+
+
+def student_schedule_info(request, student_pk):
+    try:
+        # Talabani bazadan qidiramiz
+        student = get_object_or_404(Student, pk=student_pk)
+
+        WEEKDAY_NAMES_LOCAL = {
+            0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
+            3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba'
+        }
+
+        # Talaba a'zo bo'lgan barcha guruhlarni (CourseGroup) yuklaymiz
+        groups = CourseGroup.objects.filter(
+            students=student
+        ).select_related('course__subject', 'teacher', 'room').prefetch_related('schedule')
+
+        result = []
+        for grp in groups:
+            days_set = {}
+            # Guruhning bazadagi barcha dars sanalarini tekshiramiz
+            all_scheds = grp.schedule.all().order_by('date', 'start_time')
+
+            for sched in all_scheds:
+                st = sched.start_time or grp.start_time
+                if not st:
+                    continue
+
+                wd = sched.date.weekday()
+                key = (wd, st.strftime('%H:%M'))
+
+                if key not in days_set:
+                    end_min = st.hour * 60 + st.minute + 80
+                    end_h, end_m = divmod(end_min, 60)
+                    days_set[key] = {
+                        'weekday': WEEKDAY_NAMES_LOCAL.get(wd, ''),
+                        'time': f"{st.strftime('%H:%M')} – {end_h:02d}:{end_m:02d}",
+                    }
+
+            # Hafta kunlari tartibida saralash
+            days = sorted(
+                days_set.values(),
+                key=lambda d: list(WEEKDAY_NAMES_LOCAL.values()).index(d['weekday']) if d[
+                                                                                            'weekday'] in WEEKDAY_NAMES_LOCAL.values() else 9
+            )
+
+            result.append({
+                'subject': str(grp.course.subject),
+                'teacher': f"{grp.teacher.last_name} {grp.teacher.first_name}".strip() if grp.teacher else "O'qituvchi",
+                'room': str(grp.room) if grp.room else '—',
+                'days': days,
+            })
+
+        return JsonResponse({'success': True, 'groups': result})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ==============================================================================
+# 2. HAFTALIK UMUMIY JADVALDA DARS KARTASI BOSILGANDA (sched_id orqali) ISHLAYDIGAN FUNKSIYA
+# ==============================================================================
+def sched_info_ajax(request, sched_id):
+    try:
+        current_sched = get_object_or_404(GroupSchedule, pk=sched_id)
+        course_group = current_sched.group
+
+        WEEKDAY_NAMES_LOCAL = {
+            0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba',
+            3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba'
+        }
+
+        # Talabalar ro'yxati
+        students_list = []
+        if course_group:
+            for student in course_group.students.all():
+                full_name = f"{student.last_name} {student.first_name}".strip()
+                if not full_name:
+                    full_name = student.user.get_full_name() if student.user else str(student)
+
+                lang_code = student.language or course_group.language or 'uz'
+                student_lang = 'RUS' if lang_code.lower() == 'ru' else 'UZB'
+
+                students_list.append({
+                    'name': full_name,
+                    'lang': student_lang
+                })
+        students_list = sorted(students_list, key=lambda x: x['name'])
+
+        # Guruhning dars jadvali shablonini (barcha kunlarini) aniqlash
+        other_days_result = []
+        if course_group:
+            # Guruhning barcha dars kunlarini yig'amiz
+            all_schedules = GroupSchedule.objects.filter(group=course_group).order_by('date')
+            days_set = {}
+
+            for sched in all_schedules:
+                st = sched.start_time or course_group.start_time
+                if not st:
+                    continue
+
+                wd = sched.date.weekday()
+                key = (wd, st.strftime('%H:%M'))
+
+                if key not in days_set:
+                    end_min = st.hour * 60 + st.minute + 80
+                    end_h, end_m = divmod(end_min, 60)
+
+                    days_set[key] = {
+                        'weekday': WEEKDAY_NAMES_LOCAL.get(wd, ''),
+                        'time': f"{st.strftime('%H:%M')} – {end_h:02d}:{end_m:02d}",
+                    }
+
+            sorted_days = sorted(
+                days_set.values(),
+                key=lambda d: list(WEEKDAY_NAMES_LOCAL.values()).index(d['weekday']) if d[
+                                                                                            'weekday'] in WEEKDAY_NAMES_LOCAL.values() else 9
+            )
+            other_days_result = [f"{d['weekday']} ({d['time']})" for d in sorted_days]
+
+        return JsonResponse({
+            'success': True,
+            'students': students_list,
+            'other_days': other_days_result
+        })
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
