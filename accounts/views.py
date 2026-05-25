@@ -577,3 +577,5 @@ def teacher_grades(request, group_pk):
         "students_grades": students_grades,
         "grade_blocked_by_attendance": not group.teacher_can_edit,
     })
+
+

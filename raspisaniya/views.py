@@ -36,8 +36,20 @@ from django.db import connection
 from django.conf import settings
 from io import StringIO
 from django.contrib.admin.views.decorators import staff_member_required
-
 import io
+import datetime
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.contrib.auth.decorators import login_required
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+
+# Modellarni o'z loyihangizga qarab to'g'ri import qiling
+from raspisaniya.models import CourseGroup, Attendance, Grade
+
 
 
 # ─────────────────────────────────────────
@@ -463,24 +475,16 @@ def lesson_list(request):
     return render(request, "raspisaniya/lesson_list.html", {"courses_data": courses_data, "q": q})
 
 
-# ─────────────────────────────────────────
-# LESSON CREATE — 3 BOSQICH
-# ─────────────────────────────────────────
 @login_required
 def lesson_create(request):
-
     # ── STEP 1 ──
     if request.method == "GET":
-        # faqat 10+ o'quvchisi bor fanlarni ko'rsatish
         all_subjects = Subject.objects.all()
         subjects_data = []
         for subj in all_subjects:
             count = Student.objects.filter(debts=subj).count()
             if count >= 10:
-                subjects_data.append({
-                    'subject': subj,
-                    'student_count': count,
-                })
+                subjects_data.append({'subject': subj, 'student_count': count})
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 1,
             "subjects_data": subjects_data,
@@ -513,66 +517,55 @@ def lesson_create(request):
             messages.error(request, "Bu fandan yiqilgan o'quvchi yo'q")
             return redirect("lesson_create")
 
+        # ── Tilga qarab ajratamiz ──
         students_by_lang = defaultdict(list)
         for st in all_students:
             students_by_lang[st.language].append(st)
 
         all_groups = []
-        skipped_langs = []
+        skipped_msgs = []
+        group_index = 0  # noyob indeks — template va views.py da bir xil
 
-        for lang, lang_students in students_by_lang.items():
+        # sorted() — tillar tartibi step2 va step3 da bir xil bo'lishi uchun
+        for lang in sorted(students_by_lang.keys()):
+            lang_students = students_by_lang[lang]
+            lang_name = dict(LANGUAGE_CHOICES).get(lang, lang)
             groups = split_into_groups(lang_students)
-            valid_groups = [g for g in groups if len(g) >= 10]
-            invalid_groups = [g for g in groups if len(g) < 10]
 
-            if invalid_groups:
-                lang_name = dict(LANGUAGE_CHOICES).get(lang, lang)
-                skipped_langs.append(
-                    f"{lang_name} tili: {sum(len(g) for g in invalid_groups)} ta o'quvchi "
-                    f"(10 tadan kam, guruh shakillantirilmadi)"
-                )
-
-            for g in valid_groups:
+            for g in groups:
+                is_small = len(g) < 10
+                if is_small:
+                    skipped_msgs.append(
+                        f"{lang_name} tili: {len(g)} ta o'quvchi "
+                        f"(10 tadan kam, guruh shakillantirilmadi)"
+                    )
                 all_groups.append({
+                    'index': group_index,  # ← template gi=gdata.index
                     'lang': lang,
-                    'lang_name': dict(LANGUAGE_CHOICES).get(lang, lang),
+                    'lang_name': lang_name,
                     'students': g,
-                    'is_small': False,
+                    'is_small': is_small,
                 })
-            for g in invalid_groups:
-                all_groups.append({
-                    'lang': lang,
-                    'lang_name': dict(LANGUAGE_CHOICES).get(lang, lang),
-                    'students': g,
-                    'is_small': True,
-                })
+                group_index += 1
 
-        # Kichik guruhlarni ham ko'rsatamiz (qizil), o'chirmaymiz
-        # Faqat hech kimsa bo'lmasa xato chiqaramiz
         if not all_groups:
             messages.error(request, "Bu fandan o'quvchi yo'q")
             return redirect("lesson_create")
 
         teachers = Teacher.objects.filter(subjects=subject)
-
-        assigned_ids = set()
-        for g in all_groups:
-            for s in g['students']:
-                assigned_ids.add(s.id)
-        unassigned_students = [s for s in all_students if s.id not in assigned_ids]
+        groups_count = len(all_groups)
 
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 2,
             "subject": subject,
             "all_groups": all_groups,
-            "groups_count": len(all_groups),
+            "groups_count": groups_count,
             "teachers": teachers,
             "start_date": start_date_raw,
             "end_date": end_date_raw,
             "total_lessons": total_lessons,
             "lessons_per_week": lessons_per_week,
-            "skipped_langs": skipped_langs,
-            "unassigned_students": unassigned_students,
+            "skipped_langs": skipped_msgs,
             "all_students": all_students,
             "include_saturday": include_saturday,
         })
@@ -592,16 +585,17 @@ def lesson_create(request):
         start_date = parse_date(start_date_raw)
         end_date = parse_date(end_date_raw)
 
-        all_students = list(Student.objects.filter(debts=subject).distinct())
-        students_by_lang = defaultdict(list)
-        for st in all_students:
-            students_by_lang[st.language].append(st)
-
-        all_groups_data = []
-        for lang, lang_students in students_by_lang.items():
-            groups = split_into_groups(lang_students)
-            for g in groups:
-                all_groups_data.append({'lang': lang, 'students': g})
+        # POST da kelgan barcha guruh indekslarini aniqlaymiz
+        # (range(groups_count) emas — indekslar 0,1,2... bo'lmasligi mumkin
+        #  agar foydalanuvchi guruhni o'chirgan bo'lsa)
+        all_indices = []
+        for key in request.POST.keys():
+            if key.startswith("teacher_"):
+                try:
+                    all_indices.append(int(key.split("_", 1)[1]))
+                except ValueError:
+                    pass
+        all_indices = sorted(set(all_indices))
 
         with transaction.atomic():
             course = Course.objects.create(
@@ -614,11 +608,13 @@ def lesson_create(request):
                 include_saturday=include_saturday,
             )
 
-            for i in range(groups_count):
+            group_number = 1
+            for i in all_indices:
                 tid = request.POST.get(f"teacher_{i}")
                 if not tid:
                     continue
                 teacher = get_object_or_404(Teacher, id=tid)
+
                 selected_ids = request.POST.getlist(f"students_{i}")
                 if not selected_ids:
                     continue
@@ -626,12 +622,13 @@ def lesson_create(request):
                 if not selected_students:
                     continue
 
-                lang = selected_students[0].language if selected_students else 'uz'
+                # Tilni POST dan olamiz — template da lang_{{ gi }} yashirin field
+                lang = request.POST.get(f"lang_{i}", selected_students[0].language)
 
                 cgroup = CourseGroup.objects.create(
                     course=course,
                     teacher=teacher,
-                    group_number=i + 1,
+                    group_number=group_number,
                     start_time=None,
                     weekdays=[],
                     language=lang,
@@ -639,9 +636,10 @@ def lesson_create(request):
                 )
                 cgroup.students.set(selected_students)
 
-                # O'quvchilar faqat shu yerda debts dan olib tashlanadi
                 for st in selected_students:
                     st.debts.remove(subject)
+
+                group_number += 1
 
         messages.success(request, "Kurs yaratildi! Endi 'Jadval tuzish' tugmasini bosing.")
         return redirect("lesson_list")
@@ -671,7 +669,7 @@ def lesson_schedule(request, pk):
         for s in grp.schedule.all().order_by('lesson_number'):
             st = s.start_time or grp.start_time
             if st:
-                end_t = (datetime.combine(s.date, st) + duration).time()
+                end_t = (datetime.datetime.combine(s.date, st) + duration).time()
                 start_str = st.strftime("%H:%M")
                 end_str = end_t.strftime("%H:%M")
             else:
@@ -2588,3 +2586,218 @@ def sched_info_ajax(request, sched_id):
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+class NumberedCanvas(canvas.Canvas):
+    """PDF sahifalarining ostiga 'Sahifa X / Y' dinamik raqamini qo'yish uchun"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_number(num_pages)
+            super().showPage()
+        super().save()
+
+    def draw_page_number(self, page_count):
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor("#555555"))
+        page_text = f"Sahifa {self._pageNumber} / {page_count}"
+        self.drawRightString(A4[0] - 30, 20, page_text)
+
+
+@login_required
+def download_vedomost(request, group_id):
+    # SIKLIK IMPORT (Circular Import) xatoligini oldini olish uchun importni funksiya ichida bajaramiz
+    from .models import CourseGroup, Attendance, Grade
+
+    # Guruh ma'lumotlarini bazadan olish
+    group = get_object_or_404(CourseGroup, pk=group_id)
+    students = group.students.all().order_by('last_name', 'first_name')
+
+    # 1. AVTOMATIK VEDOMOST RAQAMINI SHAKLLANTIRISH
+    start_year = group.course.start_date.year if group.course.start_date else datetime.date.today().year
+    end_year = start_year + 1
+    oq_yil = f"{start_year}/{end_year}"
+
+    qayta_oqish_status = "1"  # Zarur bo'lsa buni ham dinamik shartga bog'lash mumkin
+    vedomost_no = f"{oq_yil}/{qayta_oqish_status}-{group.pk}"
+
+    # Qaydnoma to'ldirilgan sana
+    qayd_sana = datetime.date.today().strftime("%d.%m.%Y")
+
+    # PDF sahifasi o'lchamlari (A4)
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=40
+    )
+
+    styles = getSampleStyleSheet()
+
+    # Matn va sarlavhalar stillari
+    title_style = ParagraphStyle(
+        'VTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, leading=16, alignment=1, spaceAfter=4
+    )
+    subtitle_style = ParagraphStyle(
+        'VSub', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=14, alignment=0, spaceAfter=4
+    )
+
+    # Oddiy matnlar stili (F.I.Sh va Haqiqiy guruh uchun - chapga tekislangan)
+    table_text_style = ParagraphStyle(
+        'VText', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10
+    )
+
+    # Raqamlar va baholar stili (No, JN, ON, YN, Jami, Baho uchun - o'rtaga tekislangan)
+    table_center_text = ParagraphStyle(
+        'VCenterText', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=1
+    )
+
+    # Jadval sarlavhasi (Header) stili
+    table_header_style = ParagraphStyle(
+        'VHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=1,
+        textColor=colors.whitesmoke
+    )
+
+    elements = []
+
+    # Sarlavha qismini shakllantirish
+    elements.append(Paragraph("TOSHKENT FARMATSEVTIKA INSTITUTI", title_style))
+    elements.append(Paragraph(f"BAHOLASH QAYDNOMASI № {vedomost_no}", title_style))
+    elements.append(Spacer(1, 10))
+
+    # Hujjat haqida avtomatik ma'lumotlar
+    elements.append(Paragraph(f"<b>Fan nomi:</b> {group.course.subject.name}", subtitle_style))
+    elements.append(
+        Paragraph(f"<b>Fan o'qituvchisi:</b> {group.teacher.last_name} {group.teacher.first_name}", subtitle_style))
+    elements.append(Paragraph(f"<b>Qaydnoma to'ldirilgan sana:</b> {qayd_sana}", subtitle_style))
+    elements.append(Spacer(1, 12))
+
+    # Jadval ustunlari sarlavhasi
+    headers = [
+        Paragraph("<b>No</b>", table_header_style),
+        Paragraph("<b>Talabaning familiyasi, ismi, sharifi</b>", table_header_style),
+        Paragraph("<b>Guruhi</b>", table_header_style),
+        Paragraph("<b>JN</b><br/><font size=6>max 30</font>", table_header_style),
+        Paragraph("<b>ON</b><br/><font size=6>max 20</font>", table_header_style),
+        Paragraph("<b>YN</b><br/><font size=6>max 50</font>", table_header_style),
+        Paragraph("<b>Umumiy ball</b><br/><font size=6>max 100</font>", table_header_style),
+        Paragraph("<b>Baho</b>", table_header_style),
+        Paragraph("<b>O'qituvchi imzosi</b>", table_header_style),
+    ]
+
+    table_data = [headers]
+
+    # Talabalarni aylantirib jadval qatorlarini to'ldirish
+    for idx, student in enumerate(students, 1):
+        full_name = f"{student.last_name} {student.first_name}"
+        haqiqiy_guruh = student.group.name if student.group else "Mavjud emas"
+
+        # Baholarni Grade modelidan olish
+        grade_obj = Grade.objects.filter(student=student, course_group=group).first()
+
+        # Davomat foizini aniqlash (25% lik blok sharti uchun)
+        total_lessons = group.schedule.count()
+        missed_count = Attendance.objects.filter(student=student, schedule__in=group.schedule.all(),
+                                                 is_present=False).count()
+        missed_percent = (missed_count / total_lessons * 100) if total_lessons > 0 else 0
+
+        if missed_percent > 25:
+            jn = "0"
+            on = "0"
+            yn = "0"
+            umumiy = "0"
+            baho = "2 (Blok)"
+        else:
+            jn_val = grade_obj.current if (grade_obj and grade_obj.current is not None) else 0
+            on_val = grade_obj.midterm if (grade_obj and grade_obj.midterm is not None) else 0
+            yn_val = grade_obj.final if (grade_obj and grade_obj.final is not None) else 0
+
+            total_val = jn_val + on_val + yn_val
+
+            jn = str(jn_val)
+            on = str(on_val)
+            yn = str(yn_val)
+            umumiy = str(total_val)
+
+            # Yangi talab qilingan baholash shkalasi (Konvertatsiya)
+            if total_val >= 86:
+                baho = "5"
+            elif total_val >= 71:
+                baho = "4"
+            elif total_val >= 56:
+                baho = "3"
+            else:
+                baho = "2"
+
+        # Qator ma'lumotlarini o'z stillari bilan jadvalga qo'shish (Raqumlar uchun table_center_text ishlatildi)
+        table_data.append([
+            Paragraph(str(idx), table_center_text),
+            Paragraph(f"<b>{full_name}</b>", table_text_style),
+            Paragraph(haqiqiy_guruh, table_text_style),
+            Paragraph(jn, table_center_text),
+            Paragraph(on, table_center_text),
+            Paragraph(yn, table_center_text),
+            Paragraph(f"<b>{umumiy}</b>", table_center_text),
+            Paragraph(baho, table_center_text),
+            Paragraph("", table_text_style),  # Imzo katagi bo'sh qoladi
+        ])
+
+    # Ustunlar kengligi (No katagi sig'ishi uchun 28 qilib kengaytirildi)
+    col_widths = [28, 155, 72, 35, 35, 35, 50, 60, 65]
+
+    vedomost_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    # Jadvalning vizual stillari (To'q ko'k header va vertikal hamda gorizontal mukammal o'rtalash)
+    vedomost_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1a237e")),  # Sarlavha paneli rangi
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),  # Umumiy markazlashtirish
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),  # Vertikal O'RTADA joylashtirish
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),  # Katak devorlari chizig'i
+
+        # Katak ichidagi ichki masofalar (havo)
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+
+        # F.I.Sh va Haqiqiy guruh nomi chiroyli chiqishi uchun chap tomonga tekislanadi
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+    ]))
+
+    elements.append(vedomost_table)
+    elements.append(Spacer(1, 15))
+
+    # Jami talabalar soni qismi
+    elements.append(Paragraph(f"<b>Jami talabalar soni:</b> {len(students)} ta", subtitle_style))
+    elements.append(Spacer(1, 20))
+
+    # Dekan va Mudir ismi-sharifini qo'lda (ruchnoy) yozib imzolashlari uchun chiziqlar
+    signature_data = [
+        [Paragraph("<b>Fakultet dekani:</b> ___________________________", subtitle_style),
+         Paragraph("<b>Kafedra mudiri:</b> ___________________________", subtitle_style)],
+        [Spacer(1, 15), Spacer(1, 15)],
+    ]
+    signature_table = Table(signature_data, colWidths=[265, 265])
+    elements.append(signature_table)
+
+    # PDF faylni qurish
+    doc.build(elements, canvasmaker=NumberedCanvas)
+    buffer.seek(0)
+
+    # Brauzerga yuklash uchun javob yuborish
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response[
+        'Content-Disposition'] = f'attachment; filename="Qaydnoma_{group.course.subject.name}_{group.group_number}-guruh.pdf"'
+    return response

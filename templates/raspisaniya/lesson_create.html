@@ -91,42 +91,34 @@ document.querySelector('[name=lessons_per_week]').addEventListener('input', calc
 {# ================= STEP 2 ================= #}
 {% elif step == 2 %}
 
+{#
+  MUHIM: bu yerda gdata.index ishlatiladi — forloop.counter0 EMAS!
+  views.py da har guruhga noyob 'index' berilgan (sorted lang tartibida).
+  lang_{{ gi }}, teacher_{{ gi }}, students_{{ gi }} — hammasi gi=gdata.index.
+  Shunda UZ va RU guruhlar hech qachon aralashmaydi.
+#}
+
 <script>
-const GROUPS_COUNT = {{ all_groups|length }};
+const GROUPS_COUNT = {{ groups_count }};
 
-const ALL_STUDENTS = [
-    {% for gdata in all_groups %}{% for st in gdata.students %}{id: {{ st.id }}, name: "{{ st }}"},
+// Barcha o'quvchilar — id va nom bilan (JS ko'chirish uchun)
+const ALL_STUDENTS_MAP = {
+    {% for gdata in all_groups %}{% for st in gdata.students %}
+    {{ st.id }}: { id: {{ st.id }}, name: "{{ st|escapejs }}" },
     {% endfor %}{% endfor %}
-    {% for st in unassigned_students %}{id: {{ st.id }}, name: "{{ st }}"},
-    {% endfor %}
-];
+};
 
-document.addEventListener('DOMContentLoaded', function() {
-    for (let i = 0; i < GROUPS_COUNT; i++) {
-        const sel = document.getElementById('add_select_' + i);
-        if (!sel) continue;
-        ALL_STUDENTS.forEach(st => {
-            let inAnyGroup = false;
-            for (let j = 0; j < GROUPS_COUNT; j++) {
-                if (document.getElementById('row_' + j + '_' + st.id)) {
-                    inAnyGroup = true;
-                    break;
-                }
-            }
-            if (!inAnyGroup) {
-                const opt = new Option(st.name, st.id);
-                sel.appendChild(opt);
-            }
-        });
-    }
-});
+// Barcha guruh indekslari (gdata.index qadriyatlari)
+const ALL_GROUP_INDICES = [
+    {% for gdata in all_groups %}{{ gdata.index }}{% if not forloop.last %},{% endif %}{% endfor %}
+];
 </script>
 
 <form method="post" id="mainForm">
     {% csrf_token %}
     <input type="hidden" name="step" value="3">
     <input type="hidden" name="subject_id" value="{{ subject.id }}">
-    <input type="hidden" name="groups_count" value="{{ all_groups|length }}">
+    <input type="hidden" name="groups_count" value="{{ groups_count }}">
     <input type="hidden" name="start_date" value="{{ start_date }}">
     <input type="hidden" name="end_date" value="{{ end_date }}">
     <input type="hidden" name="total_lessons" value="{{ total_lessons }}">
@@ -134,7 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <input type="hidden" name="include_saturday" value="{{ include_saturday }}">
 
     <div class="alert alert-info">
-        <b>{{ subject }}</b> fanidan <b>{{ all_groups|length }}</b> ta guruh —
+        <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh —
         jami <b>{{ total_lessons }}</b> para dars, haftada <b>{{ lessons_per_week }}</b> marta.
         <br>
         <small class="text-muted">🤖 Tizim dars kunlari va vaqtlarini avtomatik joylastiradi</small>
@@ -146,41 +138,41 @@ document.addEventListener('DOMContentLoaded', function() {
         {% endfor %}
     {% endif %}
 
-    {# Tayinlanmagan talabalar paneli #}
-    <div class="card mb-4 border-warning">
-        <div class="card-header bg-warning bg-opacity-25 fw-bold">
-            📋 Hech qaysi guruhga tayinlanmagan talabalar
-            <span class="badge bg-warning text-dark ms-1" id="unassigned_count">{{ unassigned_students|length }}</span>
+    {# ── Guruhlarni TIL bo'yicha vizual ajratamiz ── #}
+    {% regroup all_groups by lang_name as groups_by_lang %}
+
+    {% for lang_section in groups_by_lang %}
+
+    {# Til sarlavhasi #}
+    <div class="d-flex align-items-center gap-3 mt-4 mb-3">
+        <div class="px-3 py-2 rounded fw-bold text-white"
+             style="background:{% if lang_section.grouper == 'O\'zbek' or lang_section.grouper == 'uz' %}#1a7a4a{% elif lang_section.grouper == 'Rus' or lang_section.grouper == 'ru' %}#1a4a8a{% else %}#6a3a8a{% endif %};">
+            🌐 {{ lang_section.grouper }} tili — {{ lang_section.list|length }} guruh
         </div>
-        <div class="card-body" id="unassigned_list">
-            {% if unassigned_students %}
-                {% for st in unassigned_students %}
-                <span class="badge bg-light text-dark border me-1 mb-1 p-2" id="unassigned_badge_{{ st.id }}">
-                    {{ st }}
-                    <button type="button" class="btn-close ms-1" style="font-size:0.6em;"
-                            title="Eng kam talabali guruhga qo'shish"
-                            onclick="autoAssign({{ st.id }}, '{{ st }}')"></button>
-                </span>
-                {% endfor %}
-            {% else %}
-                <span class="text-muted" id="no_unassigned_msg">Hammasi guruhlarga taqsimlangan ✅</span>
-            {% endif %}
-        </div>
+        <hr class="flex-grow-1 m-0">
     </div>
 
-    {# Guruhlar #}
-    {% for gdata in all_groups %}
-    {% with group_idx=forloop.counter0 student_count=gdata.students|length %}
-    <div class="border rounded p-3 mb-4 {% if student_count < 10 %}border-danger bg-warning bg-opacity-25{% else %}bg-light{% endif %}"
-         id="group_card_{{ group_idx }}">
+    {% for gdata in lang_section.list %}
+    {% with gi=gdata.index sc=gdata.students|length %}
 
-        <h5 id="group_title_{{ group_idx }}" class="{% if student_count < 10 %}text-danger{% else %}text-secondary{% endif %}">
-            {{ forloop.counter }}-Guruh
-            <span class="badge {% if student_count < 10 %}bg-danger{% else %}bg-primary{% endif %}" id="badge_{{ group_idx }}">
-                {{ student_count }} ta o'quvchi
+    <div class="border rounded p-3 mb-3 {% if sc < 10 %}border-danger bg-danger bg-opacity-10{% else %}bg-light{% endif %}"
+         id="group_card_{{ gi }}">
+
+        {# ← ASOSIY: til kodi POST ga yuboriladi #}
+        <input type="hidden" name="lang_{{ gi }}" value="{{ gdata.lang }}">
+
+        <h5 class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+            <span class="{% if sc < 10 %}text-danger{% else %}text-secondary{% endif %}">
+                {{ forloop.counter }}-Guruh
             </span>
+            <span class="badge {% if sc < 10 %}bg-danger{% else %}bg-primary{% endif %}"
+                  id="badge_{{ gi }}">{{ sc }} ta o'quvchi</span>
             <span class="badge bg-info text-dark">{{ gdata.lang_name }}</span>
-            <span class="badge bg-danger" id="warn_{{ group_idx }}" {% if student_count >= 10 %}style="display:none;"{% endif %}>⚠ 10 tadan kam! Boshqa guruhdan talaba qo'shing</span>
+            {% if sc < 10 %}
+            <span class="badge bg-danger" id="warn_{{ gi }}">⚠ 10 tadan kam!</span>
+            {% else %}
+            <span class="badge bg-danger d-none" id="warn_{{ gi }}">⚠ 10 tadan kam!</span>
+            {% endif %}
         </h5>
 
         {# O'qituvchi #}
@@ -189,74 +181,71 @@ document.addEventListener('DOMContentLoaded', function() {
             {% for t in teachers %}
             <div class="form-check">
                 <input class="form-check-input" type="radio"
-                       name="teacher_{{ group_idx }}"
+                       name="teacher_{{ gi }}"
                        value="{{ t.id }}"
-                       id="t_{{ group_idx }}_{{ t.id }}"
-                       {% if selected_teachers %}
-                           {% for k, v in selected_teachers.items %}
-                               {% if k == group_idx and v == t.id %}checked{% endif %}
-                           {% endfor %}
-                       {% endif %}
+                       id="t_{{ gi }}_{{ t.id }}"
                        required>
-                <label class="form-check-label" for="t_{{ group_idx }}_{{ t.id }}">{{ t }}</label>
+                <label class="form-check-label" for="t_{{ gi }}_{{ t.id }}">{{ t }}</label>
             </div>
             {% empty %}
-            <div class="alert alert-warning">Bu fanning o'qituvchisi yo'q</div>
+            <div class="alert alert-warning py-2">Bu fanning o'qituvchisi yo'q</div>
             {% endfor %}
         </div>
 
-        {# Talabalar #}
+        {# O'quvchilar ro'yxati #}
         <div>
             <label class="fw-bold mb-2 d-block">
                 O'quvchilar
-                <small class="text-muted fw-normal">(✕ — guruhdan chiqarish)</small>
+                <small class="text-muted fw-normal">(✕ chiqarish | → ko'chirish)</small>
             </label>
-            <div id="students_list_{{ group_idx }}">
+            <div id="students_list_{{ gi }}">
                 {% for student in gdata.students %}
                 <div class="d-flex align-items-center mb-1 py-1 border-bottom"
-                     id="row_{{ group_idx }}_{{ student.id }}">
-                    <input type="hidden" name="students_{{ group_idx }}" value="{{ student.id }}">
-                    <span class="me-2 text-muted">{{ forloop.counter }}.</span>
-                    <span>{{ student }}</span>
-                    <select class="form-select form-select-sm ms-auto me-1" style="max-width:130px;"
-                            onchange="moveStudentToGroup({{ group_idx }}, {{ student.id }}, '{{ student }}', this)">
+                     id="row_{{ gi }}_{{ student.id }}">
+                    <input type="hidden" name="students_{{ gi }}" value="{{ student.id }}">
+                    <span class="me-2 text-muted num-span">{{ forloop.counter }}.</span>
+                    <span class="me-1">{{ student }}</span>
+                    <span class="badge {% if student.language == 'ru' %}bg-danger{% else %}bg-success{% endif %} ms-1 me-auto" style="font-size:0.7em;">
+                        {{ student.language|upper }}
+                    </span>
+                    <select class="form-select form-select-sm me-1" style="max-width:160px;"
+                            onchange="moveStudentToGroup({{ gi }}, {{ student.id }}, '{{ student|escapejs }}', this)">
                         <option value="">— Ko'chirish —</option>
                         {% for og in all_groups %}
-                        {% if forloop.counter0 != group_idx %}
-                        <option value="{{ forloop.counter0 }}">{{ forloop.counter }}-Guruh ({{ og.lang_name }})</option>
+                        {% if og.index != gi %}
+                        <option value="{{ og.index }}">{{ og.lang_name }} ({{ og.students|length }})</option>
                         {% endif %}
                         {% endfor %}
                     </select>
                     <button type="button"
                             class="btn btn-sm btn-outline-danger px-2 py-0"
-                            onclick="removeStudent({{ group_idx }}, {{ student.id }}, '{{ student }}')">✕</button>
+                            onclick="removeStudent({{ gi }}, {{ student.id }}, '{{ student|escapejs }}')">✕</button>
                 </div>
                 {% endfor %}
             </div>
 
-            {# Qo'shish #}
             <div class="mt-2">
                 <button type="button" class="btn btn-sm btn-outline-success"
-                        onclick="toggleAddPanel({{ group_idx }})">
-                    ➕ Talaba qo'shish
-                </button>
-                <div id="add_panel_{{ group_idx }}" style="display:none;" class="mt-2 d-flex gap-2 flex-wrap">
-                    <select class="form-select form-select-sm" id="add_select_{{ group_idx }}" style="max-width:320px;">
+                        onclick="toggleAddPanel({{ gi }})">➕ Talaba qo'shish</button>
+                <div id="add_panel_{{ gi }}" style="display:none;" class="mt-2 d-flex gap-2 flex-wrap">
+                    <select class="form-select form-select-sm" id="add_select_{{ gi }}" style="max-width:320px;">
                         <option value="">— tanlang —</option>
                     </select>
                     <button type="button" class="btn btn-sm btn-success"
-                            onclick="addStudentToGroup({{ group_idx }})">Qo'shish</button>
+                            onclick="addStudentToGroup({{ gi }})">Qo'shish</button>
                     <button type="button" class="btn btn-sm btn-secondary"
-                            onclick="toggleAddPanel({{ group_idx }})">Bekor</button>
+                            onclick="toggleAddPanel({{ gi }})">Bekor</button>
                 </div>
             </div>
         </div>
-
     </div>
-    {% endwith %}
-    {% endfor %}
 
-    <div class="d-flex gap-2 mt-3">
+    {% endwith %}
+    {% endfor %}{# gdata #}
+
+    {% endfor %}{# lang_section #}
+
+    <div class="d-flex gap-2 mt-4">
         <a href="{% url 'lesson_create' %}" class="btn btn-secondary">← Orqaga</a>
         <button type="submit" class="btn btn-success w-100">
             🤖 Avtomatik joylashtirish va saqlash
@@ -265,147 +254,107 @@ document.addEventListener('DOMContentLoaded', function() {
 </form>
 
 <script>
-function toggleAddPanel(groupIdx) {
-    const panel = document.getElementById(`add_panel_${groupIdx}`);
-    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-}
+function toggleAddPanel(gi) {
+    const panel = document.getElementById(`add_panel_${gi}`);
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'flex' : 'none';
+    if (!isHidden) return;
 
-function removeStudent(groupIdx, studentId, studentName) {
-    const row = document.getElementById(`row_${groupIdx}_${studentId}`);
-    if (!row) return;
-    row.remove();
-    updateGroupUI(groupIdx);
-    renumberGroup(groupIdx);
-    addToUnassignedPanel(studentId, studentName);
-    for (let i = 0; i < GROUPS_COUNT; i++) {
-        const sel = document.getElementById(`add_select_${i}`);
-        if (sel && !Array.from(sel.options).some(o => o.value == studentId)) {
-            const opt = new Option(studentName, studentId);
-            sel.appendChild(opt);
-        }
-    }
-}
-
-function addToUnassignedPanel(studentId, studentName) {
-    const list = document.getElementById('unassigned_list');
-    if (document.getElementById(`unassigned_badge_${studentId}`)) return;
-    const noMsg = document.getElementById('no_unassigned_msg');
-    if (noMsg) noMsg.style.display = 'none';
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border me-1 mb-1 p-2';
-    span.id = `unassigned_badge_${studentId}`;
-    span.innerHTML = `${studentName} <button type="button" class="btn-close ms-1" style="font-size:0.6em;" title="Eng kam talabali guruhga qo'shish" onclick="autoAssign(${studentId}, '${studentName}')"></button>`;
-    list.appendChild(span);
-    refreshUnassignedCount();
-}
-
-function autoAssign(studentId, studentName) {
-    let minCount = Infinity;
-    let minGroupIdx = 0;
-    for (let i = 0; i < GROUPS_COUNT; i++) {
-        const list = document.getElementById(`students_list_${i}`);
-        if (!list) continue;
-        const count = list.querySelectorAll('[id^="row_"]').length;
-        if (count < minCount) {
-            minCount = count;
-            minGroupIdx = i;
-        }
-    }
-    addStudentDirectly(minGroupIdx, studentId, studentName);
-}
-
-function addStudentToGroup(groupIdx) {
-    const sel = document.getElementById(`add_select_${groupIdx}`);
-    const studentId = sel.value;
-    const studentName = sel.options[sel.selectedIndex]?.textContent?.trim();
-    if (!studentId) return;
-    addStudentDirectly(groupIdx, studentId, studentName);
-    sel.value = '';
-}
-
-function addStudentDirectly(groupIdx, studentId, studentName) {
-    for (let i = 0; i < GROUPS_COUNT; i++) {
-        const existRow = document.getElementById(`row_${i}_${studentId}`);
-        if (existRow) {
-            existRow.remove();
-            updateGroupUI(i);
-            renumberGroup(i);
-        }
-    }
-    for (let i = 0; i < GROUPS_COUNT; i++) {
-        const sel = document.getElementById(`add_select_${i}`);
-        if (sel) Array.from(sel.options).filter(o => o.value == studentId).forEach(o => o.remove());
-    }
-    const badge = document.getElementById(`unassigned_badge_${studentId}`);
-    if (badge) badge.remove();
-    refreshUnassignedCount();
-
-    const list = document.getElementById(`students_list_${groupIdx}`);
-    const num = list.querySelectorAll('[id^="row_"]').length + 1;
-    const div = document.createElement('div');
-    div.className = 'd-flex align-items-center mb-1 py-1 border-bottom';
-    div.id = `row_${groupIdx}_${studentId}`;
-    div.innerHTML = `
-        <input type="hidden" name="students_${groupIdx}" value="${studentId}">
-        <span class="me-2 text-muted">${num}.</span>
-        <span>${studentName}</span>
-        <button type="button" class="btn btn-sm btn-outline-danger ms-auto px-2 py-0"
-                onclick="removeStudent(${groupIdx}, ${studentId}, '${studentName}')">✕</button>
-    `;
-    list.appendChild(div);
-    updateGroupUI(groupIdx);
-}
-
-function updateGroupUI(groupIdx) {
-    const list = document.getElementById(`students_list_${groupIdx}`);
-    if (!list) return;
-    const count = list.querySelectorAll('[id^="row_"]').length;
-    const badge = document.getElementById(`badge_${groupIdx}`);
-    const warn = document.getElementById(`warn_${groupIdx}`);
-    const card = document.getElementById(`group_card_${groupIdx}`);
-    if (badge) badge.textContent = `${count} ta o'quvchi`;
-    if (count < 10) {
-        if (badge) badge.className = 'badge bg-danger';
-        if (warn) warn.style.display = '';
-        if (card) {
-            card.classList.add('border-danger');
-            card.classList.remove('bg-light');
-        }
-    } else {
-        if (badge) badge.className = 'badge bg-primary';
-        if (warn) warn.style.display = 'none';
-        if (card) {
-            card.classList.remove('border-danger');
-            card.classList.add('bg-light');
-        }
-    }
-}
-
-function renumberGroup(groupIdx) {
-    const list = document.getElementById(`students_list_${groupIdx}`);
-    if (!list) return;
-    list.querySelectorAll('[id^="row_"]').forEach((row, i) => {
-        const numSpan = row.querySelector('span.text-muted');
-        if (numSpan) numSpan.textContent = `${i + 1}.`;
+    // Hech qaysi guruhda yo'q o'quvchilarni to'ldirish
+    const sel = document.getElementById(`add_select_${gi}`);
+    while (sel.options.length > 1) sel.remove(1);
+    Object.values(ALL_STUDENTS_MAP).forEach(st => {
+        const inAny = ALL_GROUP_INDICES.some(idx => !!document.getElementById(`row_${idx}_${st.id}`));
+        if (!inAny) sel.appendChild(new Option(st.name, st.id));
     });
 }
 
-function moveStudentToGroup(fromIdx, studentId, studentName, selectEl) {
-    const toIdx = parseInt(selectEl.value);
-    if (isNaN(toIdx) || toIdx === fromIdx) return;
-    selectEl.value = '';
-    addStudentDirectly(toIdx, studentId, studentName);
-    updateGroupUI(fromIdx);
-    updateGroupUI(toIdx);
+function removeStudent(gi, studentId, studentName) {
+    const row = document.getElementById(`row_${gi}_${studentId}`);
+    if (!row) return;
+    row.remove();
+    updateGroupUI(gi);
+    renumberGroup(gi);
 }
 
-function refreshUnassignedCount() {
-    const list = document.getElementById('unassigned_list');
-    const countBadge = document.getElementById('unassigned_count');
-    const badges = list.querySelectorAll('[id^="unassigned_badge_"]');
-    if (countBadge) countBadge.textContent = badges.length;
-    const noMsg = document.getElementById('no_unassigned_msg');
-    if (noMsg) noMsg.style.display = badges.length === 0 ? '' : 'none';
+function addStudentToGroup(gi) {
+    const sel = document.getElementById(`add_select_${gi}`);
+    const studentId = parseInt(sel.value);
+    if (!studentId) return;
+    const studentName = sel.options[sel.selectedIndex]?.textContent?.trim() || '';
+    addStudentDirectly(gi, studentId, studentName);
+    sel.value = '';
+}
+
+function addStudentDirectly(toGi, studentId, studentName) {
+    // Boshqa guruhlardan olib tashlaymiz
+    ALL_GROUP_INDICES.forEach(idx => {
+        const existRow = document.getElementById(`row_${idx}_${studentId}`);
+        if (existRow) { existRow.remove(); updateGroupUI(idx); renumberGroup(idx); }
+    });
+
+    const list = document.getElementById(`students_list_${toGi}`);
+    if (!list) return;
+    const num = list.querySelectorAll('.num-span').length + 1;
+
+    // Ko'chirish options
+    let moveOpts = `<option value="">— Ko'chirish —</option>`;
+    {% for gdata in all_groups %}
+    if ({{ gdata.index }} !== toGi) {
+        moveOpts += `<option value="{{ gdata.index }}">{{ gdata.lang_name|escapejs }} ({{ gdata.students|length }})</option>`;
+    }
+    {% endfor %}
+
+    const esc = studentName.replace(/'/g, "\\'");
+    const div = document.createElement('div');
+    div.className = 'd-flex align-items-center mb-1 py-1 border-bottom';
+    div.id = `row_${toGi}_${studentId}`;
+    div.innerHTML = `
+        <input type="hidden" name="students_${toGi}" value="${studentId}">
+        <span class="me-2 text-muted num-span">${num}.</span>
+        <span class="me-auto">${studentName}</span>
+        <select class="form-select form-select-sm me-1" style="max-width:160px;"
+                onchange="moveStudentToGroup(${toGi}, ${studentId}, '${esc}', this)">
+            ${moveOpts}
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-danger px-2 py-0"
+                onclick="removeStudent(${toGi}, ${studentId}, '${esc}')">✕</button>
+    `;
+    list.appendChild(div);
+    updateGroupUI(toGi);
+}
+
+function moveStudentToGroup(fromGi, studentId, studentName, selectEl) {
+    const toGi = parseInt(selectEl.value);
+    if (isNaN(toGi) || toGi === fromGi) { selectEl.value = ''; return; }
+    selectEl.value = '';
+    addStudentDirectly(toGi, studentId, studentName);
+}
+
+function updateGroupUI(gi) {
+    const list = document.getElementById(`students_list_${gi}`);
+    if (!list) return;
+    const count = list.querySelectorAll('[id^="row_"]').length;
+    const badge = document.getElementById(`badge_${gi}`);
+    const warn  = document.getElementById(`warn_${gi}`);
+    const card  = document.getElementById(`group_card_${gi}`);
+    if (badge) {
+        badge.textContent = `${count} ta o'quvchi`;
+        badge.className = `badge ${count < 10 ? 'bg-danger' : 'bg-primary'}`;
+    }
+    if (warn) warn.classList.toggle('d-none', count >= 10);
+    if (card) {
+        card.classList.toggle('border-danger', count < 10);
+        card.classList.toggle('bg-danger',     count < 10);
+        card.classList.toggle('bg-opacity-10', count < 10);
+        card.classList.toggle('bg-light',      count >= 10);
+    }
+}
+
+function renumberGroup(gi) {
+    const list = document.getElementById(`students_list_${gi}`);
+    if (!list) return;
+    list.querySelectorAll('.num-span').forEach((s, i) => s.textContent = `${i+1}.`);
 }
 </script>
 

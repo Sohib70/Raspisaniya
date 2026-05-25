@@ -24,6 +24,7 @@ urlpatterns = [
     path('student/<int:pk>/delete/', views.student_delete, name='student_delete'),
     path('student/import/', views.import_students, name='import_students'),
     path('student/<int:pk>/change-password/', views.admin_change_student_password, name='admin_change_student_password'),
+    path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
 
 
     # Subject
@@ -72,6 +73,5 @@ urlpatterns = [
     path('student-schedule/<int:student_pk>/', views.student_schedule_info, name='student_schedule_info'),
     path('sched-info/<int:sched_id>/', views.sched_info_ajax, name='sched_info_ajax'),
 
-
-
+    path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
 ]

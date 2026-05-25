@@ -43,6 +43,10 @@
             <a href="{% url 'admin_group_grades' item.group.pk %}" class="btn btn-sm btn-outline-primary">
                 📊 Baholar &amp; davomat
             </a>
+
+            <a href="{% url 'download_vedomost' item.group.pk %}" class="btn btn-sm btn-info text-white fw-bold" style="background-color: #0288d1 !important; border-color: #0288d1 !important;">
+                📥 Qaydnoma (PDF)
+            </a>
             {% if request.user.is_staff or request.user.is_superuser %}
             <button class="btn btn-sm permit-group-btn {% if item.group.teacher_can_edit %}btn-success{% else %}btn-outline-secondary{% endif %}"
                 data-group-pk="{{ item.group.pk }}"

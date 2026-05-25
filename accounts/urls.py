@@ -13,4 +13,5 @@ urlpatterns = [
     path('teacher/group/<int:group_pk>/attendance/', views.teacher_attendance_overview, name='teacher_attendance_overview'),
     path('teacher/group/<int:group_pk>/attendance/<int:sched_pk>/', views.teacher_attendance, name='teacher_attendance'),
     path('teacher/group/<int:group_pk>/grades/', views.teacher_grades, name='teacher_grades'),
+
 ]
