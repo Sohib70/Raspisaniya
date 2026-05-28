@@ -12,11 +12,24 @@
         .topbar h5 { margin: 0; font-weight: 700; }
         .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
         .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 10px 10px 0 0; padding: 10px 18px; font-weight: 700; }
-        .grade-input { width: 80px; text-align: center; border-radius: 8px; border: 1px solid #ccc; padding: 4px 6px; font-size: 0.9rem; font-weight: 600; }
-        .grade-input:focus { border-color: #1565c0; outline: none; box-shadow: 0 0 0 2px rgba(21,101,192,0.15); }
+
+        /* Baholar kiritish inputlari uchun asosiy uslub */
+        .grade-input { width: 80px; text-align: center; border-radius: 8px; border: 2px solid #ccc; padding: 4px 6px; font-size: 0.9rem; font-weight: 600; transition: all 0.2s ease; }
+        .grade-input:focus { outline: none; }
+
+        /* To'g'ri kiritilgandagi fokus ranglari */
         .grade-input.midterm:focus { border-color: #e67e22; box-shadow: 0 0 0 2px rgba(230,126,34,0.15); }
         .grade-input.current:focus { border-color: #27ae60; box-shadow: 0 0 0 2px rgba(39,174,96,0.15); }
         .grade-input.final:focus { border-color: #8e44ad; box-shadow: 0 0 0 2px rgba(142,68,173,0.15); }
+
+        /* XATO kiritilganda srazu ishlaydigan klasslar (CSS va JS uchun) */
+        .grade-input.is-invalid-grade {
+            border-color: #dc3545 !important;
+            background-color: #f8d7da !important;
+            color: #721c24 !important;
+            box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.25) !important;
+        }
+
         .grade-input:disabled { background: #f5f5f5; cursor: not-allowed; opacity: 0.5; }
         td, th { vertical-align: middle !important; }
         .messages-area { margin-bottom: 1rem; }
@@ -25,17 +38,11 @@
 </head>
 <body>
 
-<div class="topbar" style="background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
+<div class="topbar">
     <div style="display: flex !important; align-items: center !important; gap: 15px;">
         <h5 style="margin: 0; font-weight: 700; color: white !important;">📝 Baholar kiritish</h5>
-
-        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
-            🏠 Bosh sahifa
-        </a>
-
-        <a href="{% url 'download_vedomost' group.pk %}" class="btn btn-sm btn-info fw-bold text-white" style="background-color: #0288d1 !important; border-color: #0288d1 !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
-            📥 Qaydnoma (PDF)
-        </a>
+        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">🏠 Bosh sahifa</a>
+        <a href="{% url 'download_vedomost' group.pk %}" class="btn btn-sm btn-info fw-bold text-white" style="background-color: #0288d1 !important; border-color: #0288d1 !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">📥 Qaydnoma (PDF)</a>
     </div>
     <div style="display: flex !important; align-items: center !important; gap: 16px;">
         <span>👤 {{ teacher.first_name }}</span>
@@ -73,9 +80,9 @@
     </div>
 
     <div class="d-flex gap-3 mb-3 align-items-center flex-wrap" style="font-size:0.82rem;">
-        <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (max 30)</span>
-        <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (max 20)</span>
-        <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (max 50)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#e8f5e9; color:#27ae60; border:1px solid #27ae60;">Joriy (17 - 30)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#fff3e0; color:#e67e22; border:1px solid #e67e22;">Oraliq (12 - 20)</span>
+        <span class="px-3 py-1 rounded fw-bold" style="background:#f3e5f5; color:#8e44ad; border:1px solid #8e44ad;">Yakuniy (28 - 50)</span>
         {% if grade_blocked_by_attendance %}
         <span class="px-3 py-1 rounded fw-bold" style="background:#fdecea; color:#c62828; border:1px solid #ef9a9a;">
             🚫 25% dan oshgan talabalar blokda — admin ruxsat berishi kerak
@@ -83,7 +90,12 @@
         {% endif %}
     </div>
 
-    <form method="post">
+    <!-- Xatolik haqida ogohlantirish paneli (HTML) -->
+    <div id="js-error-alert" class="alert alert-danger d-none fw-bold mb-3" role="alert">
+        ⚠️ Diqqat! Tizimda noto'g'ri kiritilgan baholar mavjud. Iltimos, qizil maydonlarni tekshiring. Xatolik tuzatilmangacha saqlash imkonsiz!
+    </div>
+
+    <form method="post" id="grades-form">
         {% csrf_token %}
         <div class="card info-card mb-4">
             <div class="section-header">Baholar jadvali — {{ group.course.subject }} {{ group.group_number }}-guruh</div>
@@ -94,13 +106,13 @@
                             <th style="width:40px;" class="text-center">#</th>
                             <th>Ism Familiya</th>
                             <th class="text-center" style="min-width:100px;">
-                                <span style="color:#27ae60;">Joriy<br><small style="font-weight:400;">max 30</small></span>
+                                <span style="color:#27ae60;">Joriy<br><small style="font-weight:400;">17 - 30</small></span>
                             </th>
                             <th class="text-center" style="min-width:100px;">
-                                <span style="color:#e67e22;">Oraliq<br><small style="font-weight:400;">max 20</small></span>
+                                <span style="color:#e67e22;">Oraliq<br><small style="font-weight:400;">12 - 20</small></span>
                             </th>
                             <th class="text-center" style="min-width:100px;">
-                                <span style="color:#8e44ad;">Yakuniy<br><small style="font-weight:400;">max 50</small></span>
+                                <span style="color:#8e44ad;">Yakuniy<br><small style="font-weight:400;">28 - 50</small></span>
                             </th>
                             <th class="text-center" style="min-width:80px;">Jami (max 100)</th>
                         </tr>
@@ -121,8 +133,9 @@
                                 {% if row.is_blocked %}
                                 <span class="text-muted">—</span>
                                 {% else %}
+                                <!-- min="17" qilindi -->
                                 <input type="number" name="current_{{ row.student.pk }}"
-                                       class="grade-input current" min="0" max="30" step="0.5"
+                                       class="grade-input current" min="17" max="30" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.current is not None %}{{ row.grade.current }}{% endif %}">
                                 {% endif %}
@@ -131,8 +144,9 @@
                                 {% if row.is_blocked %}
                                 <span class="text-muted">—</span>
                                 {% else %}
+                                <!-- min="12" qilindi -->
                                 <input type="number" name="midterm_{{ row.student.pk }}"
-                                       class="grade-input midterm" min="0" max="20" step="0.5"
+                                       class="grade-input midterm" min="12" max="20" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.midterm is not None %}{{ row.grade.midterm }}{% endif %}">
                                 {% endif %}
@@ -141,8 +155,9 @@
                                 {% if row.is_blocked %}
                                 <span class="text-muted">—</span>
                                 {% else %}
+                                <!-- min="28" qilindi -->
                                 <input type="number" name="final_{{ row.student.pk }}"
-                                       class="grade-input final" min="0" max="50" step="0.5"
+                                       class="grade-input final" min="28" max="50" step="0.5"
                                        placeholder="—"
                                        value="{% if row.grade and row.grade.final is not None %}{{ row.grade.final }}{% endif %}">
                                 {% endif %}
@@ -164,7 +179,7 @@
         </div>
 
         <div class="d-flex gap-3 mb-5">
-            <button type="submit" class="btn btn-success px-5">💾 Saqlash</button>
+            <button type="submit" id="submit-btn" class="btn btn-success px-5">💾 Saqlash</button>
             <a href="/teacher/" class="btn btn-outline-secondary">Bekor qilish</a>
         </div>
     </form>
@@ -173,23 +188,82 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+function validateGrades() {
+    let hasError = false;
+    const inputs = document.querySelectorAll('.grade-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorAlert = document.getElementById('js-error-alert');
+
+    inputs.forEach(function(inp) {
+        const valStr = inp.value.trim();
+
+        // Agar o'qituvchi inputni bo'sh qoldirgan bo'lsa, xato deb hisoblamaymiz (baho qo'yilmagan holat)
+        if (valStr === "") {
+            inp.classList.remove('is-invalid-grade');
+            return;
+        }
+
+        const val = parseFloat(valStr);
+        const minVal = parseFloat(inp.getAttribute('min'));
+        const maxVal = parseFloat(inp.getAttribute('max'));
+
+        // Tekshiruv: Son emasmi yoki belgilangan chegaradan chiqib ketganmi?
+        if (isNaN(val) || val < minVal || val > maxVal) {
+            inp.classList.add('is-invalid-grade'); // Qizil uslub qo'shish
+            hasError = true;
+        } else {
+            inp.classList.remove('is-invalid-grade'); // To'g'ri bo'lsa qizilni olib tashlash
+        }
+    });
+
+    // Agar kamida bitta xatolik bo'lsa, tugmani bloklaymiz va ogohlantiramiz
+    if (hasError) {
+        submitBtn.disabled = true;
+        errorAlert.classList.remove('d-none');
+    } else {
+        submitBtn.disabled = false;
+        errorAlert.classList.add('d-none');
+    }
+}
+
+// Har safar input o'zgarganda real-vaqtda tekshirish va jami ballni hisoblash
 document.querySelectorAll('.grade-input').forEach(function(inp) {
     inp.addEventListener('input', function() {
+        // 1. Avval qizil/to'g'ri ekanligini tekshiramiz
+        validateGrades();
+
+        // 2. Jami ballni qayta hisoblash qismi
         var row = this.closest('tr');
         var pk = this.name.split('_').pop();
-        var m = parseFloat(row.querySelector('[name="midterm_' + pk + '"]').value);
-        var c = parseFloat(row.querySelector('[name="current_' + pk + '"]').value);
-        var f = parseFloat(row.querySelector('[name="final_' + pk + '"]').value);
+
+        var mInp = row.querySelector('[name="midterm_' + pk + '"]');
+        var cInp = row.querySelector('[name="current_' + pk + '"]');
+        var fInp = row.querySelector('[name="final_' + pk + '"]');
+
+        var m = parseFloat(mInp.value);
+        var c = parseFloat(cInp.value);
+        var f = parseFloat(fInp.value);
+
         var avgCell = document.getElementById('avg_' + pk);
-        if (!isNaN(m) && !isNaN(c) && !isNaN(f)) {
-            avgCell.textContent = (m + c + f).toFixed(1);
-            avgCell.style.color = (m + c + f) >= 55 ? '#155724' : '#721c24';
+
+        // Faqat barcha qiymatlar to'g'ri va xatosiz bo'lsagina jami ballni chiqaradi
+        if (!isNaN(m) && !isNaN(c) && !isNaN(f) &&
+            !mInp.classList.contains('is-invalid-grade') &&
+            !cInp.classList.contains('is-invalid-grade') &&
+            !fInp.classList.contains('is-invalid-grade')) {
+
+            var total = m + c + f;
+            avgCell.textContent = total.toFixed(1);
+            avgCell.style.color = total >= 55 ? '#155724' : '#721c24';
         } else {
             avgCell.textContent = '—';
             avgCell.style.color = '#1a237e';
         }
     });
 });
+
+// Sahifa birinchi marta yuklanganda (baza ma'lumotlari xato bo'lsa ham) tekshirib olish uchun
+window.addEventListener('DOMContentLoaded', validateGrades);
 </script>
 </body>
 </html>

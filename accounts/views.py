@@ -508,6 +508,13 @@ def teacher_attendance_overview(request, group_pk):
     })
 
 
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+
+
+# Kerakli modellarni bu yerda import qiling (CourseGroup, Attendance, Grade, va hk)
+
 @login_required
 def teacher_grades(request, group_pk):
     try:
@@ -519,7 +526,7 @@ def teacher_grades(request, group_pk):
     students = group.students.all().order_by('last_name', 'first_name')
 
     if request.method == "POST":
-        # Davomat tekshiruvi — bloklangan talabaga baho qo'yib bo'lmaydi
+        # 1. Davomat tekshiruvi (Bloklangan talabalar xaritasi)
         att_map_blocked = {}
         total_lessons = group.schedule.count()
         for st in students:
@@ -529,30 +536,75 @@ def teacher_grades(request, group_pk):
             missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
             att_map_blocked[st.pk] = missed_percent > 25 and not group.teacher_can_edit
 
+        # Baholash chegaralari (Min, Max) va xatolik matnlari
+        LIMITS = {
+            'midterm': {'min': 12, 'max': 20, 'name': 'Oraliq'},
+            'current': {'min': 17, 'max': 30, 'name': 'Joriy'},
+            'final': {'min': 28, 'max': 50, 'name': 'Yakuniy'}
+        }
+
+        # Ma'lumotlarni validatsiya qilish (Tekshirish) uchun vaqtinchalik ro'yxat
+        valid_grades_data = []
+        has_error = False
+
         for student in students:
             if att_map_blocked.get(student.pk):
-                continue  # Bloklangan — o'tkazib yuboramiz
+                continue  # Bloklangan talabani o'tkazib yuboramiz
 
-            def parse(val, max_val):
+            student_grades = {}
+            for field, bounds in LIMITS.items():
+                raw_val = request.POST.get(f"{field}_{student.pk}", "").strip()
+
+                if raw_val == "":
+                    # Agar maydon bo'sh bo'lsa, uni None (yoki 0) deb hisoblash mumkin
+                    student_grades[field] = None
+                    continue
+
                 try:
-                    v = float(val)
-                    return max(0.0, min(float(max_val), v))
+                    val = float(raw_val)
                 except (ValueError, TypeError):
-                    return None
+                    messages.error(request,
+                                   f"{student.last_name} {student.first_name}ning {bounds['name']} bahosi son bo'lishi kerak!")
+                    has_error = True
+                    break
 
+                # Minimal va Maksimal qiymat tekshiruvi
+                if val < bounds['min'] or val > bounds['max']:
+                    messages.error(
+                        request,
+                        f"{student.last_name} {student.first_name}ning {bounds['name']} bahosi "
+                        f"{bounds['min']} va {bounds['max']} oralig'ida bo'lishi shart! (Kiritildi: {val})"
+                    )
+                    has_error = True
+                    break
+
+                student_grades[field] = val
+
+            if has_error:
+                break  # Bitta xato bo'lsa ham tsiklni to'xtatamiz va saqlamaymiz
+
+            valid_grades_data.append((student, student_grades))
+
+        # Agar biron bir xatolik bo'lsa, bazaga yozmaymiz va sahifani qayta yuklaymiz
+        if has_error:
+            return redirect('teacher_grades', group_pk=group_pk)
+
+        # 2. Agar hamma narsa to'g'ri bo'lsa, bazaga saqlaymiz
+        for student, grades in valid_grades_data:
             Grade.objects.update_or_create(
                 student=student,
                 course_group=group,
                 defaults={
-                    'midterm': parse(request.POST.get(f"midterm_{student.pk}", ""), 20),
-                    'current': parse(request.POST.get(f"current_{student.pk}", ""), 30),
-                    'final':   parse(request.POST.get(f"final_{student.pk}", ""), 50),
+                    'midterm': grades['midterm'],
+                    'current': grades['current'],
+                    'final': grades['final'],
                 }
             )
+
         messages.success(request, "Baholar muvaffaqiyatli saqlandi.")
         return redirect('teacher_grades', group_pk=group_pk)
 
-    # Har bir talabaning davomat holatini olamiz
+    # GET so'rovi qismi (O'zgarishsiz qoldi)
     total_lessons = group.schedule.count()
     grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
     att_counts = {}
