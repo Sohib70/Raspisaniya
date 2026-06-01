@@ -91,24 +91,20 @@ document.querySelector('[name=lessons_per_week]').addEventListener('input', calc
 {# ================= STEP 2 ================= #}
 {% elif step == 2 %}
 
-{#
-  MUHIM: bu yerda gdata.index ishlatiladi — forloop.counter0 EMAS!
-  views.py da har guruhga noyob 'index' berilgan (sorted lang tartibida).
-  lang_{{ gi }}, teacher_{{ gi }}, students_{{ gi }} — hammasi gi=gdata.index.
-  Shunda UZ va RU guruhlar hech qachon aralashmaydi.
-#}
-
 <script>
 const GROUPS_COUNT = {{ groups_count }};
 
-// Barcha o'quvchilar — id va nom bilan (JS ko'chirish uchun)
 const ALL_STUDENTS_MAP = {
     {% for gdata in all_groups %}{% for st in gdata.students %}
-    {{ st.id }}: { id: {{ st.id }}, name: "{{ st|escapejs }}" },
+    {{ st.id }}: {
+        id: {{ st.id }},
+        name: "{{ st|escapejs }}",
+        group_name: "{{ st.group.name|default:st.group|escapejs }}",
+        lang: "{{ st.language|upper }}"
+    },
     {% endfor %}{% endfor %}
 };
 
-// Barcha guruh indekslari (gdata.index qadriyatlari)
 const ALL_GROUP_INDICES = [
     {% for gdata in all_groups %}{{ gdata.index }}{% if not forloop.last %},{% endif %}{% endfor %}
 ];
@@ -138,12 +134,10 @@ const ALL_GROUP_INDICES = [
         {% endfor %}
     {% endif %}
 
-    {# ── Guruhlarni TIL bo'yicha vizual ajratamiz ── #}
     {% regroup all_groups by lang_name as groups_by_lang %}
 
     {% for lang_section in groups_by_lang %}
 
-    {# Til sarlavhasi #}
     <div class="d-flex align-items-center gap-3 mt-4 mb-3">
         <div class="px-3 py-2 rounded fw-bold text-white"
              style="background:{% if lang_section.grouper == 'O\'zbek' or lang_section.grouper == 'uz' %}#1a7a4a{% elif lang_section.grouper == 'Rus' or lang_section.grouper == 'ru' %}#1a4a8a{% else %}#6a3a8a{% endif %};">
@@ -155,10 +149,9 @@ const ALL_GROUP_INDICES = [
     {% for gdata in lang_section.list %}
     {% with gi=gdata.index sc=gdata.students|length %}
 
-    <div class="border rounded p-3 mb-3 {% if sc < 10 %}border-danger bg-danger bg-opacity-10{% else %}bg-light{% endif %}"
+    <div class="border rounded p-3 mb-4 {% if sc < 10 %}border-danger bg-danger bg-opacity-10{% else %}bg-light{% endif %}"
          id="group_card_{{ gi }}">
 
-        {# ← ASOSIY: til kodi POST ga yuboriladi #}
         <input type="hidden" name="lang_{{ gi }}" value="{{ gdata.lang }}">
 
         <h5 class="mb-3 d-flex align-items-center gap-2 flex-wrap">
@@ -176,74 +169,87 @@ const ALL_GROUP_INDICES = [
         </h5>
 
         {# O'qituvchi #}
-        <div class="mb-3">
-            <label class="form-label fw-bold">O'qituvchi tanlang</label>
-            {% for t in teachers %}
-            <div class="form-check">
-                <input class="form-check-input" type="radio"
-                       name="teacher_{{ gi }}"
-                       value="{{ t.id }}"
-                       id="t_{{ gi }}_{{ t.id }}"
-                       required>
-                <label class="form-check-label" for="t_{{ gi }}_{{ t.id }}">{{ t }}</label>
+        <div class="mb-3 p-2 bg-white rounded border">
+            <label class="form-label fw-bold text-secondary small">O'qituvchi tanlang</label>
+            <div class="d-flex gap-3 flex-wrap">
+                {% for t in teachers %}
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="teacher_{{ gi }}" value="{{ t.id }}" id="t_{{ gi }}_{{ t.id }}" required>
+                    <label class="form-check-label" for="t_{{ gi }}_{{ t.id }}">{{ t }}</label>
+                </div>
+                {% empty %}
+                <div class="alert alert-warning py-1 m-0 small">Bu fanning o'qituvchisi yo'q</div>
+                {% endfor %}
             </div>
-            {% empty %}
-            <div class="alert alert-warning py-2">Bu fanning o'qituvchisi yo'q</div>
-            {% endfor %}
         </div>
 
         {# O'quvchilar ro'yxati #}
         <div>
-            <label class="fw-bold mb-2 d-block">
-                O'quvchilar
-                <small class="text-muted fw-normal">(✕ chiqarish | → ko'chirish)</small>
-            </label>
-            <div id="students_list_{{ gi }}">
+            <label class="fw-bold mb-2 text-secondary small">O'QUVCHILAR RO'YXATI</label>
+
+            <div class="row g-2 px-2 py-1 bg-secondary bg-opacity-10 rounded fw-bold text-muted mb-2 small d-none d-md-flex text-center text-md-start">
+                <div class="col-md-5">F.I.Sh</div>
+                <div class="col-md-3 text-center">Guruh</div>
+                <div class="col-md-2 text-center">Ta'lim tili</div>
+                <div class="col-md-2 text-end pe-4">Harakatlar</div>
+            </div>
+
+            <div id="students_list_{{ gi }}" class="bg-white rounded border p-1">
                 {% for student in gdata.students %}
-                <div class="d-flex align-items-center mb-1 py-1 border-bottom"
-                     id="row_{{ gi }}_{{ student.id }}">
+                <div class="row g-2 align-items-center mx-0 py-2 border-bottom" id="row_{{ gi }}_{{ student.id }}">
                     <input type="hidden" name="students_{{ gi }}" value="{{ student.id }}">
-                    <span class="me-2 text-muted num-span">{{ forloop.counter }}.</span>
-                    <span class="me-1">{{ student }}</span>
-                    <span class="badge {% if student.language == 'ru' %}bg-danger{% else %}bg-success{% endif %} ms-1 me-auto" style="font-size:0.7em;">
-                        {{ student.language|upper }}
-                    </span>
-                    <select class="form-select form-select-sm me-1" style="max-width:160px;"
-                            onchange="moveStudentToGroup({{ gi }}, {{ student.id }}, '{{ student|escapejs }}', this)">
-                        <option value="">— Ko'chirish —</option>
-                        {% for og in all_groups %}
-                        {% if og.index != gi %}
-                        <option value="{{ og.index }}">{{ og.lang_name }} ({{ og.students|length }})</option>
-                        {% endif %}
-                        {% endfor %}
-                    </select>
-                    <button type="button"
-                            class="btn btn-sm btn-outline-danger px-2 py-0"
-                            onclick="removeStudent({{ gi }}, {{ student.id }}, '{{ student|escapejs }}')">✕</button>
+
+                    <div class="col-md-5 d-flex align-items-center text-wrap">
+                        <span class="text-muted num-span me-2" style="min-width:20px;">{{ forloop.counter }}.</span>
+                        <span class="fw-medium text-dark">{{ student }}</span>
+                    </div>
+
+                    <div class="col-md-3 text-start text-md-center">
+                        <span class="badge bg-secondary py-1.5 px-2" style="font-size:0.8em; font-weight: 500;">
+                            🗂 {{ student.group.name|default:student.group|default:"Guruhsiz" }}
+                        </span>
+                    </div>
+
+                    <div class="col-md-2 text-start text-md-center">
+                        <span class="badge {% if student.language == 'ru' %}bg-danger{% else %}bg-success{% endif %} py-1.5 px-2" style="font-size:0.75em;">
+                            {{ student.language|upper }}
+                        </span>
+                    </div>
+
+                    <div class="col-md-2 d-flex justify-content-end gap-1 align-items-center">
+                        <select class="form-select form-select-sm" style="font-size: 0.8rem;"
+                                onchange="moveStudentToGroup({{ gi }}, {{ student.id }}, '{{ student|escapejs }}', this)">
+                            <option value="">→ Ko'chirish</option>
+                            {% for og in all_groups %}
+                            {% if og.index != gi %}
+                            <option value="{{ og.index }}">{{ og.lang_name }} ({{ og.students|length }})</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" style="height:31px;"
+                                onclick="removeStudent({{ gi }}, {{ student.id }}, '{{ student|escapejs }}')">✕</button>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
 
             <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-success"
-                        onclick="toggleAddPanel({{ gi }})">➕ Talaba qo'shish</button>
+                <button type="button" class="btn btn-sm btn-outline-success" onclick="toggleAddPanel({{ gi }})">➕ Talaba qo'shish</button>
                 <div id="add_panel_{{ gi }}" style="display:none;" class="mt-2 d-flex gap-2 flex-wrap">
                     <select class="form-select form-select-sm" id="add_select_{{ gi }}" style="max-width:320px;">
                         <option value="">— tanlang —</option>
                     </select>
-                    <button type="button" class="btn btn-sm btn-success"
-                            onclick="addStudentToGroup({{ gi }})">Qo'shish</button>
-                    <button type="button" class="btn btn-sm btn-secondary"
-                            onclick="toggleAddPanel({{ gi }})">Bekor</button>
+                    <button type="button" class="btn btn-sm btn-success" onclick="addStudentToGroup({{ gi }})">Qo'shish</button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="toggleAddPanel({{ gi }})">Bekor</button>
                 </div>
             </div>
         </div>
     </div>
 
     {% endwith %}
-    {% endfor %}{# gdata #}
+    {% endfor %}
 
-    {% endfor %}{# lang_section #}
+    {% endfor %}
 
     <div class="d-flex gap-2 mt-4">
         <a href="{% url 'lesson_create' %}" class="btn btn-secondary">← Orqaga</a>
@@ -260,12 +266,14 @@ function toggleAddPanel(gi) {
     panel.style.display = isHidden ? 'flex' : 'none';
     if (!isHidden) return;
 
-    // Hech qaysi guruhda yo'q o'quvchilarni to'ldirish
     const sel = document.getElementById(`add_select_${gi}`);
     while (sel.options.length > 1) sel.remove(1);
     Object.values(ALL_STUDENTS_MAP).forEach(st => {
         const inAny = ALL_GROUP_INDICES.some(idx => !!document.getElementById(`row_${idx}_${st.id}`));
-        if (!inAny) sel.appendChild(new Option(st.name, st.id));
+        if (!inAny) {
+            const optionText = `${st.name} | Guruh: ${st.group_name || 'Yo\'q'} | [${st.lang}]`;
+            sel.appendChild(new Option(optionText, st.id));
+        }
     });
 }
 
@@ -281,13 +289,14 @@ function addStudentToGroup(gi) {
     const sel = document.getElementById(`add_select_${gi}`);
     const studentId = parseInt(sel.value);
     if (!studentId) return;
-    const studentName = sel.options[sel.selectedIndex]?.textContent?.trim() || '';
-    addStudentDirectly(gi, studentId, studentName);
+    addStudentDirectly(gi, studentId);
     sel.value = '';
 }
 
-function addStudentDirectly(toGi, studentId, studentName) {
-    // Boshqa guruhlardan olib tashlaymiz
+function addStudentDirectly(toGi, studentId) {
+    const studentData = ALL_STUDENTS_MAP[studentId];
+    if (!studentData) return;
+
     ALL_GROUP_INDICES.forEach(idx => {
         const existRow = document.getElementById(`row_${idx}_${studentId}`);
         if (existRow) { existRow.remove(); updateGroupUI(idx); renumberGroup(idx); }
@@ -297,28 +306,48 @@ function addStudentDirectly(toGi, studentId, studentName) {
     if (!list) return;
     const num = list.querySelectorAll('.num-span').length + 1;
 
-    // Ko'chirish options
-    let moveOpts = `<option value="">— Ko'chirish —</option>`;
+    let moveOpts = `<option value="">→ Ko'chirish</option>`;
     {% for gdata in all_groups %}
     if ({{ gdata.index }} !== toGi) {
         moveOpts += `<option value="{{ gdata.index }}">{{ gdata.lang_name|escapejs }} ({{ gdata.students|length }})</option>`;
     }
     {% endfor %}
 
-    const esc = studentName.replace(/'/g, "\\'");
+    const escName = studentData.name.replace(/'/g, "\\'");
+    const langBadgeColor = studentData.lang === 'RU' ? 'bg-danger' : 'bg-success';
+
     const div = document.createElement('div');
-    div.className = 'd-flex align-items-center mb-1 py-1 border-bottom';
+    div.className = 'row g-2 align-items-center mx-0 py-2 border-bottom';
     div.id = `row_${toGi}_${studentId}`;
+
     div.innerHTML = `
         <input type="hidden" name="students_${toGi}" value="${studentId}">
-        <span class="me-2 text-muted num-span">${num}.</span>
-        <span class="me-auto">${studentName}</span>
-        <select class="form-select form-select-sm me-1" style="max-width:160px;"
-                onchange="moveStudentToGroup(${toGi}, ${studentId}, '${esc}', this)">
-            ${moveOpts}
-        </select>
-        <button type="button" class="btn btn-sm btn-outline-danger px-2 py-0"
-                onclick="removeStudent(${toGi}, ${studentId}, '${esc}')">✕</button>
+
+        <div class="col-md-5 d-flex align-items-center text-wrap">
+            <span class="text-muted num-span me-2" style="min-width:20px;">${num}.</span>
+            <span class="fw-medium text-dark">${studentData.name}</span>
+        </div>
+
+        <div class="col-md-3 text-start text-md-center">
+            <span class="badge bg-secondary py-1.5 px-2" style="font-size:0.8em; font-weight: 500;">
+                🗂 ${studentData.group_name || 'Guruhsiz'}
+            </span>
+        </div>
+
+        <div class="col-md-2 text-start text-md-center">
+            <span class="badge ${langBadgeColor} py-1.5 px-2" style="font-size:0.75em;">
+                ${studentData.lang}
+            </span>
+        </div>
+
+        <div class="col-md-2 d-flex justify-content-end gap-1 align-items-center">
+            <select class="form-select form-select-sm" style="font-size: 0.8rem;"
+                    onchange="moveStudentToGroup(${toGi}, ${studentId}, '${escName}', this)">
+                ${moveOpts}
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" style="height:31px;"
+                    onclick="removeStudent(${toGi}, ${studentId}, '${escName}')">✕</button>
+        </div>
     `;
     list.appendChild(div);
     updateGroupUI(toGi);
@@ -328,7 +357,7 @@ function moveStudentToGroup(fromGi, studentId, studentName, selectEl) {
     const toGi = parseInt(selectEl.value);
     if (isNaN(toGi) || toGi === fromGi) { selectEl.value = ''; return; }
     selectEl.value = '';
-    addStudentDirectly(toGi, studentId, studentName);
+    addStudentDirectly(toGi, studentId);
 }
 
 function updateGroupUI(gi) {

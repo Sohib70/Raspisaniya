@@ -32,6 +32,17 @@
 .btn-save { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; border: none; padding: 11px 26px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(245,87,108,0.35); }
 .btn-save:hover { transform: translateY(-1px); }
 .btn-back { background: white; color: #6b7280; border: 1.5px solid #e5e7eb; padding: 11px 20px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; text-decoration: none; transition: all 0.2s; }
+
+/* 🔍 Qidiruv inputi uchun qo'shimcha kichik stillar */
+.search-wrapper { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+.search-input-field { position: relative; max-width: 280px; width: 100%; }
+.search-input-field input { width: 100%; padding: 8px 12px 8px 35px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.83rem; outline: none; background: #fafafa; transition: all 0.2s; }
+.search-input-field input:focus { border-color: #f5576c; background: white; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.85rem; pointer-events: none; }
+.no-results { color: #9ca3af; font-size: 0.85rem; margin-top: 10px; text-align: center; width: 100%; display: none; padding: 15px; border: 1.5px dashed #e5e7eb; border-radius: 10px; background: #fafafa; }
+
+/* ⚠️ Outfit dizayniga moslashtirilgan alert xabarnoma stili */
+.custom-alert { padding: 14px 20px; border-radius: 14px; font-size: 0.88rem; font-weight: 500; display: flex; align-items: center; gap: 10px; border: 1.5px solid #fecaca; background-color: #fef2f2; color: #991b1b; box-shadow: 0 4px 12px rgba(153,27,27,0.05); }
 </style>
 
 <div class="form-page">
@@ -42,26 +53,22 @@
         </div>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-danger mb-3">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
 
     <div class="form-card">
-        <form method="post">
+        <form method="post" autocomplete="off">
             {% csrf_token %}
 
-            <!-- SECTION 1: Shaxsiy ma'lumotlar -->
+            <input type="text" name="prevent_autofill" style="display:none" disabled />
+            <input type="password" name="password_prevent_autofill" style="display:none" disabled />
+
             <div class="form-section">
                 <div class="section-label">Shaxsiy ma'lumotlar</div>
                 <div class="field">
                     <label>To'liq ism</label>
-                    <input type="text" name="first_name" value="{{ teacher.first_name }}" placeholder="To'liq ism" required>
+                    <input type="text" name="first_name" value="{{ teacher.first_name }}" placeholder="To'liq ism" required autocomplete="off">
                 </div>
             </div>
 
-            <!-- SECTION 2: Tizim ID raqamlari (Yonma-yon joylashish tartibi) -->
             <div class="form-section">
                 <div class="section-label">Teacher ID sozlamalari</div>
                 <div class="field-group">
@@ -72,27 +79,35 @@
                     </div>
                     <div class="field">
                         <label>Yangi ID <span class="hint">— o'zgartirmasangiz bo'sh qoldiring</span></label>
-                        <input type="text" name="teacher_id" placeholder="Bo'sh qolsa eski ID saqlanadi" value="">
+                        <input type="text" name="teacher_id" placeholder="Bo'sh qolsa eski ID saqlanadi" value="" autocomplete="new-password">
                         <div class="note">✏️ Faqat o'zgartirmoqchi bo'lsangiz yozing</div>
                     </div>
                 </div>
             </div>
 
-            <!-- SECTION 3: Xavfsizlik / Parol -->
             <div class="form-section">
                 <div class="section-label">Xavfsizlik</div>
                 <div class="field">
                     <label>Yangi parol <span class="hint">— o'zgartirmasangiz bo'sh qoldiring</span></label>
-                    <input type="password" name="new_password" placeholder="Bo'sh qolsa eski parol saqlanadi" value="">
+                    <input type="password" name="new_password" placeholder="Bo'sh qolsa eski parol saqlanadi" value="" autocomplete="new-password">
                     <div class="note">✏️ Faqat o'zgartirmoqchi bo'lsangiz yozing (min 4 belgi)</div>
                 </div>
             </div>
 
-            <!-- SECTION 4: Fanlar -->
             <div class="form-section">
-                <div class="section-label">O'qitiladigan fanlar</div>
+                <div class="search-wrapper">
+                    <div class="section-label" style="margin-bottom: 0;">O'qitiladigan fanlar</div>
+
+                    {% if subjects %}
+                    <div class="search-input-field">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="subjSearchInput" placeholder="Fanni qidirish...">
+                    </div>
+                    {% endif %}
+                </div>
+
                 {% if subjects %}
-                <div class="subjects-grid">
+                <div class="subjects-grid" id="subjectsGrid">
                     {% for subj in subjects %}
                     <label class="subject-item">
                         <input type="checkbox" name="subjects" value="{{ subj.id }}" {% if subj.id in selected_subjects %}checked{% endif %}>
@@ -100,13 +115,16 @@
                         <span class="subj-name">{{ subj.name }}</span>
                     </label>
                     {% endfor %}
+
+                    <div id="noSubjectsMsg" class="no-results">
+                        😞 Mos keladigan fan topilmadi
+                    </div>
                 </div>
                 {% else %}
                 <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fanlar mavjud emas</p>
                 {% endif %}
             </div>
 
-            <!-- ACTIONS: Tugmalar -->
             <div class="form-actions">
                 <button type="submit" class="btn-save">💾 Saqlash</button>
                 <a href="{% url 'teacher_list' %}" class="btn-back">← Ortga</a>
@@ -114,5 +132,38 @@
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('subjSearchInput');
+    if (!searchInput) return;
+
+    const subjectItems = document.querySelectorAll('#subjectsGrid .subject-item');
+    const noResultsMsg = document.getElementById('noSubjectsMsg');
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        let foundAny = false;
+
+        subjectItems.forEach(item => {
+            const subjectName = item.querySelector('.subj-name').textContent.toLowerCase();
+
+            if (subjectName.includes(query)) {
+                item.style.display = 'flex'; // Agar mos kelsa ko'rsatish
+                foundAny = true;
+            } else {
+                item.style.display = 'none'; // Mos kelmasa yashirish
+            }
+        });
+
+        // Hech narsa topilmasa xabarni ko'rsatish, aks holda yashirish
+        if (foundAny) {
+            noResultsMsg.style.display = 'none';
+        } else {
+            noResultsMsg.style.display = 'block';
+        }
+    });
+});
+</script>
 
 {% endblock %}

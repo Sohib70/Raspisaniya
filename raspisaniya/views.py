@@ -137,236 +137,133 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 
-def find_schedule_for_group(start_date, end_date, total_lessons, lessons_per_week, teacher, students, group_number=1, include_saturday=False):
+def find_schedule_for_group(
+        start_date, end_date, total_lessons, lessons_per_week,
+        teacher, students, group_number=1, include_saturday=False
+):
     """
-    Jadval tuzish:
-    - 24+ para → Dush(0), Chor(2), Juma(4)
-    - 12-23 para → Sesh(1), Paysh(3)
-    - <12 para → istalgan kun
-    - Iloji boricha ketma-ket kunlar bo'lmasin
-    - Joy bo'lmasa fallback: boshqa kunlar → shanba → bitta para → muddat uzaytirish
+    ODDIY VA ISHONCHLI ALGORITM:
+
+    1. start_date dan boshlab kunma-kun yuramiz
+    2. Har kun uchun: chosen_wds ga kiradimi? Bo'sh parar bormi?
+    3. Ha bo'lsa — dars qo'shamiz
+    4. total_lessons to'lguncha davom etamiz
+    5. end_date o'tsa ham to'xtamaymiz — total_lessons kafolatlangan
+
+    Xato bo'lishi mumkin bo'lgan murakkab mantiq YO'Q.
     """
+
+
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
-    max_wd = 5 if include_saturday else 4
+    max_wd = 5 if include_saturday else 4  # 4=Juma, 5=Shanba
 
-    # Dars soniga qarab preferred kunlar
-    if total_lessons >= 20:
-        preferred = [0, 2, 4]   # Dush, Chor, Juma
-        fallback  = [1, 3, 5]   # Sesh, Paysh, Shanba
-    elif total_lessons >= 12:
-        preferred = [1, 3]      # Sesh, Paysh
-        fallback  = [0, 2, 4, 5]
-    else:
-        preferred = [0, 1, 2, 3, 4]  # Istalgan
-        fallback  = [5]
-
-    if not include_saturday:
-        preferred = [d for d in preferred if d <= 4]
-        fallback  = [d for d in fallback  if d <= 4]
-
-    def get_busy_para_indices(date, exclude_sched_ids=None):
+    # ── Band paralar ─────────────────────────────────────────────────
+    def get_busy(date):
         busy = set()
-        qs_t = GroupSchedule.objects.filter(
-            date=date, group__teacher_id=teacher_id
-        ).select_related('group')
-        if exclude_sched_ids:
-            qs_t = qs_t.exclude(pk__in=exclude_sched_ids)
-        for sched in qs_t:
-            st = sched.start_time or sched.group.start_time
+        for sc in GroupSchedule.objects.filter(
+                date=date, group__teacher_id=teacher_id
+        ).select_related('group'):
+            st = sc.start_time or sc.group.start_time
             if st:
                 for i, (ps, _) in enumerate(PARA_TIMES):
-                    if ps == st: busy.add(i)
+                    if ps == st:
+                        busy.add(i)
             else:
-                for i in range(len(PARA_TIMES)): busy.add(i)
+                busy.update(range(len(PARA_TIMES)))
 
         if student_ids:
-            qs_s = GroupSchedule.objects.filter(
-                date=date, group__students__id__in=student_ids
-            ).select_related('group').distinct()
-            if exclude_sched_ids:
-                qs_s = qs_s.exclude(pk__in=exclude_sched_ids)
-            for sched in qs_s:
-                st = sched.start_time or sched.group.start_time
+            for sc in GroupSchedule.objects.filter(
+                    date=date, group__students__id__in=student_ids
+            ).select_related('group').distinct():
+                st = sc.start_time or sc.group.start_time
                 if st:
                     for i, (ps, _) in enumerate(PARA_TIMES):
-                        if ps == st: busy.add(i)
+                        if ps == st:
+                            busy.add(i)
                 else:
-                    for i in range(len(PARA_TIMES)): busy.add(i)
+                    busy.update(range(len(PARA_TIMES)))
         return busy
 
-    def find_free_para(date, need_two=True):
-        busy = get_busy_para_indices(date)
-        if need_two:
-            for i in range(len(PARA_TIMES) - 1):
-                if i not in busy and (i + 1) not in busy:
-                    return (i, i + 1)
-        for i in range(len(PARA_TIMES)):
-            if i not in busy:
-                return (i, None)
-        return None
+    # ── Haftada nechta kun, qaysi kunlar ────────────────────────────
+    days_per_week = math.ceil(lessons_per_week / 2)
 
-    if start_date.weekday() == 6:
-        first_monday = start_date + timedelta(days=1)
-    else:
-        first_monday = start_date - timedelta(days=start_date.weekday())
-
-    days_needed = math.ceil(lessons_per_week / 2)
-
-    def collect_slots(weekday_order, used_wds=None, weeks=8, allow_consecutive=False):
-        """
-        Berilgan hafta kunlari tartibida slot qidirish.
-        allow_consecutive=False bo'lsa ketma-ket kunlardan qochadi.
-        """
-        slots = []
-        if used_wds is None:
-            used_wds = set()
+    if days_per_week >= 3:
+        preferred = [0, 2, 4]  # Dush, Chor, Juma
+    elif days_per_week == 2:
+        if total_lessons >= 20:
+            preferred = [0, 2]  # Dush, Chor
         else:
-            used_wds = set(used_wds)
+            preferred = [1, 3]  # Sesh, Paysh
+    else:
+        preferred = [0, 1, 2, 3, 4]  # Istalgan kun
 
-        cur = first_monday
-        for _ in range(weeks):
-            if len(slots) >= days_needed:
-                break
-            for wd in weekday_order:
-                if len(slots) >= days_needed:
-                    break
-                if wd in used_wds:
-                    continue
+    # Shanba chegarasi
+    preferred = [d for d in preferred if d <= max_wd]
 
-                # Ketma-ket kun tekshiruvi
-                if not allow_consecutive:
-                    all_wds = used_wds | {s[0] for s in slots}
-                    if (wd - 1) in all_wds or (wd + 1) in all_wds:
-                        continue  # Qo'shni kun — o'tkazib yuboramiz
+    # Fallback: preferred da yetarli kun bo'lmasa
+    all_wds = [d for d in range(max_wd + 1) if d not in preferred]
+    ordered_wds = preferred + all_wds  # preferred birinchi
 
-                d = cur + timedelta(days=wd)
-                if d < start_date or d > end_date or d.weekday() > 5:
-                    continue
-                pair = find_free_para(d, need_two=True)
-                if pair:
-                    slots.append((wd, pair[0], pair[1]))
-                    used_wds.add(wd)
-            cur += timedelta(weeks=1)
-        return slots
-
-    # ── 1-qadam: Preferred kunlarda, ketma-ket bo'lmay ──
-    chosen_slots = collect_slots(preferred, allow_consecutive=False)
-
-    # ── 2-qadam: Yetmasa fallback kunlarda, ketma-ket bo'lmay ──
-    if len(chosen_slots) < days_needed:
-        used = {s[0] for s in chosen_slots}
-        extra = collect_slots(fallback, used_wds=used, allow_consecutive=False)
-        for slot in extra:
-            if len(chosen_slots) >= days_needed:
-                break
-            chosen_slots.append(slot)
-
-    # ── 3-qadam: Ketma-ket ruxsat berish (preferred) ──
-    if len(chosen_slots) < days_needed:
-        used = {s[0] for s in chosen_slots}
-        extra = collect_slots(preferred, used_wds=used, allow_consecutive=True)
-        for slot in extra:
-            if len(chosen_slots) >= days_needed:
-                break
-            if slot[0] not in {s[0] for s in chosen_slots}:
-                chosen_slots.append(slot)
-
-    # ── 4-qadam: Ketma-ket ruxsat berish (fallback) ──
-    if len(chosen_slots) < days_needed:
-        used = {s[0] for s in chosen_slots}
-        extra = collect_slots(fallback, used_wds=used, allow_consecutive=True)
-        for slot in extra:
-            if len(chosen_slots) >= days_needed:
-                break
-            if slot[0] not in {s[0] for s in chosen_slots}:
-                chosen_slots.append(slot)
-
-    # ── 5-qadam: Shanba qo'shamiz ──
-    if len(chosen_slots) < days_needed:
-        all_wds = list(range(6))
-        used = {s[0] for s in chosen_slots}
-        extra = collect_slots(all_wds, used_wds=used, allow_consecutive=True)
-        for slot in extra:
-            if len(chosen_slots) >= days_needed:
-                break
-            if slot[0] not in {s[0] for s in chosen_slots}:
-                chosen_slots.append(slot)
-
-    # ── 6-qadam: Bitta para bilan ──
-    if len(chosen_slots) < days_needed:
-        cur = first_monday
-        used = {s[0] for s in chosen_slots}
-        for _ in range(8):
-            if len(chosen_slots) >= days_needed:
-                break
-            for wd in list(range(6)):
-                if len(chosen_slots) >= days_needed:
-                    break
-                if wd in used:
-                    continue
-                d = cur + timedelta(days=wd)
-                if d < start_date or d > end_date or d.weekday() > 5:
-                    continue
-                pair = find_free_para(d, need_two=False)
-                if pair:
-                    chosen_slots.append((wd, pair[0], pair[1]))
-                    used.add(wd)
-            cur += timedelta(weeks=1)
-
-    # ── 7-qadam: Muddatni 2 hafta uzaytirish ──
-    extended_end = end_date
-    if len(chosen_slots) < days_needed:
-        extended_end = end_date + timedelta(weeks=2)
-        cur = end_date + timedelta(days=1)
-        used = {s[0] for s in chosen_slots}
-        for _ in range(2):
-            if len(chosen_slots) >= days_needed:
-                break
-            for wd in range(6):
-                if len(chosen_slots) >= days_needed:
-                    break
-                if wd in used:
-                    continue
-                d = cur + timedelta(days=wd)
-                if d.weekday() > 5:
-                    continue
-                pair = find_free_para(d, need_two=False)
-                if pair:
-                    chosen_slots.append((wd, pair[0], pair[1]))
-                    used.add(wd)
-            cur += timedelta(weeks=1)
-
-    if not chosen_slots:
-        return []
-
-    # ── Darslarni haftama-hafta joylashtirish ──
-    result = []
-    cur_monday = first_monday
-    effective_end = max(extended_end, end_date)
-
-    while len(result) < total_lessons:
-        if cur_monday > effective_end + timedelta(weeks=2):
+    # Haftada chosen_wds: days_per_week ta kun, ketma-ket bo'lmagan
+    chosen_wds = []
+    for wd in ordered_wds:
+        if len(chosen_wds) >= days_per_week:
             break
-        for wd, p1, p2 in chosen_slots:
-            if len(result) >= total_lessons:
+        if any(abs(wd - cw) == 1 for cw in chosen_wds):
+            continue
+        chosen_wds.append(wd)
+    if len(chosen_wds) < days_per_week:
+        for wd in ordered_wds:
+            if wd not in chosen_wds:
+                chosen_wds.append(wd)
+            if len(chosen_wds) >= days_per_week:
                 break
-            d = cur_monday + timedelta(days=wd)
-            if d < start_date or d > effective_end or d.weekday() > 5:
-                continue
-            busy = get_busy_para_indices(d)
-            if p1 in busy or (p2 is not None and p2 in busy):
-                pair = find_free_para(d, need_two=(p2 is not None))
-                if pair:
-                    p1, p2 = pair
-                else:
-                    continue
-            if len(result) < total_lessons:
-                result.append((d, PARA_TIMES[p1][0], PARA_TIMES[p1][1]))
-            if p2 is not None and len(result) < total_lessons:
-                result.append((d, PARA_TIMES[p2][0], PARA_TIMES[p2][1]))
-        cur_monday += timedelta(weeks=1)
 
+    chosen_wds_set = set(chosen_wds)
+
+    # ── ASOSIY TSIKL ─────────────────────────────────────────────────
+    # Kunma-kun yuramiz. Har haftada lessons_per_week ta dars to'planadi.
+    # total_lessons to'lgunga qadar to'xtamaymiz — end_date faqat mo'ljal.
+
+    result = []
+    cur = start_date
+    # Maksimal chegara: total_lessons hech qachon to'lmay qolmasin deb
+    # 52 hafta zaxira (1 yil)
+    max_date = start_date + timedelta(weeks=52)
+
+    week_lessons = 0  # bu haftada nechta dars qo'shildi
+    cur_week = cur.isocalendar()[1]  # hozirgi hafta raqami
+
+    while len(result) < total_lessons and cur <= max_date:
+
+        # Yangi hafta boshlandimi?
+        week_num = cur.isocalendar()[1]
+        if week_num != cur_week:
+            cur_week = week_num
+            week_lessons = 0
+
+        wd = cur.weekday()
+
+        if wd in chosen_wds_set and wd <= max_wd and week_lessons < lessons_per_week:
+            busy = get_busy(cur)
+            free = [i for i in range(len(PARA_TIMES)) if i not in busy]
+
+            # Bu kunda nechta dars qo'yish kerak
+            need = min(2, lessons_per_week - week_lessons,
+                       total_lessons - len(result))
+            take = free[:need]
+
+            for pi in take:
+                result.append((cur, PARA_TIMES[pi][0], PARA_TIMES[pi][1]))
+            week_lessons += len(take)
+
+            # Agar bu kunda joy topilmasa — o'tkazib yuboramiz
+            # (keyingi haftada xuddi shu kun yana sinab ko'riladi)
+
+        cur += timedelta(days=1)
+
+    result.sort(key=lambda x: (x[0], x[1]))
     return result
 
 
@@ -1014,33 +911,62 @@ def teacher_create(request):
 @login_required
 def teacher_update(request, pk):
     teacher = get_object_or_404(Teacher, pk=pk)
+
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
+        new_id = request.POST.get('teacher_id', '').strip()
+        new_password = request.POST.get('new_password', '').strip()
+        subject_ids = request.POST.getlist('subjects')
+
+        # 1. Ismni tekshirish va yangilash
         if first_name:
             teacher.first_name = first_name
+            if teacher.user:
+                teacher.user.first_name = first_name
+                teacher.user.save()
 
-        new_id = request.POST.get('teacher_id', '').strip()
+        # 2. XAVFSIZLIK TEKSHIRUVI: Yangi ID unikal ekanligini tekshirish
         if new_id and new_id != teacher.teacher_id:
+            # Bazada aynan shu username mavjudligini tekshiramiz (o'zidan tashqari)
+            if User.objects.filter(username=new_id).exists():
+                messages.error(request,
+                               f"Xatolik: Tizimda '{new_id}' ID ga ega foydalanuvchi allaqachon mavjud! Iltimos, boshqa ID kiriting.")
+
+                # Xatolik bo'lgani uchun formani qayta yuklaymiz, foydalanuvchi kiritgan ma'lumotlar yo'qolmaydi
+                return render(request, 'raspisaniya/teacher_update.html', {
+                    'teacher': teacher,
+                    'subjects': Subject.objects.all().order_by('name'),
+                    'selected_subjects': [int(sid) for sid in subject_ids],  # Tanlangan fanlar o'chib ketmasligi uchun
+                })
+
+            # Agar muammo bo'lmasa, ID ni yangilaymiz
             teacher.teacher_id = new_id
             if teacher.user:
                 teacher.user.username = new_id
                 teacher.user.save()
 
-        # Parol — bo'sh bo'lsa o'zgartirmaymiz
-        new_password = request.POST.get('new_password', '').strip()
+        # 3. Parolni yangilash
         if new_password and teacher.user:
+            if len(new_password) < 4:
+                messages.error(request, "Xatolik: Yangi parol kamida 4 ta belgidan iborat bo'lishi kerak.")
+                return render(request, 'raspisaniya/teacher_update.html', {
+                    'teacher': teacher,
+                    'subjects': Subject.objects.all().order_by('name'),
+                    'selected_subjects': [int(sid) for sid in subject_ids],
+                })
             teacher.user.set_password(new_password)
             teacher.user.save()
 
+        # O'qituvchi modelini saqlash va fanlarni bog'lash
         teacher.save()
-        subject_ids = request.POST.getlist('subjects')
         teacher.subjects.set(subject_ids)
-        messages.success(request, "O'qituvchi yangilandi.")
+
+        messages.success(request, "O'qituvchi ma'lumotlari muvaffaqiyatli yangilandi.")
         return redirect('teacher_list')
 
     return render(request, 'raspisaniya/teacher_update.html', {
         'teacher': teacher,
-        'subjects': Subject.objects.all(),
+        'subjects': Subject.objects.all().order_by('name'),
         'selected_subjects': list(teacher.subjects.values_list('id', flat=True)),
     })
 
