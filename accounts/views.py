@@ -74,18 +74,17 @@ def logout_view(request):
 def student_dashboard(request):
     try:
         student = request.user.student
-    except:
+    except AttributeError:
         messages.error(request, "Siz o'quvchi emassiz")
         return redirect('login')
 
-    from datetime import datetime, timedelta, date as dt_date
-
+    # Haftani hisoblash (Dushanbadan Shanbagacha)
     week_str = request.GET.get('week')
     if week_str:
         try:
             week_start = dt_date.fromisoformat(week_str)
             week_start = week_start - timedelta(days=week_start.weekday())
-        except:
+        except ValueError:
             week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
     else:
         week_start = dt_date.today() - timedelta(days=dt_date.today().weekday())
@@ -97,13 +96,17 @@ def student_dashboard(request):
     ]
     WEEKDAY_LIST = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
 
+    # Talabaning guruhlari va ularga tegishli dars jadvallarini prefetch qilish
     my_groups = CourseGroup.objects.filter(
         students=student, is_scheduled=True,
     ).select_related('course__subject', 'teacher', 'room').prefetch_related('schedule')
 
+    # 1-QADAM: Dars jadvali setkasini (Grid) yig'ish
     grid = {}
     for grp in my_groups:
-        for sched in grp.schedule.filter(date__gte=week_start, date__lte=week_end):
+        # Xotiradagi (prefetch qilingan) jadvaldan shu haftadagilarini ajratib olamiz
+        week_schedules = [s for s in grp.schedule.all() if week_start <= s.date <= week_end]
+        for sched in week_schedules:
             wd = sched.date.weekday()
             if wd > 5:
                 continue
@@ -123,6 +126,7 @@ def student_dashboard(request):
                     'room': str(grp.room) if grp.room else '',
                 }
 
+    # Setka ma'lumotlarini jadval ko'rinishiga keltirish
     table_data = []
     for day_idx, day_name in enumerate(WEEKDAY_LIST):
         for para_idx, (start, end) in enumerate(PARA_TIMES_LIST):
@@ -139,21 +143,47 @@ def student_dashboard(request):
     prev_week = (week_start - timedelta(weeks=1)).isoformat()
     next_week = (week_start + timedelta(weeks=1)).isoformat()
 
+    # 2-QADAM: OPTIMALLASHTIRISH - Davomat ma'lumotlarini bitta so'rovda olish
+    # Talabaning barcha davomat yozuvlarini guruhlar kesimida yig'ib chiqamiz
+    all_attendances = Attendance.objects.filter(
+        student=student,
+        schedule__group__in=my_groups
+    ).select_related('schedule')
+
+    # Guruh ID bo'yicha davomatlarni guruhlaymiz
+    att_data = {}
+    for att in all_attendances:
+        g_id = att.schedule.group_id
+        if g_id not in att_data:
+            att_data[g_id] = {'came_count': 0, 'missed_list': []}
+
+        if att.is_present:
+            att_data[g_id]['came_count'] += 1
+        else:
+            att_data[g_id]['missed_list'].append({
+                'date': att.schedule.date,
+                'lesson_number': att.schedule.lesson_number
+            })
+
+    # Baholarni olish (O'zgarishsiz)
     grade_map = {g.course_group_id: g for g in Grade.objects.filter(student=student)}
 
+    # 3-QADAM: Guruhlar bo'yicha yakuniy statistikani shakllantirish
     groups_data = []
     for grp in my_groups:
-        total = grp.schedule.count()
-        came = Attendance.objects.filter(student=student, schedule__group=grp, is_present=True).count()
-        missed_list = list(
-            grp.schedule.filter(
-                attendance__student=student,
-                attendance__is_present=False
-            ).order_by('date').values('date', 'lesson_number')
-        )
+        total = grp.schedule.count()  # Prefetch bo'lgani uchun bazaga qayta so'rov yubormaydi
+
+        # Xotiraga olingan davomat lug'atidan ma'lumotlarni o'qiymiz
+        grp_att = att_data.get(grp.pk, {'came_count': 0, 'missed_list': []})
+        came = grp_att['came_count']
+
+        # Kelmagan darslar ro'yxatini sanasi bo'yicha saralaymiz
+        missed_list = sorted(grp_att['missed_list'], key=lambda x: x['date'])
         missed = len(missed_list)
+
         missed_percent = round(missed / total * 100) if total > 0 else 0
         is_blocked = missed_percent > 25 and not grp.teacher_can_edit
+
         groups_data.append({
             'group': grp,
             'total': total,
@@ -175,7 +205,6 @@ def student_dashboard(request):
         "next_week": next_week,
         "groups_data": groups_data,
     })
-
 
 @login_required
 def teacher_dashboard(request):
