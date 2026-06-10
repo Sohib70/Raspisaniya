@@ -198,3 +198,12 @@ if DEBUG:
 else:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'xolburiyev@gmail.com'
+EMAIL_HOST_PASSWORD = 'c b q v q w a e n z d h g z g c'  # Google account dan olingan maxsus ilova paroli
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

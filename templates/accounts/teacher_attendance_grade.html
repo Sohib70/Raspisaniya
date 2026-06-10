@@ -1,0 +1,219 @@
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-outline-secondary btn-sm">← Orqaga</a>
+    <div>
+        <h4 class="mb-0 fw-bold">📋 Davomat & Kunlik baho</h4>
+        <div class="text-muted small">
+            {{ sched.group.course.subject }} —
+            {{ sched.group.group_number }}-guruh —
+            {{ sched.date }} —
+            {% if sched.start_time %}{{ sched.start_time|time:"H:i" }}{% endif %} |
+            Dars № {{ sched.lesson_number }}
+        </div>
+    </div>
+    {% if is_today %}
+        <span class="badge bg-success ms-auto fs-6">✅ Bugungi dars</span>
+    {% else %}
+        <span class="badge bg-warning text-dark ms-auto fs-6">
+            ⚠️ {{ sched.date }} — {% if can_edit %}Tahrirlash ochiq{% else %}Yopiq{% endif %}
+        </span>
+    {% endif %}
+</div>
+
+{% if not can_edit %}
+<div class="alert alert-danger d-flex align-items-center gap-2">
+    🔒 <strong>Bu kun uchun baho qo'yish yopiq.</strong>
+    Admin "Ruxsat berish" tugmasini bosishi kerak.
+</div>
+{% else %}
+
+<div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2">
+    💡 <span>
+        <strong>Har bir dars uchun max ball: {{ max_ball }}</strong>
+        &nbsp;(Joriy baho jami 30 / {{ total_lessons }} dars)
+    </span>
+</div>
+
+<form method="post" id="attForm">
+    {% csrf_token %}
+
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;overflow:hidden;">
+        <div class="card-header fw-bold py-2 px-3"
+             style="background:linear-gradient(135deg,#1b5e20,#2e7d32);color:white;border:none;">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <span>👥 Talabalar ro'yxati ({{ students_data|length }} ta)</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-light fw-bold"
+                            onclick="setAll(1)">✅ Hammasi keldi</button>
+                    <button type="button" class="btn btn-sm btn-outline-light fw-bold"
+                            onclick="setAll(0)">❌ Hech kim kelmadi</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" style="font-size:14px;">
+                <thead style="background:#f1f8e9;">
+                    <tr>
+                        <th style="width:45px;text-align:center;">#</th>
+                        <th>F.I.O</th>
+                        <th style="width:200px;text-align:center;">Davomat</th>
+                        <th style="width:150px;text-align:center;">
+                            Kunlik baho
+                            <div style="font-size:11px;font-weight:400;color:#555;">
+                                0 — {{ max_ball }}
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in students_data %}
+                    <tr id="row_{{ item.student.pk }}"
+                        style="transition:background 0.2s;
+                        {% if item.is_present == True %}background:#f0fff4;
+                        {% elif item.is_present == False %}background:#fff5f5;{% endif %}">
+
+                        <td style="text-align:center;color:#999;">{{ forloop.counter }}</td>
+
+                        <td>
+                            <span class="fw-semibold" style="color:#1a1a1a;">
+                                {{ item.student.first_name }}
+                            </span>
+                        </td>
+
+                        <td style="text-align:center;">
+                            <div class="d-flex justify-content-center gap-2">
+                                <!-- Keldi -->
+                                <label class="att-label px-3 py-1 rounded-pill fw-semibold"
+                                       id="lbl_yes_{{ item.student.pk }}"
+                                       style="cursor:pointer;background:#dcfce7;color:#166534;border:2px solid transparent;font-size:13px;user-select:none;">
+                                    <input type="radio"
+                                           name="att_{{ item.student.pk }}"
+                                           value="1"
+                                           class="att-radio"
+                                           data-pk="{{ item.student.pk }}"
+                                           {% if item.is_present == True %}checked{% endif %}
+                                           style="display:none;">
+                                    ✅ Keldi
+                                </label>
+                                <!-- Kelmadi -->
+                                <label class="att-label px-3 py-1 rounded-pill fw-semibold"
+                                       id="lbl_no_{{ item.student.pk }}"
+                                       style="cursor:pointer;background:#fee2e2;color:#991b1b;border:2px solid transparent;font-size:13px;user-select:none;">
+                                    <input type="radio"
+                                           name="att_{{ item.student.pk }}"
+                                           value="0"
+                                           class="att-radio"
+                                           data-pk="{{ item.student.pk }}"
+                                           {% if item.is_present == False %}checked{% endif %}
+                                           style="display:none;">
+                                    ❌ Kelmadi
+                                </label>
+                            </div>
+                        </td>
+
+                        <td style="text-align:center;">
+                            <div id="score_wrap_{{ item.student.pk }}"
+                                 {% if item.is_present != True %}style="display:none;"{% endif %}>
+                                <input type="number"
+                                       name="score_{{ item.student.pk }}"
+                                       id="score_{{ item.student.pk }}"
+                                       class="form-control form-control-sm text-center mx-auto score-input"
+                                       style="max-width:90px;border:2px solid #90caf9;border-radius:8px;font-weight:700;font-size:15px;"
+                                       min="0"
+                                       max="{{ max_ball }}"
+                                       step="0.01"
+                                       value="{{ item.score }}"
+                                       placeholder="0">
+                            </div>
+                            <span class="text-muted small" id="absent_lbl_{{ item.student.pk }}"
+                                  {% if item.is_present == True %}style="display:none;"{% endif %}>—</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="submit" class="btn btn-primary px-4 fw-bold">
+            💾 Saqlash
+        </button>
+        <a href="{% url 'teacher_group_journal' group.pk %}" class="btn btn-outline-info">
+            📊 Jurnalni ko'rish
+        </a>
+        <a href="{% url 'teacher_attendance_overview' group.pk %}" class="btn btn-outline-secondary">
+            Bekor qilish
+        </a>
+    </div>
+</form>
+{% endif %}
+
+<style>
+.att-label:has(input[type=radio]:checked) {
+    border-color: #1a237e !important;
+    box-shadow: 0 0 0 3px rgba(26,35,126,0.12);
+}
+.score-input:focus {
+    border-color: #1565c0 !important;
+    box-shadow: 0 0 0 3px rgba(21,101,192,0.15);
+    outline: none;
+}
+</style>
+
+<script>
+var MAX_BALL = {{ max_ball }};
+
+document.querySelectorAll('.att-radio').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        var pk = this.dataset.pk;
+        var row       = document.getElementById('row_'        + pk);
+        var scoreWrap = document.getElementById('score_wrap_' + pk);
+        var absentLbl = document.getElementById('absent_lbl_' + pk);
+        var scoreInp  = document.getElementById('score_'      + pk);
+
+        if (this.value === '1') {
+            row.style.background = '#f0fff4';
+            scoreWrap.style.display = '';
+            absentLbl.style.display = 'none';
+        } else {
+            row.style.background = '#fff5f5';
+            scoreWrap.style.display = 'none';
+            absentLbl.style.display = '';
+            if (scoreInp) scoreInp.value = '';
+        }
+    });
+});
+
+// Saqlangandan keyin labellarni yangilash
+document.querySelectorAll('.att-radio:checked').forEach(function(radio) {
+    var pk = radio.dataset.pk;
+    var lbl = document.getElementById(radio.value === '1' ? 'lbl_yes_' + pk : 'lbl_no_' + pk);
+    if (lbl) lbl.style.borderColor = '#1a237e';
+});
+
+function setAll(val) {
+    document.querySelectorAll('.att-radio').forEach(function(radio) {
+        if (radio.value === String(val)) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+// Max ball cheklash
+document.querySelectorAll('.score-input').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+        var v = parseFloat(this.value);
+        if (!isNaN(v)) {
+            if (v > MAX_BALL) this.value = MAX_BALL;
+            if (v < 0)        this.value = 0;
+        }
+    });
+});
+</script>
+
+{% endblock %}

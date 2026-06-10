@@ -74,4 +74,6 @@ urlpatterns = [
     path('sched-info/<int:sched_id>/', views.sched_info_ajax, name='sched_info_ajax'),
 
     path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
+    path('admin-password-reset/', views.admin_password_reset_request, name='admin_password_reset_request'),
+    path('admin-password-verify/', views.admin_password_verify_and_change, name='admin_password_verify_and_change'),
 ]

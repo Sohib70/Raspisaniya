@@ -69,8 +69,8 @@
                         {% if grp.room %}<div class="text-muted" style="font-size:0.78rem;">🏫 {{ grp.room }}</div>{% endif %}
                         <div class="d-flex gap-1 mt-2 flex-wrap">
                             <a href="{% url 'teacher_group_detail' grp.pk %}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">👥 Guruh</a>
-                            <a href="{% url 'teacher_attendance_overview' grp.pk %}" class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">📋 Davomat</a>
-                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">📝 Baholar</a>
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}" class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">📋 Davomat & Baho</a>
+                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">📝 Qaydnoma</a>
                         </div>
                     </div>
                 </div>
@@ -166,7 +166,7 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
     var room = btn.dataset.room;
     var time = btn.dataset.time;
     var day = btn.dataset.day;
-    var groupNumber = btn.dataset.groupNumber; // views.py dan kelayotgan guruh raqami
+    var groupNumber = btn.dataset.groupNumber;
 
     var students = [];
     try {
@@ -175,7 +175,6 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
         console.error("students JSON xatosi:", err, btn.dataset.students);
     }
 
-    // Sarlavhaga guruh raqami qo'shildi
     document.getElementById('modalTitle').textContent = subject + ' (' + groupNumber + '-guruh) — o\'quvchilar';
 
     document.getElementById('modalInfo').innerHTML =
@@ -197,13 +196,17 @@ document.getElementById('studentsModal').addEventListener('show.bs.modal', funct
                 '</div>';
         });
     }
+
     var groupPk = btn.dataset.groupPk;
     var schedId = btn.dataset.schedId;
+
+    // 🌟 TUZATILDI: Davomat va Kunlik Baholash tugmalari ikkita alohida sahifaga yo'naltirildi
     list.innerHTML +=
         '<div class="p-3 border-top d-flex gap-2 flex-wrap">' +
         '<a href="/teacher/group/' + groupPk + '/" class="btn btn-sm btn-outline-primary">👥 Guruh</a>' +
-        '<a href="/teacher/group/' + groupPk + '/attendance/' + schedId + '/" class="btn btn-sm btn-outline-warning">📋 Davomat</a>' +
-        '<a href="/teacher/group/' + groupPk + '/grades/" class="btn btn-sm btn-outline-success">📝 Baholar</a>' +
+        '<a href="/teacher/group/' + groupPk + '/attendance/' + schedId + '/" class="btn btn-sm btn-warning fw-bold">📋 Davomat</a>' +
+        '<a href="/teacher/sched/' + schedId + '/grade/" class="btn btn-sm btn-danger fw-bold">⭐ Kunlik baho</a>' +
+        '<a href="/teacher/group/' + groupPk + '/grades/" class="btn btn-sm btn-outline-success">📝 Qaydnoma</a>' +
         '</div>';
 });
 </script>

@@ -2727,3 +2727,94 @@ def download_vedomost(request, group_id):
     response[
         'Content-Disposition'] = f'attachment; filename="Qaydnoma_{group.course.subject.name}_{group.group_number}-guruh.pdf"'
     return response
+
+
+import random
+from django.core.mail import send_mail
+from django.conf import settings
+
+
+def admin_password_reset_request(request):
+    """ Admin pochtasini tekshirib, unga 5 xonali kod yuborish """
+    if request.method == "POST":
+        email = request.POST.get("email", "").strip()
+
+        # Tizimda ushbu emailga ega admin (superuser) borligini tekshiramiz
+        admin_user = User.objects.filter(email=email, is_superuser=True).first()
+
+        if admin_user:
+            # 5 xonali tasodifiy kod yaratish
+            code = str(random.randint(10000, 99999))
+
+            # Kod va admin ID sini sessionga xavfsiz saqlab turamiz
+            request.session['reset_code'] = code
+            request.session['reset_admin_id'] = admin_user.pk
+
+            # Email yuborish mantig'i
+            subject = "Dars jadvali - Admin parolini tiklash kodi"
+            message = f"Xavfsizlik kodi: {code}\n\nUshbu kodni parolni yangilash sahifasiga kiriting."
+            from_email = settings.DEFAULT_FROM_EMAIL
+
+            try:
+                send_mail(subject, message, from_email, [email], fail_silently=False)
+                messages.success(request, "Tasdiqlash kodi elektron pochtangizga yuborildi.")
+                return render(request, "accounts/admin_password_verify.html")
+            except Exception:
+                messages.error(request, "Email yuborishda xatolik yuz berdi. settings.py ni tekshiring.")
+                return redirect('login')
+        else:
+            messages.error(request, "Ushbu email manzili bilan ro'yxatdan o'tgan admin topilmadi.")
+            return redirect('login')
+
+    return redirect('login')
+
+
+def admin_password_verify_and_change(request):
+    """ Kodni tekshirish, login (username) va parolni yangilash """
+    if request.method == "POST":
+        input_code = request.POST.get("verification_code", "").strip()
+        new_username = request.POST.get("new_username", "").strip()
+        new_password = request.POST.get("new_password", "").strip()
+        confirm_password = request.POST.get("confirm_password", "").strip()
+
+        session_code = request.session.get('reset_code')
+        admin_id = request.session.get('reset_admin_id')
+
+        if not session_code or not admin_id:
+            messages.error(request, "Sessiya muddati tugagan yoki noto'g'ri so'rov.")
+            return redirect('login')
+
+        if input_code != session_code:
+            messages.error(request, "Kiritilgan tasdiqlash kodi noto'g'ri!")
+            return render(request, "accounts/admin_password_verify.html")
+
+        # 🌟 YANGI LOGIN TEKSHIRUVI: Bu username bazada band emasligini tekshiramiz
+        # Lekin aynan shu o'zgartirayotgan adminning o'z eski ID si bo'lsa, unga ruxsat berish kerak
+        username_exists = User.objects.filter(username=new_username).exclude(pk=admin_id).exists()
+        if username_exists:
+            messages.error(request, f"'{new_username}' ID raqami tizimda band! Boshqa ID kiriting.")
+            return render(request, "accounts/admin_password_verify.html")
+
+        if new_password != confirm_password:
+            messages.error(request, "Yangi parollar bir-biriga mos kelmadi.")
+            return render(request, "accounts/admin_password_verify.html")
+
+        if len(new_password) < 4:
+            messages.error(request, "Parol kamida 4 ta belgi bo'lishi kerak.")
+            return render(request, "accounts/admin_password_verify.html")
+
+        # Admin modelini olib, ham username, ham parolni yangilaymiz
+        admin_user = User.objects.get(pk=admin_id)
+        admin_user.username = new_username
+        admin_user.set_password(new_password)
+        admin_user.save()
+
+        # Sessiyadagi ma'lumotlarni tozalaymiz
+        del request.session['reset_code']
+        del request.session['reset_admin_id']
+
+        messages.success(request,
+                         f"Admin hisob ma'lumotlari muvaffaqiyatli yangilandi! Yangi ID ({new_username}) va yangi parol bilan kiring.")
+        return redirect('login')
+
+    return redirect('login')

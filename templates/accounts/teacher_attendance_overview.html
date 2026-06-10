@@ -18,30 +18,54 @@
         .blocked-row { background: #fff0f0 !important; }
         td, th { vertical-align: middle !important; }
 
-        /* Sana ustunlari */
         th.date-th {
-            writing-mode: vertical-rl;
-            transform: rotate(180deg);
             font-size: 0.72rem;
-            padding: 6px 4px;
+            padding: 8px 4px;
             white-space: nowrap;
+            text-align: center;
+            vertical-align: top !important;
         }
-        th.date-marked   { background: #c8f7c5; }  /* Davomat belgilangan — yashil */
-        th.date-missed   { background: #ffd5d5; }  /* O'tib ketgan, belgilanmagan — qizil */
-        th.date-future   { background: #e8eaf6; }  /* Kelgusi — oddiy */
-        th.date-today    { background: #fff9c4; }  /* Bugun — sariq */
+        th.date-marked { background: #c8f7c5; }
+        th.date-missed { background: #ffd5d5; }
+        th.date-future { background: #e8eaf6; }
+        th.date-today  { background: #fff9c4; }
+
+        .date-link {
+            color: inherit;
+            text-decoration: none;
+            display: block;
+            font-weight: 700;
+        }
+        .date-link:hover {
+            opacity: 0.75;
+        }
+        .grade-link {
+            display: inline-block;
+            margin-top: 5px;
+            padding: 2px 5px;
+            font-size: 0.65rem;
+            font-weight: bold;
+            border-radius: 4px;
+            text-decoration: none;
+            background-color: #198754;
+            color: white !important;
+        }
+        .grade-link:hover {
+            background-color: #157347;
+        }
     </style>
 </head>
 <body>
 
-<div class="topbar" style="background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;">
-    <div style="display: flex !important; align-items: center !important; gap: 15px;">
-        <h5 style="margin: 0; font-weight: 700; color: white !important;">📋 Davomat jadvali</h5>
-        <a href="/teacher/" class="btn btn-sm btn-light fw-bold" style="color: #1a237e !important; background-color: #ffffff !important; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; text-decoration: none; display: inline-block !important; font-weight: 700;">
+<div class="topbar">
+    <div style="display:flex;align-items:center;gap:15px;">
+        <h5>📋 Davomat & Qaydnoma jadvali</h5>
+        <a href="/teacher/" class="btn btn-sm btn-light fw-bold"
+           style="color:#1a237e!important;border-radius:6px;padding:6px 12px;font-size:0.85rem;">
             🏠 Bosh sahifa
         </a>
     </div>
-    <div style="display: flex !important; align-items: center !important; gap: 16px;">
+    <div style="display:flex;align-items:center;gap:16px;">
         <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
         <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
     </div>
@@ -70,38 +94,54 @@
         </div>
     </div>
 
-    <!-- Izoh -->
     <div class="d-flex gap-2 mb-3 align-items-center flex-wrap" style="font-size:0.82rem;">
-        <span class="px-2 py-1 rounded" style="background:#d4edda; color:#155724; font-weight:600;">✓ Keldi</span>
-        <span class="px-2 py-1 rounded" style="background:#f8d7da; color:#721c24; font-weight:600;">✗ Kelmadi</span>
-        <span class="px-2 py-1 rounded" style="background:#f5f5f5; color:#aaa;">— Belgilanmagan</span>
-        <span class="px-2 py-1 rounded" style="background:#c8f7c5; color:#155724; font-weight:600;">📅 Davomat belgilangan</span>
-        <span class="px-2 py-1 rounded" style="background:#ffd5d5; color:#c62828; font-weight:600;">⚠ O'tib ketgan, belgilanmagan</span>
-        <span class="px-2 py-1 rounded" style="background:#fff9c4; color:#856404; font-weight:600;">📌 Bugun</span>
-        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-auto">📝 Baholar</a>
+        <span class="px-2 py-1 rounded" style="background:#d4edda;color:#155724;font-weight:600;">✓ Keldi</span>
+        <span class="px-2 py-1 rounded" style="background:#f8d7da;color:#721c24;font-weight:600;">✗ Kelmadi</span>
+        <span class="px-2 py-1 rounded" style="background:#f5f5f5;color:#aaa;">— Belgilanmagan</span>
+        <span class="px-2 py-1 rounded" style="background:#c8f7c5;color:#155724;font-weight:600;">📅 Davomat belgilangan</span>
+        <span class="px-2 py-1 rounded" style="background:#ffd5d5;color:#c62828;font-weight:600;">⚠ O'tib ketgan</span>
+        <span class="px-2 py-1 rounded" style="background:#fff9c4;color:#856404;font-weight:600;">📌 Bugun</span>
+
+        <a href="{% url 'teacher_group_journal' group.pk %}" class="btn btn-info btn-sm text-white">📊 Jurnal</a>
+        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-1">📝 Qaydnoma</a>
     </div>
 
     <div class="card info-card mb-4">
-        <div class="section-header">Davomat jadvali — {{ group.course.subject }} {{ group.group_number }}-guruh</div>
+        <div class="section-header d-flex justify-content-between align-items-center">
+            <span>Davomat & Qaydnoma — {{ group.course.subject }} {{ group.group_number }}-guruh</span>
+            <span style="font-size:0.8rem;opacity:0.85;">
+                Sanani bossangiz Davomat, ⭐ tugmasini bossangiz Kunlik Baho qo'yiladi 👆
+            </span>
+        </div>
         <div class="table-responsive">
             <table class="table table-bordered mb-0" style="font-size:0.82rem;">
                 <thead>
                     <tr>
-                        <th style="min-width:180px;"># Talaba</th>
+                        <th style="min-width:180px; vertical-align: middle !important;"># Talaba</th>
                         {% for sched in schedules %}
                         <th class="date-th {{ sched.date_class }}"
-                            title="{{ sched.date|date:'d.m.Y' }} — {% if sched.is_marked %}Davomat belgilangan{% elif sched.is_past %}O'tib ketgan, belgilanmagan{% elif sched.is_today %}Bugun{% else %}Kelgusi dars{% endif %}">
-                            <a href="{% url 'teacher_attendance' group.pk sched.pk %}"
-                               style="color:inherit; text-decoration:none;">
+                            title="{{ sched.date|date:'d.m.Y' }} — {% if sched.is_marked %}Davomat belgilangan{% elif sched.is_past %}O'tib ketgan{% elif sched.is_today %}Bugun{% else %}Kelgusi{% endif %}">
+
+                            <a href="{% url 'teacher_attendance' group_pk=group.pk sched_pk=sched.pk %}" class="date-link">
                                 {{ sched.date|date:"d.m" }}<br>
-                                <span style="font-size:0.65rem;">{{ sched.lesson_number }}-dars</span>
-                                {% if sched.is_marked %}✓{% elif sched.is_past %}!{% endif %}
+                                <span style="font-size:0.65rem;">{{ sched.lesson_number }}-dars</span><br>
+                                {% if sched.is_today %}
+                                    <span style="font-size:0.65rem;">📌</span>
+                                {% elif sched.is_marked %}
+                                    <span style="font-size:0.65rem;">✓</span>
+                                {% elif sched.is_past %}
+                                    <span style="font-size:0.65rem;color:#c62828;">!</span>
+                                {% endif %}
+                            </a>
+
+                            <a href="{% url 'teacher_daily_grade' sched_pk=sched.pk %}" class="grade-link" title="Kunlik baho qo'yish">
+                                ⭐ Baho
                             </a>
                         </th>
                         {% endfor %}
-                        <th class="text-center" style="min-width:55px;">Keldi</th>
-                        <th class="text-center" style="min-width:55px;">Kelmadi</th>
-                        <th class="text-center" style="min-width:80px;">Qoldirgan %</th>
+                        <th class="text-center" style="min-width:55px; vertical-align: middle !important;">Keldi</th>
+                        <th class="text-center" style="min-width:55px; vertical-align: middle !important;">Kelmadi</th>
+                        <th class="text-center" style="min-width:80px; vertical-align: middle !important;">Qoldirgan %</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -109,14 +149,16 @@
                     <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
                         <td>
                             <span class="text-muted me-1">{{ forloop.counter }}.</span>
-                            <b>{{ row.student.first_name }}</b>
+                            <b>{{ row.student.first_name }} {{ row.student.last_name }}</b>
                             {% if row.is_blocked %}
                             <span class="badge bg-danger ms-1" style="font-size:0.65rem;">🚫</span>
                             {% endif %}
                         </td>
                         {% for cell in row.cells %}
                         <td class="{% if cell == 'present' %}att-present{% elif cell == 'absent' %}att-absent{% else %}att-none{% endif %}">
-                            {% if cell == 'present' %}✓{% elif cell == 'absent' %}✗{% else %}—{% endif %}
+                            {% if cell == 'present' %}✓
+                            {% elif cell == 'absent' %}✗
+                            {% else %}—{% endif %}
                         </td>
                         {% endfor %}
                         <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>

@@ -132,3 +132,17 @@ class Grade(models.Model):
 
     def __str__(self):
         return f"{self.student} — {self.course_group}"
+
+
+class DailyGrade(models.Model):
+    """Har bir dars uchun kunlik baho."""
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='daily_grades')
+    schedule = models.ForeignKey(GroupSchedule, on_delete=models.CASCADE, related_name='daily_grades')
+    score = models.FloatField()  # 0 dan max_ball gacha
+
+    class Meta:
+        unique_together = ('student', 'schedule')
+        ordering = ['schedule__date']
+
+    def __str__(self):
+        return f"{self.student} — {self.schedule.date} — {self.score}"
