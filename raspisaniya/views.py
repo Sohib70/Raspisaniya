@@ -46,6 +46,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+from django.core.mail import send_mail
 
 # Modellarni o'z loyihangizga qarab to'g'ri import qiling
 from raspisaniya.models import CourseGroup, Attendance, Grade
@@ -2729,41 +2730,40 @@ def download_vedomost(request, group_id):
     return response
 
 
-import random
-from django.core.mail import send_mail
-from django.conf import settings
-
-
 def admin_password_reset_request(request):
-    """ Admin pochtasini tekshirib, unga 5 xonali kod yuborish """
+    """ Admin parolini tiklash: Kod har doim loyiha rahbarining pochtasiga boradi """
     if request.method == "POST":
-        email = request.POST.get("email", "").strip()
+        # Formadan kelayotgan emailni tekshirib o'tirmaymiz,
+        # chunki kod baribir settings.py dagi sizning emailingizga ketadi.
 
-        # Tizimda ushbu emailga ega admin (superuser) borligini tekshiramiz
-        admin_user = User.objects.filter(email=email, is_superuser=True).first()
+        # Tizimdagi asosiy superuser (admin)ni topamiz
+        admin_user = User.objects.filter(is_superuser=True).first()
 
         if admin_user:
             # 5 xonali tasodifiy kod yaratish
             code = str(random.randint(10000, 99999))
 
-            # Kod va admin ID sini sessionga xavfsiz saqlab turamiz
+            # Kod va admin ID sini sessionga saqlaymiz
             request.session['reset_code'] = code
             request.session['reset_admin_id'] = admin_user.pk
 
-            # Email yuborish mantig'i
-            subject = "Dars jadvali - Admin parolini tiklash kodi"
-            message = f"Xavfsizlik kodi: {code}\n\nUshbu kodni parolni yangilash sahifasiga kiriting."
+            # Email sozlamalari
+            subject = "Dars jadvali - Admin parolini va loginini tiklash kodi"
+            message = f"Tizim admin paneli uchun parolni tiklash kodi: {code}\n\nUshbu kodni parolni yangilash sahifasiga kiriting."
+
+            # Kod yuboriladigan manzil - qat'iy ravishda settings.py dagi sizning pochtangiz
+            target_email = settings.ADMIN_RESET_TARGET_EMAIL
             from_email = settings.DEFAULT_FROM_EMAIL
 
             try:
-                send_mail(subject, message, from_email, [email], fail_silently=False)
-                messages.success(request, "Tasdiqlash kodi elektron pochtangizga yuborildi.")
+                send_mail(subject, message, from_email, [target_email], fail_silently=False)
+                messages.success(request, f"Tasdiqlash kodi tizim rahbarining pochtasiga yuborildi.")
                 return render(request, "accounts/admin_password_verify.html")
-            except Exception:
-                messages.error(request, "Email yuborishda xatolik yuz berdi. settings.py ni tekshiring.")
+            except Exception as e:
+                messages.error(request, f"Email yuborishda xatolik: {str(e)}")
                 return redirect('login')
         else:
-            messages.error(request, "Ushbu email manzili bilan ro'yxatdan o'tgan admin topilmadi.")
+            messages.error(request, "Tizimda hech qanday admin foydalanuvchi topilmadi!")
             return redirect('login')
 
     return redirect('login')

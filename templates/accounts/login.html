@@ -122,21 +122,19 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content" style="border-radius: 12px;">
                 <div class="modal-header">
-                    <h5 class="modal-title fw-bold text-dark" id="resetModalLabel">Admin parolini tiklash</h5>
+                    <h5 class="modal-title fw-bold text-dark" id="resetModalLabel">Admin ma'lumotlarini tiklash</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form action="{% url 'admin_password_reset_request' %}" method="post">
                     {% csrf_token %}
                     <div class="modal-body">
-                        <p class="text-muted small">Tizimda ro'yxatdan o'tgan superuser (admin) elektron pochtasini kiriting. Ushbu pochtaga 5 xonali tasdiqlash kodi yuboriladi.</p>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Email manzilingiz</label>
-                            <input type="email" name="email" class="form-control" placeholder="admin@example.com" required>
-                        </div>
+                        <p class="text-muted small mb-0">
+                            <strong>Xavfsizlik tizimi:</strong> Hisob ma'lumotlarini (Login va Parol) o'zgartirish uchun 5 xonali tasdiqlash kodi avtomatik ravishda loyiha rahbarining maxfiy elektron pochtasiga yuboriladi.
+                        </p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Yopish</button>
-                        <button type="submit" class="btn btn-primary btn-sm" style="background-color: #1a237e; border: none;">Kod yuborish</button>
+                        <button type="submit" class="btn btn-primary btn-sm" style="background-color: #1a237e; border: none;">Tasdiqlash kodini yuborish</button>
                     </div>
                 </form>
             </div>

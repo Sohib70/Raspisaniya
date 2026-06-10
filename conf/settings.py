@@ -207,3 +207,4 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'xolburiyev@gmail.com'
 EMAIL_HOST_PASSWORD = 'c b q v q w a e n z d h g z g c'  # Google account dan olingan maxsus ilova paroli
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+ADMIN_RESET_TARGET_EMAIL = 'xolburiyev@gmail.com'
