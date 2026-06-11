@@ -158,7 +158,20 @@ def student_dashboard(request):
                 'lesson_number': att.schedule.lesson_number
             })
 
-    grade_map = {g.course_group_id: g for g in Grade.objects.filter(student=student)}
+    # 🌟 TALABA DASHBOARDIDAGI JORIY BAHONI YANGI LOGIKADA SINXRON QILISH
+    grade_map = {}
+    for grp in my_groups:
+        total_lessons = grp.schedule.count() or 1
+        daily_sum = DailyGrade.objects.filter(student=student, schedule__group=grp).aggregate(total=Sum('score'))[
+                        'total'] or 0.0
+        average_100 = float(daily_sum) / total_lessons
+        current_grade = round(min(average_100 * 0.3, 30.0), 2)
+
+        g_obj, _ = Grade.objects.update_or_create(
+            student=student, course_group=grp,
+            defaults={'current': current_grade}
+        )
+        grade_map[grp.pk] = g_obj
 
     groups_data = []
     for grp in my_groups:
@@ -304,8 +317,9 @@ def teacher_group_journal(request, group_pk):
 
     students = list(group.students.all().order_by('first_name'))
     schedules = list(group.schedule.all().order_by('date'))
-    total_lessons = group.course.total_lessons or 1
-    max_ball = round(30 / total_lessons, 2)
+
+    total_lessons = group.schedule.count() or 1
+    max_ball = 100.0
 
     all_att = {
         (a.student_id, a.schedule_id): a.is_present
@@ -334,12 +348,15 @@ def teacher_group_journal(request, group_pk):
             else:
                 cells.append({'att': 'none', 'score': None})
 
+        avg_100 = float(total_score) / total_lessons
+        final_current_30 = round(min(avg_100 * 0.3, 30.0), 2)
+
         rows.append({
             'student': student,
             'cells': cells,
             'came': came,
             'missed': missed,
-            'total_score': round(total_score, 2),
+            'total_score': final_current_30,
         })
 
     return render(request, "accounts/teacher_group_journal.html", {
@@ -532,10 +549,10 @@ def teacher_attendance_overview(request, group_pk):
         for sched in schedules:
             val = att_map.get((st.pk, sched.pk))
             if val is True:
-                came += 1;
+                came += 1
                 cells.append('present')
             elif val is False:
-                missed += 1;
+                missed += 1
                 cells.append('absent')
             else:
                 cells.append('none')
@@ -553,7 +570,7 @@ def teacher_attendance_overview(request, group_pk):
     })
 
 
-# 🌟 YANGLANGAN VA REALONLY QILINGAN JORIY BAHOLI QAYDNOMA VIEWS'I
+# 🛠️ TO'LIQ VA XATOLIKSIZ KO'RINISHGA KELTIRILGAN VEDOMOST FUNKSIYASI
 @login_required
 def teacher_grades(request, group_pk):
     try:
@@ -563,20 +580,18 @@ def teacher_grades(request, group_pk):
 
     group = get_object_or_404(CourseGroup, pk=group_pk)
     students = group.students.all().order_by('last_name', 'first_name')
-    total_lessons = group.schedule.count()
+    total_lessons = group.schedule.count() or 1
 
-    # 🛠️ KUNLIK BAHOLARDAN JORIYNI HISOBLASH VA BAZAGA SINXRONIZATSIYA QILISH ICHKI FUNKSIYASI
     def sync_and_get_current_grade(student_obj):
-        # DailyGrade dagi barcha 'score' larni yig'ib chiqamiz
         daily_sum = DailyGrade.objects.filter(
             student=student_obj,
             schedule__group=group
         ).aggregate(total=Sum('score'))['total'] or 0.0
 
-        # Maksimal joriy baho 30 ballik tizimdan oshmasligi sharti
-        current_grade = min(float(daily_sum), 30.0)
+        average_100 = float(daily_sum) / total_lessons
+        current_30_scale = average_100 * 0.3
+        current_grade = round(min(current_30_scale, 30.0), 2)
 
-        # Grade modelida joriy (current) ustunini avtomat yangilaymiz
         Grade.objects.update_or_create(
             student=student_obj, course_group=group,
             defaults={'current': current_grade}
@@ -586,13 +601,10 @@ def teacher_grades(request, group_pk):
     if request.method == "POST":
         att_map_blocked = {}
         for st in students:
-            missed = Attendance.objects.filter(
-                student=st, schedule__group=group, is_present=False
-            ).count()
+            missed = Attendance.objects.filter(student=st, schedule__group=group, is_present=False).count()
             missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
             att_map_blocked[st.pk] = missed_percent > 25 and not group.teacher_can_edit
 
-        # 🔐 LIMITS ichidan 'current' olib tashlandi, chunki u endi qo'lda kiritilmaydi!
         LIMITS = {
             'midterm': {'min': 12, 'max': 20, 'name': 'Oraliq'},
             'final': {'min': 28, 'max': 50, 'name': 'Yakuniy'},
@@ -619,8 +631,7 @@ def teacher_grades(request, group_pk):
                 if val < bounds['min'] or val > bounds['max']:
                     messages.error(
                         request,
-                        f"{student.first_name}ning {bounds['name']} bahosi "
-                        f"{bounds['min']}–{bounds['max']} oralig'ida bo'lishi shart! (Kiritildi: {val})"
+                        f"{student.first_name}ning {bounds['name']} bahosi {bounds['min']}–{bounds['max']} oralig'ida bo'lishi shart!"
                     )
                     has_error = True
                     break
@@ -628,33 +639,28 @@ def teacher_grades(request, group_pk):
             if has_error:
                 break
 
-            # Bazadan joriy ballning eng yangi holatini hisoblab biriktirib qo'yamiz
             student_grades['current'] = sync_and_get_current_grade(student)
             valid_grades_data.append((student, student_grades))
 
         if has_error:
             return redirect('teacher_grades', group_pk=group_pk)
 
-        # To'g'ri kelgan oraliq va yakuniy baholarni bazada saqlash
         for student, grades in valid_grades_data:
             Grade.objects.update_or_create(
                 student=student, course_group=group,
                 defaults={
                     'midterm': grades['midterm'],
-                    'current': grades['current'],  # Avtomatik yig'ilgan joriy baho
+                    'current': grades['current'],
                     'final': grades['final'],
                 }
             )
-        messages.success(request,
-                         "Oraliq va Yakuniy baholar saqlandi. Joriy baholar esa darslardan avtomatik hisoblandi.")
+        messages.success(request, "Baholar muvaffaqiyatli saqlandi.")
         return redirect('teacher_grades', group_pk=group_pk)
 
-    # === GET SO'ROVI (Sahifa yuklanganda) ===
-    # Har bir talabaning joriy bahosini oxirgi kunlik darslar bo'yicha yangilab chiqamiz
+    # === GET SO'ROVI ===
     for student in students:
         sync_and_get_current_grade(student)
 
-    # Yangilangan barcha baholarni olish
     grade_map = {g.student_id: g for g in Grade.objects.filter(course_group=group)}
     att_counts = {}
     for a in Attendance.objects.filter(schedule__group=group, is_present=False):
@@ -757,8 +763,9 @@ def teacher_daily_grade(request, sched_pk):
         return redirect('teacher_attendance_overview', group_pk=group.pk)
 
     students = list(group.students.all().order_by('first_name'))
-    total_lessons = group.course.total_lessons or 1
-    max_ball = round(30 / total_lessons, 2)
+
+    min_ball = 56.0
+    max_ball = 100.0
 
     att_map = {
         a.student_id: a.is_present
@@ -771,19 +778,44 @@ def teacher_daily_grade(request, sched_pk):
     present_count = sum(1 for v in att_map.values() if v)
 
     if request.method == 'POST':
-        with transaction.atomic():
-            for student in students:
-                is_present = att_map.get(student.pk, False)
-                if not is_present:
-                    continue
-                score_raw = request.POST.get(f'score_{student.pk}', '').strip()
-                if score_raw == '':
-                    continue
+        valid_grades_to_save = []
+        has_error = False
+
+        for student in students:
+            is_present = att_map.get(student.pk, False)
+            if not is_present:
+                continue
+
+            score_raw = request.POST.get(f'score_{student.pk}', '').strip()
+
+            # 🌟 AGAR BO'SH QOLDIRILSA, AVTOMATIK 0 BALL DEB HISOBLAYMIZ
+            if score_raw == '':
+                score = 0.0
+            else:
                 try:
                     score = float(score_raw)
-                    score = max(0.0, min(score, max_ball))
                 except ValueError:
-                    score = 0.0
+                    messages.error(request,
+                                   f"{student.first_name} {student.last_name} uchun kiritilgan baho son bo'lishi kerak!")
+                    has_error = True
+                    break
+
+            # 🌟 YANGI LOGIKA: Ball 0 bo'lishi mumkin, yoki 56 va 100 oralig'ida bo'lishi shart!
+            if score != 0.0 and (score < min_ball or score > max_ball):
+                messages.error(
+                    request,
+                    f"{student.first_name} {student.last_name} uchun baho 0 yoki {min_ball | stringformat:'.0f'}-{max_ball | stringformat:'.0f'} oralig'ida bo'lishi shart! (Siz kiritdingiz: {score_raw})"
+                )
+                has_error = True
+                break
+
+            valid_grades_to_save.append((student, score))
+
+        if has_error:
+            return redirect('teacher_daily_grade', sched_pk=sched_pk)
+
+        with transaction.atomic():
+            for student, score in valid_grades_to_save:
                 dg = grade_map.get(student.pk)
                 if dg:
                     dg.score = score
@@ -798,21 +830,22 @@ def teacher_daily_grade(request, sched_pk):
     for student in students:
         is_present = att_map.get(student.pk, False)
         dg = grade_map.get(student.pk)
+
+        # Agar bazada baho bo'lmasa, o'qituvchiga input bo'sh ko'rinishi uchun '' (bo'sh) qoldiramiz
+        score_val = dg.score if dg else ''
+
         students_data.append({
             'student': student,
             'is_present': is_present,
-            'score': dg.score if dg else '',
+            'score': score_val,
         })
 
     return render(request, 'accounts/teacher_daily_grade.html', {
         'sched': sched,
         'group': group,
         'students_data': students_data,
+        'min_ball': min_ball,
         'max_ball': max_ball,
-        'total_lessons': total_lessons,
         'present_count': present_count,
         'can_edit': can_edit,
-        'is_today': sched.date == today,
     })
-
-

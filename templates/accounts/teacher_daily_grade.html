@@ -11,11 +11,11 @@
         .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
         td, th { vertical-align: middle !important; }
         .score-input {
-            max-width: 90px;
+            max-width: 110px;
             border: 2px solid #90caf9;
             border-radius: 8px;
             font-weight: 700;
-            font-size: 15px;
+            font-size: 14px;
             text-align: center;
         }
         .score-input:focus {
@@ -38,7 +38,15 @@
 
 <div class="container mt-4" style="max-width:700px;">
 
-    <!-- Info -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show shadow-sm" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
     <div class="card border-0 shadow-sm mb-3 p-3">
         <div class="row text-center">
             <div class="col-3">
@@ -53,19 +61,18 @@
             </div>
             <div class="col-3">
                 <div class="text-muted small">Dars №</div>
-                <div class="fw-bold">{{ sched.lesson_number }} / {{ group.course.total_lessons }}</div>
+                <div class="fw-bold">{{ sched.lesson_number }} / {{ total_lessons }}</div>
             </div>
             <div class="col-3">
-                <div class="text-muted small">Max ball</div>
-                <div class="fw-bold text-primary" style="font-size:1.1rem;">{{ max_ball }}</div>
+                <div class="text-muted small">Baholash</div>
+                <div class="fw-bold text-primary" style="font-size:0.95rem;">0 yoki {{ min_ball|stringformat:".0f" }}-{{ max_ball|stringformat:".0f" }} b</div>
             </div>
         </div>
     </div>
 
     <div class="alert alert-info py-2 px-3 mb-3" style="font-size:13px;">
-        💡 Faqat <strong>kelgan</strong> talabalarga baho qo'yiladi.
-        Kelmagan talabalar kulrang — ular uchun baho saqlanmaydi.
-        Max ball: <strong>{{ max_ball }}</strong> (30 / {{ total_lessons }} dars)
+        💡 Faqat <strong>kelgan</strong> talabalarga baho qo'yiladi. <br>
+        Ruxsat etilgan ballar: <strong>0</strong> (baho olmagan bo'lsa) yoki <strong>{{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</strong> oralig'i. Bo'sh qoldirilsa, avtomat 0 saqlanadi.
     </div>
 
     {% if not can_edit %}
@@ -91,9 +98,9 @@
                     <tr>
                         <th style="width:45px;text-align:center;">#</th>
                         <th>F.I.O</th>
-                        <th style="text-align:center;width:160px;">
+                        <th style="text-align:center;width:170px;">
                             Baho
-                            <div style="font-size:11px;font-weight:400;color:#666;">0 — {{ max_ball }}</div>
+                            <div style="font-size:11px;font-weight:400;color:#666;">0 yoki {{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</div>
                         </th>
                     </tr>
                 </thead>
@@ -103,7 +110,7 @@
                         <td style="text-align:center;color:#999;">{{ forloop.counter }}</td>
                         <td>
                             <span class="fw-semibold" style="{% if not item.is_present %}color:#aaa;{% else %}color:#1a1a1a;{% endif %}">
-                                {{ item.student.first_name }}
+                                {{ item.student.last_name }} {{ item.student.first_name }}
                             </span>
                             {% if not item.is_present %}
                             <span class="badge bg-secondary ms-1" style="font-size:10px;">kelmadi</span>
@@ -114,7 +121,7 @@
                             <input type="number"
                                    name="score_{{ item.student.pk }}"
                                    class="form-control score-input mx-auto"
-                                   min="0" max="{{ max_ball }}" step="0.01"
+                                   min="0" max="{{ max_ball }}" step="0.1"
                                    value="{{ item.score }}"
                                    placeholder="0">
                             {% else %}
@@ -142,13 +149,33 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// 🌟 JavaScript tekshiruvi siz aytgan "0 yoki 56-100" qoidasiga moslandi
+var MIN_BALL = {{ min_ball }};
 var MAX_BALL = {{ max_ball }};
+
 document.querySelectorAll('.score-input').forEach(function(inp) {
-    inp.addEventListener('input', function() {
-        var v = parseFloat(this.value);
+    inp.addEventListener('blur', function() {
+        var valStr = this.value.trim();
+
+        // Agar o'qituvchi inputni butunlay o'chirib yuborsa, uni bo'sh qoldiramiz (backend buni 0 deb oladi)
+        if (valStr === '') {
+            return;
+        }
+
+        var v = parseFloat(valStr);
         if (!isNaN(v)) {
-            if (v > MAX_BALL) this.value = MAX_BALL;
-            if (v < 0) this.value = 0;
+            // 1. Qat'iy 0 kiritilgan bo'lsa indamaymiz (ruxsat beramiz)
+            if (v === 0) {
+                return;
+            }
+            // 2. Agar 0 dan katta, lekin 56 dan kichik son yozilgan bo'lsa, avtomat 56 ga ko'taramiz
+            if (v > 0 && v < MIN_BALL) {
+                this.value = MIN_BALL;
+            }
+            // 3. Agar 100 dan katta son yozsa, uni 100 ga cheklaymiz
+            if (v > MAX_BALL) {
+                this.value = MAX_BALL;
+            }
         }
     });
 });
