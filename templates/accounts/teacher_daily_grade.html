@@ -72,7 +72,7 @@
 
     <div class="alert alert-info py-2 px-3 mb-3" style="font-size:13px;">
         💡 Faqat <strong>kelgan</strong> talabalarga baho qo'yiladi. <br>
-        Ruxsat etilgan ballar: <strong>0</strong> (baho olmagan bo'lsa) yoki <strong>{{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</strong> oralig'i. Bo'sh qoldirilsa, avtomat 0 saqlanadi.
+        Ruxsat etilgan ballar: <strong>0</strong> yoki <strong>{{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</strong> oralig'i. 56 dan past kiritilgan baholar avtomat 0 ga tashlanadi.
     </div>
 
     {% if not can_edit %}
@@ -123,7 +123,7 @@
                                    class="form-control score-input mx-auto"
                                    min="0" max="{{ max_ball }}" step="0.1"
                                    value="{{ item.score }}"
-                                   placeholder="0">
+                                   placeholder="0 yoki 56-100">
                             {% else %}
                             <span class="text-muted">—</span>
                             {% endif %}
@@ -149,7 +149,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-// 🌟 JavaScript tekshiruvi siz aytgan "0 yoki 56-100" qoidasiga moslandi
 var MIN_BALL = {{ min_ball }};
 var MAX_BALL = {{ max_ball }};
 
@@ -157,22 +156,22 @@ document.querySelectorAll('.score-input').forEach(function(inp) {
     inp.addEventListener('blur', function() {
         var valStr = this.value.trim();
 
-        // Agar o'qituvchi inputni butunlay o'chirib yuborsa, uni bo'sh qoldiramiz (backend buni 0 deb oladi)
+        // Bo'sh qoldirilsa tekshirmaymiz (backend o'zi buni 0 qilib saqlaydi)
         if (valStr === '') {
             return;
         }
 
         var v = parseFloat(valStr);
         if (!isNaN(v)) {
-            // 1. Qat'iy 0 kiritilgan bo'lsa indamaymiz (ruxsat beramiz)
+            // 1. Agar to'g'ridan-to'g'ri 0 kiritilgan bo'lsa indamaymiz
             if (v === 0) {
                 return;
             }
-            // 2. Agar 0 dan katta, lekin 56 dan kichik son yozilgan bo'lsa, avtomat 56 ga ko'taramiz
+            // 🌟 2. Agarda baho 0 dan katta va 56 dan kichik bo'lsa -> QIYMATNI 0 GA TUSHARAMIZ
             if (v > 0 && v < MIN_BALL) {
-                this.value = MIN_BALL;
+                this.value = 0;
             }
-            // 3. Agar 100 dan katta son yozsa, uni 100 ga cheklaymiz
+            // 3. Agar 100 dan katta son yozsa -> MAXIMUM 100 ga cheklaymiz
             if (v > MAX_BALL) {
                 this.value = MAX_BALL;
             }

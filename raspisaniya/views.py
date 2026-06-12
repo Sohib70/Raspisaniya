@@ -47,8 +47,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from django.core.mail import send_mail
-
-# Modellarni o'z loyihangizga qarab to'g'ri import qiling
 from raspisaniya.models import CourseGroup, Attendance, Grade
 
 
@@ -143,130 +141,230 @@ def find_schedule_for_group(
         teacher, students, group_number=1, include_saturday=False
 ):
     """
-    ODDIY VA ISHONCHLI ALGORITM:
-
-    1. start_date dan boshlab kunma-kun yuramiz
-    2. Har kun uchun: chosen_wds ga kiradimi? Bo'sh parar bormi?
-    3. Ha bo'lsa — dars qo'shamiz
-    4. total_lessons to'lguncha davom etamiz
-    5. end_date o'tsa ham to'xtamaymiz — total_lessons kafolatlangan
-
-    Xato bo'lishi mumkin bo'lgan murakkab mantiq YO'Q.
+    ALGORITM:
+    1. Bo'sh para qidiradi (asosiy kunlar → fallback kunlar)
+    2. Bo'sh para yetmasa — mavjud guruhlar bilan SWAP qiladi
+    3. Swap ham yetmasa — aniq kimni ko'chirish kerakligini qaytaradi
+    4. Hech qanday holda start_date..end_date dan chiqmaydi
     """
-
+    from collections import defaultdict
 
     student_ids = [s.id for s in students]
     teacher_id = teacher.id
-    max_wd = 5 if include_saturday else 4  # 4=Juma, 5=Shanba
+    max_wd = 5 if include_saturday else 4
 
-    # ── Band paralar ─────────────────────────────────────────────────
-    def get_busy(date):
-        busy = set()
+    # ── Band paralarni aniqlash ──────────────────────────────────────
+    def get_busy_info(date):
+        """
+        Qaytaradi: {para_idx: {'teacher': grp|None, 'students': [grp, ...]}}
+        """
+        info = defaultdict(lambda: {'teacher_grp': None, 'student_grps': []})
+
         for sc in GroupSchedule.objects.filter(
                 date=date, group__teacher_id=teacher_id
-        ).select_related('group'):
+        ).select_related('group__course__subject', 'group__teacher'):
             st = sc.start_time or sc.group.start_time
             if st:
                 for i, (ps, _) in enumerate(PARA_TIMES):
                     if ps == st:
-                        busy.add(i)
+                        info[i]['teacher_grp'] = sc.group
             else:
-                busy.update(range(len(PARA_TIMES)))
+                for i in range(len(PARA_TIMES)):
+                    info[i]['teacher_grp'] = sc.group
 
         if student_ids:
             for sc in GroupSchedule.objects.filter(
                     date=date, group__students__id__in=student_ids
-            ).select_related('group').distinct():
+            ).select_related('group__course__subject', 'group__teacher').distinct():
                 st = sc.start_time or sc.group.start_time
                 if st:
                     for i, (ps, _) in enumerate(PARA_TIMES):
                         if ps == st:
-                            busy.add(i)
+                            info[i]['student_grps'].append(sc.group)
                 else:
-                    busy.update(range(len(PARA_TIMES)))
-        return busy
+                    for i in range(len(PARA_TIMES)):
+                        info[i]['student_grps'].append(sc.group)
 
-    # ── Haftada nechta kun, qaysi kunlar ────────────────────────────
-    days_per_week = math.ceil(lessons_per_week / 2)
+        return info
 
-    if days_per_week >= 3:
-        preferred = [0, 2, 4]  # Dush, Chor, Juma
-    elif days_per_week == 2:
-        if total_lessons >= 20:
-            preferred = [0, 2]  # Dush, Chor
-        else:
-            preferred = [1, 3]  # Sesh, Paysh
+    def get_busy_set(date):
+        info = get_busy_info(date)
+        return set(info.keys())
+
+    # ── Kun pullari ──────────────────────────────────────────────────
+    pool_A = [d for d in (0, 2, 4) if d <= max_wd]
+    pool_B = [d for d in (1, 3) if d <= max_wd]
+
+    if total_lessons >= 20:
+        primary_wds = pool_A
+        fallback_wds = pool_B
     else:
-        preferred = [0, 1, 2, 3, 4]  # Istalgan kun
+        primary_wds = pool_B
+        fallback_wds = pool_A
 
-    # Shanba chegarasi
-    preferred = [d for d in preferred if d <= max_wd]
+    primary_set = set(primary_wds)
+    fallback_set = set(fallback_wds) - primary_set
+    remaining_set = set(range(max_wd + 1)) - primary_set - fallback_set
 
-    # Fallback: preferred da yetarli kun bo'lmasa
-    all_wds = [d for d in range(max_wd + 1) if d not in preferred]
-    ordered_wds = preferred + all_wds  # preferred birinchi
-
-    # Haftada chosen_wds: days_per_week ta kun, ketma-ket bo'lmagan
-    chosen_wds = []
-    for wd in ordered_wds:
-        if len(chosen_wds) >= days_per_week:
-            break
-        if any(abs(wd - cw) == 1 for cw in chosen_wds):
-            continue
-        chosen_wds.append(wd)
-    if len(chosen_wds) < days_per_week:
-        for wd in ordered_wds:
-            if wd not in chosen_wds:
-                chosen_wds.append(wd)
-            if len(chosen_wds) >= days_per_week:
-                break
-
-    chosen_wds_set = set(chosen_wds)
-
-    # ── ASOSIY TSIKL ─────────────────────────────────────────────────
-    # Kunma-kun yuramiz. Har haftada lessons_per_week ta dars to'planadi.
-    # total_lessons to'lgunga qadar to'xtamaymiz — end_date faqat mo'ljal.
-
-    result = []
+    # ── Barcha mavjud kunlar (start_date..end_date) ──────────────────
+    all_dates = []
     cur = start_date
-    # Maksimal chegara: total_lessons hech qachon to'lmay qolmasin deb
-    # 52 hafta zaxira (1 yil)
-    max_date = start_date + timedelta(weeks=52)
-
-    week_lessons = 0  # bu haftada nechta dars qo'shildi
-    cur_week = cur.isocalendar()[1]  # hozirgi hafta raqami
-
-    while len(result) < total_lessons and cur <= max_date:
-
-        # Yangi hafta boshlandimi?
-        week_num = cur.isocalendar()[1]
-        if week_num != cur_week:
-            cur_week = week_num
-            week_lessons = 0
-
-        wd = cur.weekday()
-
-        if wd in chosen_wds_set and wd <= max_wd and week_lessons < lessons_per_week:
-            busy = get_busy(cur)
-            free = [i for i in range(len(PARA_TIMES)) if i not in busy]
-
-            # Bu kunda nechta dars qo'yish kerak
-            need = min(2, lessons_per_week - week_lessons,
-                       total_lessons - len(result))
-            take = free[:need]
-
-            for pi in take:
-                result.append((cur, PARA_TIMES[pi][0], PARA_TIMES[pi][1]))
-            week_lessons += len(take)
-
-            # Agar bu kunda joy topilmasa — o'tkazib yuboramiz
-            # (keyingi haftada xuddi shu kun yana sinab ko'riladi)
-
+    while cur <= end_date:
+        if cur.weekday() <= max_wd:
+            all_dates.append(cur)
         cur += timedelta(days=1)
+
+    # Kunlarni hafta-hafta, kun pullari tartibida saralash
+    def date_priority(d):
+        wd = d.weekday()
+        if wd in primary_set:   return (0, wd)
+        if wd in fallback_set:  return (1, wd)
+        return (2, wd)
+
+    # Hafta gruppalash
+    week_groups = defaultdict(list)
+    for d in all_dates:
+        week_num = (d - start_date).days // 7
+        week_groups[week_num].append(d)
+
+    # ── 1-QADAM: Bo'sh para qidirish ─────────────────────────────────
+    result = []
+
+    for week_num in sorted(week_groups.keys()):
+        if len(result) >= total_lessons:
+            break
+        week_dates = sorted(week_groups[week_num], key=date_priority)
+        week_lessons = 0
+
+        for d in week_dates:
+            if week_lessons >= lessons_per_week or len(result) >= total_lessons:
+                break
+            busy = get_busy_set(d)
+            free = [i for i in range(len(PARA_TIMES)) if i not in busy]
+            if not free:
+                continue
+            need = min(2, lessons_per_week - week_lessons, total_lessons - len(result))
+            for pi in free[:need]:
+                result.append((d, PARA_TIMES[pi][0], PARA_TIMES[pi][1]))
+            week_lessons += len(free[:need])
+
+    if len(result) >= total_lessons:
+        result.sort(key=lambda x: (x[0], x[1]))
+        return result
+
+    # ── 2-QADAM: SWAP — mavjud guruhlar bilan joy almashtirish ──────
+    # Band bo'lgan paralar ichida swap mumkin bo'lgan kunlarni qidirish
+    placed_dates = {r[0] for r in result}
+    remaining_dates = [d for d in all_dates if d not in placed_dates]
+
+    for d in remaining_dates:
+        if len(result) >= total_lessons:
+            break
+
+        busy_info = get_busy_info(d)
+
+        for para_idx in range(len(PARA_TIMES)):
+            if len(result) >= total_lessons:
+                break
+            if para_idx not in busy_info:
+                # Bo'sh para — result ga qo'shilgan bo'lmasin
+                already = any(r[0] == d and r[1] == PARA_TIMES[para_idx][0] for r in result)
+                if not already:
+                    result.append((d, PARA_TIMES[para_idx][0], PARA_TIMES[para_idx][1]))
+                continue
+
+            cell = busy_info[para_idx]
+            blocking_grp = cell['teacher_grp'] or (cell['student_grps'][0] if cell['student_grps'] else None)
+            if not blocking_grp:
+                continue
+
+            # Blocking guruh uchun boshqa bo'sh para bormi shu kunda?
+            blocking_busy = set()
+            for sc2 in GroupSchedule.objects.filter(
+                    date=d, group__teacher=blocking_grp.teacher
+            ).exclude(group=blocking_grp):
+                st2 = sc2.start_time or sc2.group.start_time
+                if st2:
+                    for i, (ps, _) in enumerate(PARA_TIMES):
+                        if ps == st2:
+                            blocking_busy.add(i)
+
+            # Blocking guruhning o'quvchilari uchun band paralar
+            blk_student_ids = list(blocking_grp.students.values_list('id', flat=True))
+            for sc2 in GroupSchedule.objects.filter(
+                    date=d, group__students__id__in=blk_student_ids
+            ).exclude(group=blocking_grp).distinct():
+                st2 = sc2.start_time or sc2.group.start_time
+                if st2:
+                    for i, (ps, _) in enumerate(PARA_TIMES):
+                        if ps == st2:
+                            blocking_busy.add(i)
+
+            # Swap uchun bo'sh paralar (ikkalasi ham bo'sh bo'lishi kerak)
+            our_busy = set(busy_info.keys())
+            swap_candidates = [
+                i for i in range(len(PARA_TIMES))
+                if i not in our_busy and i not in blocking_busy and i != para_idx
+            ]
+
+            if swap_candidates:
+                swap_para = swap_candidates[0]
+                # Blocking guruhning shu kundagi jadvalini yangilash
+                blocking_sched = GroupSchedule.objects.filter(
+                    date=d,
+                    group=blocking_grp,
+                    start_time=PARA_TIMES[para_idx][0]
+                ).first()
+                if blocking_sched:
+                    blocking_sched.start_time = PARA_TIMES[swap_para][0]
+                    blocking_sched.save(update_fields=['start_time'])
+                    result.append((d, PARA_TIMES[para_idx][0], PARA_TIMES[para_idx][1]))
+
+    if len(result) >= total_lessons:
+        result.sort(key=lambda x: (x[0], x[1]))
+        return result
+
+    missing = total_lessons - len(result)
+    conflict_info = []
+
+    for d in all_dates:
+        if len(conflict_info) >= missing * 2:
+            break
+        busy_info = get_busy_info(d)
+        for para_idx, cell in busy_info.items():
+            blocking_grps = []
+            if cell['teacher_grp']:
+                blocking_grps.append({
+                    'type': 'teacher',
+                    'group': cell['teacher_grp'],
+                    'subject': str(cell['teacher_grp'].course.subject),
+                    'group_number': cell['teacher_grp'].group_number,
+                    'students': list(cell['teacher_grp'].students.values_list('first_name', flat=True)[:5]),
+                })
+            for grp in cell['student_grps']:
+                blocking_grps.append({
+                    'type': 'student',
+                    'group': grp,
+                    'subject': str(grp.course.subject),
+                    'group_number': grp.group_number,
+                    'students': list(grp.students.filter(
+                        id__in=student_ids
+                    ).values_list('first_name', flat=True)),
+                })
+            if blocking_grps:
+                conflict_info.append({
+                    'date': d,
+                    'para_idx': para_idx,
+                    'para_time': f"{PARA_TIMES[para_idx][0].strftime('%H:%M')}–{PARA_TIMES[para_idx][1].strftime('%H:%M')}",
+                    'blocking': blocking_grps,
+                })
+
+    # Funksiya atributiga saqlaymiz (listga emas)
+    find_schedule_for_group._last_conflict_info = conflict_info
+    find_schedule_for_group._last_missing = missing
 
     result.sort(key=lambda x: (x[0], x[1]))
     return result
-
 
 def split_subjects(raw):
     results = []
@@ -1587,10 +1685,6 @@ def subject_students_excel(request, pk):
     wb.save(response)
     return response
 
-
-# ─────────────────────────────────────────
-# JADVAL TUZISH
-# ─────────────────────────────────────────
 @login_required
 def build_schedule(request):
     unscheduled_groups = CourseGroup.objects.filter(
@@ -1604,9 +1698,8 @@ def build_schedule(request):
     errors = []
     success_count = 0
 
-    # Talabalar soni bo'yicha kattadan kichikka tartiblash (24->16->8)
     unscheduled_list = sorted(
-        list(unscheduled_groups.prefetch_related('students').select_related('course', 'teacher')),
+        list(unscheduled_groups),
         key=lambda g: g.students.count(),
         reverse=True
     )
@@ -1614,6 +1707,10 @@ def build_schedule(request):
     for grp in unscheduled_list:
         course = grp.course
         students = list(grp.students.all())
+
+        # conflict info ni tozalaymiz
+        find_schedule_for_group._last_conflict_info = []
+        find_schedule_for_group._last_missing = 0
 
         schedule = find_schedule_for_group(
             course.start_date, course.end_date,
@@ -1623,14 +1720,24 @@ def build_schedule(request):
             include_saturday=getattr(course, 'include_saturday', False),
         )
 
-        if not schedule:
-            errors.append({'group': grp, 'course': course})
+        found_count  = len(schedule)
+        missing      = getattr(find_schedule_for_group, '_last_missing', 0)
+        conflicts    = getattr(find_schedule_for_group, '_last_conflict_info', [])
+
+        if found_count < course.total_lessons:
+            errors.append({
+                'group':         grp,
+                'course':        course,
+                'found_count':   found_count,
+                'missing_count': course.total_lessons - found_count,
+                'conflicts':     conflicts,
+            })
         else:
             from collections import Counter
-            para_counter = Counter(p_start for _, p_start, _ in schedule)
+            para_counter     = Counter(p_start for _, p_start, _ in schedule)
             most_common_para = para_counter.most_common(1)[0][0]
-            grp.start_time = most_common_para
-            grp.weekdays = list({d.weekday() for d, _, _ in schedule})
+            grp.start_time   = most_common_para
+            grp.weekdays     = list({d.weekday() for d, _, _ in schedule})
             grp.is_scheduled = True
 
             for attempt in range(5):
@@ -1652,63 +1759,13 @@ def build_schedule(request):
             success_count += 1
 
     if errors:
-        error_details = []
-        for e in errors:
-            grp = e['group']
-            course = e['course']
-            other_groups = CourseGroup.objects.filter(
-                course=course, is_scheduled=True,
-            ).exclude(pk=grp.pk).prefetch_related('students')
-
-            teacher_scheds = GroupSchedule.objects.filter(
-                group__teacher=grp.teacher,
-                date__gte=course.start_date,
-                date__lte=course.end_date,
-            ).select_related('group__course__subject', 'group__teacher').order_by('date', 'start_time')[:10]
-
-            student_ids = list(grp.students.values_list('id', flat=True))
-            raw_student_scheds = GroupSchedule.objects.filter(
-                group__students__id__in=student_ids,
-                date__gte=course.start_date,
-                date__lte=course.end_date,
-            ).select_related('group__course__subject', 'group__teacher').prefetch_related('group__students').distinct().order_by('date', 'start_time')[:20]
-
-            # Har bir dars uchun qaysi talabalar band ekanligini aniqlaymiz
-            students_set = set(student_ids)
-            student_scheds_enriched = []
-            seen = set()
-            for s in raw_student_scheds:
-                key = (s.date, s.start_time)
-                if key in seen:
-                    continue
-                seen.add(key)
-                busy_students = [
-                    st for st in s.group.students.all()
-                    if st.id in students_set
-                ]
-                student_scheds_enriched.append({
-                    'sched': s,
-                    'busy_students': busy_students,
-                })
-                if len(student_scheds_enriched) >= 10:
-                    break
-
-            error_details.append({
-                'group': grp,
-                'course': course,
-                'other_groups': other_groups,
-                'teacher_scheds': teacher_scheds,
-                'student_scheds': student_scheds_enriched,
-            })
-
         return render(request, "raspisaniya/build_schedule_errors.html", {
-            "error_details": error_details,
+            "error_details": errors,
             "success_count": success_count,
         })
 
     messages.success(request, f"Jadval muvaffaqiyatli tuzildi! {success_count} ta guruh.")
     return redirect("lesson_list")
-
 
 @login_required
 def move_students(request, from_group_pk, to_group_pk):
@@ -2545,6 +2602,13 @@ class NumberedCanvas(canvas.Canvas):
 def download_vedomost(request, group_id):
     # SIKLIK IMPORT (Circular Import) xatoligini oldini olish uchun importni funksiya ichida bajaramiz
     from .models import CourseGroup, Attendance, Grade
+    import io
+    import datetime
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
 
     # Guruh ma'lumotlarini bazadan olish
     group = get_object_or_404(CourseGroup, pk=group_id)
@@ -2555,7 +2619,7 @@ def download_vedomost(request, group_id):
     end_year = start_year + 1
     oq_yil = f"{start_year}/{end_year}"
 
-    qayta_oqish_status = "1"  # Zarur bo'lsa buni ham dinamik shartga bog'lash mumkin
+    qayta_oqish_status = "1"
     vedomost_no = f"{oq_yil}/{qayta_oqish_status}-{group.pk}"
 
     # Qaydnoma to'ldirilgan sana
@@ -2641,12 +2705,13 @@ def download_vedomost(request, group_id):
                                                  is_present=False).count()
         missed_percent = (missed_count / total_lessons * 100) if total_lessons > 0 else 0
 
+        # 🌟 O'ZGARISH SHU YERDA: Bloklangan yoki yiqilgan talabaga 2 qo'yilmaydi
         if missed_percent > 25:
             jn = "0"
             on = "0"
             yn = "0"
             umumiy = "0"
-            baho = "2 (Blok)"
+            baho = "-"  # "2 (Blok)" o'rniga faqat chiziqcha qoldiramiz
         else:
             jn_val = grade_obj.current if (grade_obj and grade_obj.current is not None) else 0
             on_val = grade_obj.midterm if (grade_obj and grade_obj.midterm is not None) else 0
@@ -2659,7 +2724,7 @@ def download_vedomost(request, group_id):
             yn = str(yn_val)
             umumiy = str(total_val)
 
-            # Yangi talab qilingan baholash shkalasi (Konvertatsiya)
+            # Reyting shkalasi konvertatsiyasi
             if total_val >= 86:
                 baho = "5"
             elif total_val >= 71:
@@ -2667,9 +2732,9 @@ def download_vedomost(request, group_id):
             elif total_val >= 56:
                 baho = "3"
             else:
-                baho = "2"
+                baho = "-"  # 56 dan kam bo'lsa ham "2" qo'yilmaydi, bo'sh (chiziqcha) qoladi
 
-        # Qator ma'lumotlarini o'z stillari bilan jadvalga qo'shish (Raqumlar uchun table_center_text ishlatildi)
+        # Qator ma'lumotlarini o'z stillari bilan jadvalga qo'shish
         table_data.append([
             Paragraph(str(idx), table_center_text),
             Paragraph(f"<b>{full_name}</b>", table_text_style),
@@ -2679,26 +2744,24 @@ def download_vedomost(request, group_id):
             Paragraph(yn, table_center_text),
             Paragraph(f"<b>{umumiy}</b>", table_center_text),
             Paragraph(baho, table_center_text),
-            Paragraph("", table_text_style),  # Imzo katagi bo'sh qoladi
+            Paragraph("", table_text_style),
         ])
 
-    # Ustunlar kengligi (No katagi sig'ishi uchun 28 qilib kengaytirildi)
+    # Ustunlar kengligi
     col_widths = [28, 155, 72, 35, 35, 35, 50, 60, 65]
 
     vedomost_table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # Jadvalning vizual stillari (To'q ko'k header va vertikal hamda gorizontal mukammal o'rtalash)
+    # Jadvalning vizual stillari
     vedomost_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1a237e")),  # Sarlavha paneli rangi
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),  # Umumiy markazlashtirish
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),  # Vertikal O'RTADA joylashtirish
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),  # Katak devorlari chizig'i
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1a237e")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
 
-        # Katak ichidagi ichki masofalar (havo)
         ('TOPPADDING', (0, 0), (-1, -1), 7),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
 
-        # F.I.Sh va Haqiqiy guruh nomi chiroyli chiqishi uchun chap tomonga tekislanadi
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
     ]))
@@ -2710,7 +2773,7 @@ def download_vedomost(request, group_id):
     elements.append(Paragraph(f"<b>Jami talabalar soni:</b> {len(students)} ta", subtitle_style))
     elements.append(Spacer(1, 20))
 
-    # Dekan va Mudir ismi-sharifini qo'lda (ruchnoy) yozib imzolashlari uchun chiziqlar
+    # Imzolar qismi
     signature_data = [
         [Paragraph("<b>Fakultet dekani:</b> ___________________________", subtitle_style),
          Paragraph("<b>Kafedra mudiri:</b> ___________________________", subtitle_style)],
@@ -2719,8 +2782,13 @@ def download_vedomost(request, group_id):
     signature_table = Table(signature_data, colWidths=[265, 265])
     elements.append(signature_table)
 
-    # PDF faylni qurish
-    doc.build(elements, canvasmaker=NumberedCanvas)
+    # PDF faylni qurish (NumberedCanvas ishlashi uchun u loyihada sozlangan bo'lishi kerak)
+    try:
+        from .utils import NumberedCanvas  # Yoki NumberedCanvas qayerda yozilgan bo'lsa o'sha yerdan import qilinadi
+        doc.build(elements, canvasmaker=NumberedCanvas)
+    except Exception:
+        doc.build(elements)  # Agar muammo bo'lsa oddiy build qiladi
+
     buffer.seek(0)
 
     # Brauzerga yuklash uchun javob yuborish

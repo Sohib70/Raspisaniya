@@ -1,184 +1,153 @@
-{% extends 'raspisaniya/base.html' %}
+{% extends "raspisaniya/base.html" %}
 {% block content %}
-<div class="container mt-4">
-    <div class="card shadow-lg">
-        <div class="card-body">
-            <h2 class="mb-4 text-danger">⚠ Jadval tuzishda xatoliklar</h2>
 
-            {% if success_count %}
-            <div class="alert alert-success">✅ {{ success_count }} ta guruh uchun jadval muvaffaqiyatli tuzildi.</div>
-            {% endif %}
+<div class="d-flex align-items-center gap-3 mb-4">
+    <h4 class="mb-0 fw-bold text-danger">⚠️ Jadval tuzishda muammolar</h4>
+    {% if success_count %}
+    <span class="badge bg-success fs-6">✅ {{ success_count }} ta guruh muvaffaqiyatli</span>
+    {% endif %}
+</div>
 
-            <div class="alert alert-warning">
-                Quyidagi guruhlar uchun bo'sh vaqt topilmadi. Band talabalarni boshqa guruhga ko'chiring.
-            </div>
+<div class="alert alert-warning d-flex gap-2">
+    💡 Quyidagi guruhlar uchun <strong>berilgan muddatda</strong> yetarli bo'sh para topilmadi.
+    Swap imkoni ham sinab ko'rildi. Quyida <strong>aniq qaysi guruh/o'quvchi to'siq</strong> ekanini ko'ring.
+</div>
 
-            {% for detail in error_details %}
-            <div class="card border-danger mb-4">
-                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                    <span>
-                        ❌ {{ detail.course.subject }} — {{ detail.group.group_number }}-guruh
-                        ({{ detail.group.get_language_display }})
-                        | O'qituvchi: {{ detail.group.teacher.first_name }}
-                        | {{ detail.group.students.count }} ta talaba
-                    </span>
-                    <span class="badge bg-white text-danger">
-                        {{ detail.course.start_date|date:"d.m.Y" }} — {{ detail.course.end_date|date:"d.m.Y" }}
-                    </span>
-                </div>
-                <div class="card-body">
+{% for e in error_details %}
+<div class="card border-danger border-2 mb-4" style="border-radius:14px;overflow:hidden;">
 
-                    <!-- O'qituvchi band -->
-                    {% if detail.teacher_scheds %}
-                    <h6 class="fw-bold text-warning">⏰ O'qituvchi band bo'lgan darslar:</h6>
-                    <table class="table table-sm table-bordered mb-3">
-                        <thead class="table-warning">
-                            <tr><th>Sana</th><th>Vaqt</th><th>Fan</th><th>Guruh</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for s in detail.teacher_scheds %}
-                            <tr class="table-warning">
-                                <td>{{ s.date|date:"d.m.Y" }}</td>
-                                <td>{{ s.start_time|time:"H:i"|default:"—" }}</td>
-                                <td>{{ s.group.course.subject }}</td>
-                                <td>{{ s.group.group_number }}-guruh ({{ s.group.get_language_display }})</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                    {% endif %}
+    <!-- Sarlavha -->
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
+         style="background:#fff5f5;border-bottom:2px solid #f5c6cb;">
+        <div>
+            <span class="fw-bold fs-5 text-danger">❌ {{ e.course.subject }}</span>
+            <span class="badge bg-danger ms-2">{{ e.group.group_number }}-guruh</span>
+            <span class="badge bg-secondary ms-1">O'qituvchi: {{ e.group.teacher }}</span>
+        </div>
+        <div class="text-muted small">
+            Kerak: <strong>{{ e.course.total_lessons }}</strong> dars |
+            Topildi: <strong class="text-success">{{ e.found_count }}</strong> |
+            Yetishmaydi: <strong class="text-danger">{{ e.missing_count }}</strong>
+        </div>
+    </div>
 
-                    <!-- Talabalar band -->
-                    {% if detail.student_scheds %}
-                    <h6 class="fw-bold text-danger">👥 Band talabalar (bosing → boshqa guruhga o'tkazing):</h6>
-                    <table class="table table-sm table-bordered mb-3">
-                        <thead class="table-danger">
-                            <tr><th>Sana</th><th>Vaqt</th><th>Fan</th><th>O'qituvchi</th><th>Band talabalar</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for row in detail.student_scheds %}
+    <div class="card-body">
+        <div class="row g-3">
+
+            <!-- Muammo: O'qituvchi band -->
+            <div class="col-12">
+                <h6 class="fw-bold text-danger mb-2">🚫 To'siq bo'layotgan guruhlar:</h6>
+
+                {% if e.conflicts %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered" style="font-size:13px;">
+                        <thead class="table-light">
                             <tr>
-                                <td>{{ row.sched.date|date:"d.m.Y" }}</td>
-                                <td>{{ row.sched.start_time|time:"H:i"|default:"—" }}</td>
-                                <td>{{ row.sched.group.course.subject }}</td>
-                                <td>{{ row.sched.group.teacher.first_name }}</td>
+                                <th>Sana</th>
+                                <th>Para vaqti</th>
+                                <th>To'siq turi</th>
+                                <th>Fan / Guruh</th>
+                                <th>Band o'quvchilar</th>
+                                <th>Yechim</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in e.conflicts|slice:":15" %}
+                            <tr>
+                                <td class="fw-bold">{{ c.date|date:"d.m.Y" }}</td>
+                                <td>⏰ {{ c.para_time }}</td>
                                 <td>
-                                    {% for st in row.busy_students %}
-                                    <span class="badge bg-danger me-1" style="font-size:0.75rem; cursor:pointer;"
-                                          onclick="showMoveModal({{ st.pk }}, '{{ st.first_name|escapejs }}', {{ detail.group.pk }})">
-                                        🔴 {{ st.first_name }}
-                                    </span>
+                                    {% for b in c.blocking %}
+                                    {% if b.type == 'teacher' %}
+                                    <span class="badge bg-danger">O'qituvchi band</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">O'quvchi band</span>
+                                    {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td>
+                                    {% for b in c.blocking %}
+                                    <div>📚 {{ b.subject }} ({{ b.group_number }}-guruh)</div>
+                                    {% endfor %}
+                                </td>
+                                <td style="font-size:11px;">
+                                    {% for b in c.blocking %}
+                                    {% if b.students %}
+                                    <div>{{ b.students|join:", " }}{% if b.students|length >= 5 %}...{% endif %}</div>
+                                    {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td style="font-size:11px;color:#1565c0;">
+                                    {% for b in c.blocking %}
+                                    {% if b.type == 'teacher' %}
+                                    <div>👉 <strong>{{ e.group.teacher }}</strong> o'qituvchining
+                                    <em>{{ b.subject }} {{ b.group_number }}-guruh</em>
+                                    darsini boshqa paraga ko'chiring</div>
+                                    {% else %}
+                                    <div>👉 <strong>{{ b.students|join:", " }}</strong>
+                                    o'quvchilarini boshqa guruhga ko'chiring</div>
+                                    {% endif %}
                                     {% endfor %}
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                    {% endif %}
+                </div>
 
-                    <!-- Boshqa guruhlar -->
-                    <h6 class="fw-bold">Bu fandan boshqa guruhlar:</h6>
-                    {% if detail.other_groups %}
-                    <table class="table table-sm table-bordered">
-                        <thead class="table-light">
-                            <tr><th>Guruh</th><th>O'qituvchi</th><th>Vaqt</th><th>Talabalar</th><th>Amal</th></tr>
-                        </thead>
-                        <tbody>
-                            {% for og in detail.other_groups %}
-                            <tr>
-                                <td>{{ og.group_number }}-guruh ({{ og.get_language_display }})</td>
-                                <td>{{ og.teacher.first_name }}</td>
-                                <td>{{ og.start_time|time:"H:i"|default:"—" }}</td>
-                                <td>{{ og.students.count }} ta</td>
-                                <td>
-                                    <a href="{% url 'move_students' detail.group.pk og.pk %}"
-                                       class="btn btn-sm btn-outline-primary">
-                                        Hammani ko'chirish →
-                                    </a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <!-- Qisqa yechim tavsiyasi -->
+                <div class="alert alert-info py-2 mt-2" style="font-size:13px;">
+                    <strong>💡 Eng tez yechim:</strong>
+                    {% for c in e.conflicts|slice:":3" %}
+                    {% for b in c.blocking %}
+                    {% if b.type == 'teacher' %}
+                    <span class="badge bg-danger me-1">
+                        {{ e.group.teacher }} → {{ b.subject }} {{ b.group_number }}-guruh darsini ko'chiring
+                    </span>
                     {% else %}
-                    <p class="text-muted">Boshqa guruh yo'q.</p>
+                    <span class="badge bg-warning text-dark me-1">
+                        {{ b.students|join:", " }} → boshqa guruhga o'tkazing
+                    </span>
                     {% endif %}
-
-                    <div class="mt-2">
-                        <form method="post" action="{% url 'delete_unscheduled_group' detail.group.pk %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Guruhni o\'chirasizmi?')">
-                                🗑 Guruhni o'chirish
-                            </button>
-                        </form>
-                    </div>
+                    {% endfor %}
+                    {% endfor %}
                 </div>
-            </div>
-            {% endfor %}
 
-            <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
+                {% else %}
+                <div class="alert alert-secondary">
+                    To'siq ma'lumoti topilmadi — muddat ichida hech qanday bo'sh vaqt yo'q.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Amallar -->
+            <div class="col-12 d-flex gap-2 flex-wrap">
+                <a href="{% url 'lesson_schedule' e.course.pk %}"
+                   class="btn btn-outline-primary btn-sm">
+                    ✏️ Kursni tahrirlash
+                </a>
+                <a href="{% url 'course_update' e.course.pk %}"
+                   class="btn btn-outline-warning btn-sm">
+                    📅 Muddatni o'zgartirish
+                </a>
+                <form method="post" action="{% url 'delete_unscheduled_group' e.group.pk %}"
+                      style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger btn-sm"
+                            onclick="return confirm('Guruhni o\'chirasizmi? O\'quvchilar qayta ro\'yxatga qaytadi.')">
+                        🗑️ Guruhni o'chirish
+                    </button>
+                </form>
+            </div>
+
         </div>
     </div>
 </div>
+{% endfor %}
 
-<!-- Modal: bitta talabani ko'chirish -->
-<div class="modal fade" id="moveModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">👤 Talabani boshqa guruhga ko'chirish</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <form method="post" action="" id="moveForm">
-                {% csrf_token %}
-                <div class="modal-body">
-                    <p><b id="moveStudentName"></b> ni qaysi guruhga ko'chirish?</p>
-                    <input type="hidden" name="student_pk" id="moveStudentPk">
-                    <input type="hidden" name="from_group_pk" id="moveFromGroupPk">
-                    <select name="to_group_pk" class="form-select" id="moveToGroup" required>
-                        <option value="">— Guruh tanlang —</option>
-                    </select>
-                    <div class="mt-2 text-muted small" id="moveGroupInfo"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="submit" class="btn btn-danger">Ko'chirish</button>
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Bekor</button>
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="mt-3 d-flex gap-2">
+    <a href="{% url 'build_schedule' %}" class="btn btn-primary">🔄 Qayta urinish</a>
+    <a href="{% url 'lesson_list' %}" class="btn btn-outline-secondary">← Darslar ro'yxati</a>
 </div>
 
-<script>
-// Guruh ma'lumotlari
-var groupsData = {
-    {% for detail in error_details %}
-    {{ detail.group.pk }}: [
-        {% for og in detail.other_groups %}
-        {pk: {{ og.pk }}, label: "{{ og.group_number }}-guruh ({{ og.get_language_display }}) — {{ og.teacher.first_name }} — {{ og.students.count }} ta"},
-        {% endfor %}
-    ],
-    {% endfor %}
-};
-
-function showMoveModal(studentPk, studentName, fromGroupPk) {
-    document.getElementById('moveStudentName').textContent = studentName;
-    document.getElementById('moveStudentPk').value = studentPk;
-    document.getElementById('moveFromGroupPk').value = fromGroupPk;
-    document.getElementById('moveForm').action = '/raspisaniya/move-one-student/';
-
-    var sel = document.getElementById('moveToGroup');
-    sel.innerHTML = '<option value="">— Guruh tanlang —</option>';
-    var groups = groupsData[fromGroupPk] || [];
-    groups.forEach(function(g) {
-        var opt = document.createElement('option');
-        opt.value = g.pk;
-        opt.textContent = g.label;
-        sel.appendChild(opt);
-    });
-
-    new bootstrap.Modal(document.getElementById('moveModal')).show();
-}
-</script>
 {% endblock %}
