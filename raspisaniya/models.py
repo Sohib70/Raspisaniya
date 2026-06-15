@@ -37,6 +37,10 @@ class Student(models.Model):
     language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
     debts = models.ManyToManyField(Subject, related_name='debt_students', blank=True)
 
+    def get_full_name(self):
+        """Talabaning ism va familiyasini birlashtirib qaytaradi"""
+        return f"{self.first_name} {self.last_name}".strip()
+
     def __str__(self):
         return self.first_name or self.student_id or "Talaba"
 

@@ -1,0 +1,102 @@
+{% extends "raspisaniya/base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+    <h4 class="mb-0 fw-bold">🔢 Matematik imkoniyat tekshiruvi</h4>
+    <span class="badge bg-danger fs-6">❌ {{ total_impossible }} ta imkonsiz</span>
+    <span class="badge bg-success fs-6">✅ {{ total_possible }} ta mumkin</span>
+</div>
+
+<div class="alert alert-info" style="font-size:13px;">
+    💡 <strong>Formula:</strong>
+    Bo'sh joy = (Ish kunlari × 6 para) − Allaqachon band paralar.
+    Agar <strong>Kerak > Bo'sh joy</strong> bo'lsa — matematik jihatdan <strong>imkonsiz</strong>.
+</div>
+
+{% for r in results %}
+<div class="card border-0 shadow-sm mb-3"
+     style="border-radius:14px;overflow:hidden;border-left:5px solid {% if r.possible %}#22c55e{% else %}#ef4444{% endif %} !important;">
+
+    <!-- Sarlavha -->
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2"
+         style="background:{% if r.possible %}#f0fdf4{% else %}#fff5f5{% endif %};">
+        <div>
+            <span class="fw-bold">{% if r.possible %}✅{% else %}❌{% endif %}
+                {{ r.teacher }}
+            </span>
+            <span class="text-muted small ms-2">{{ r.start }} — {{ r.end }}</span>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge bg-secondary">{{ r.work_days }} ish kuni</span>
+            <span class="badge bg-primary">{{ r.total_slots }} jami joy</span>
+            <span class="badge bg-warning text-dark">{{ r.already_scheduled }} band</span>
+            <span class="badge {% if r.possible %}bg-success{% else %}bg-danger{% endif %}">
+                {{ r.free_slots }} bo'sh
+            </span>
+            <span class="badge bg-dark">{{ r.needed }} kerak</span>
+        </div>
+    </div>
+
+    <div class="card-body py-2">
+
+        <!-- Progress bar -->
+        <div class="mb-2">
+            <div class="d-flex justify-content-between small text-muted mb-1">
+                <span>Band: {{ r.already_scheduled }}</span>
+                <span>Kerak: {{ r.needed }}</span>
+                <span>Jami: {{ r.total_slots }}</span>
+            </div>
+            <div class="progress" style="height:12px;border-radius:6px;">
+                {% widthratio r.already_scheduled r.total_slots 100 as band_pct %}
+                {% widthratio r.needed r.total_slots 100 as need_pct %}
+                <div class="progress-bar bg-warning"
+                     style="width:{{ band_pct }}%;" title="Band: {{ r.already_scheduled }}"></div>
+                <div class="progress-bar {% if r.possible %}bg-success{% else %}bg-danger{% endif %}"
+                     style="width:{{ need_pct }}%;" title="Kerak: {{ r.needed }}"></div>
+            </div>
+        </div>
+
+        {% if not r.possible %}
+        <!-- Imkonsiz — aniq muammo va yechim -->
+        <div class="alert alert-danger py-2 mb-2" style="font-size:13px;">
+            ❌ <strong>{{ r.shortage }} ta para sig'madi.</strong>
+            Buning uchun kamida <strong>{{ r.extra_days }} ta qo'shimcha ish kuni</strong> kerak.
+            <br>
+            <strong>Yechimlar:</strong>
+            <ul class="mb-0 mt-1">
+                <li>Muddatni <strong>{{ r.extra_days }} kun uzaytiring</strong>
+                    ({{ r.end }} → {{ r.end|date:"d.m.Y" }})</li>
+                <li>Yoki ba'zi guruhlarni <strong>boshqa o'qituvchiga o'tkazing</strong></li>
+                <li>Yoki shanba kunini ham <strong>qo'shing</strong> (include_saturday)</li>
+            </ul>
+        </div>
+        {% else %}
+        <div class="text-success small fw-bold mb-2">
+            ✅ Matematik jihatdan mumkin.
+            Kunlik o'rtacha yuklanma: <strong>{{ r.avg_per_day }}</strong> para/kun
+        </div>
+        {% endif %}
+
+        <!-- Guruhlar ro'yxati -->
+        <div class="d-flex flex-wrap gap-2">
+            {% for grp in r.groups %}
+            <span class="badge bg-light text-dark border" style="font-size:11px;">
+                📚 {{ grp.course.subject }} {{ grp.group_number }}-guruh
+                ({{ grp.course.total_lessons }} para, {{ grp.students.count }} talaba)
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="alert alert-success text-center py-4">
+    ✅ Barcha guruhlar uchun jadval allaqachon tuzilgan!
+</div>
+{% endfor %}
+
+<div class="mt-3 d-flex gap-2">
+    <a href="{% url 'build_schedule' %}" class="btn btn-primary">🚀 Jadval tuzish</a>
+    <a href="{% url 'lesson_list' %}" class="btn btn-outline-secondary">← Darslar</a>
+</div>
+
+{% endblock %}

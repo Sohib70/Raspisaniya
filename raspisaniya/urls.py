@@ -76,4 +76,9 @@ urlpatterns = [
     path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
     path('admin-password-reset/', views.admin_password_reset_request, name='admin_password_reset_request'),
     path('admin-password-verify/', views.admin_password_verify_and_change, name='admin_password_verify_and_change'),
+    path('apply-teacher-suggestion/<int:group_pk>/<int:teacher_pk>/',
+         views.apply_teacher_suggestion, name='apply_teacher_suggestion'),
+    path('apply-swap-suggestion/',
+         views.apply_swap_suggestion, name='apply_swap_suggestion'),
+    path('teacher-capacity/', views.teacher_capacity_check, name='teacher_capacity_check'),
 ]
