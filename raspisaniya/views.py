@@ -127,7 +127,6 @@ def get_lesson_dates(start_date, weekdays, total):
         cur += timedelta(days=1)
     return result
 
-
 def find_schedule_for_group(
         start_date, end_date, total_lessons, lessons_per_week,
         teacher, students, group_number=1, include_saturday=False
@@ -135,17 +134,11 @@ def find_schedule_for_group(
     """
     QOIDA:
     - 24-paralik (total_lessons >= 20): MAJBURIY 3 kun x 2 para = 6/hafta
-      Avval Dush/Chor/Juma (pool_A) dan to'liq 2-para 3 kun qidiriladi.
-      Topilmasa: Dush/Chor/Juma + Sesh/Paysh orasidan to'liq 2-para 3 kun.
-      Topilmasa: + Shanba ham qo'shiladi.
-    - 16-paralik (total_lessons < 20): MAJBURIY 2 kun x 2 para = 4/hafta
-      Avval Sesh/Paysh (pool_B) dan to'liq 2-para 2 kun qidiriladi.
-      Topilmasa: Sesh/Paysh + Dush/Chor/Juma orasidan to'liq 2-para 2 kun.
-      Topilmasa: + Shanba ham qo'shiladi.
-    - HAR DOIM faqat TO'LIQ 2-para bo'lgan kunlar qabul qilinadi —
-      1 ta bo'sh para bilan kun "tanlangan" deb hisoblanmaydi.
-    - Hech qachon keyingi haftaga o'tmaymiz — start_date haftasida
-      topilgan kun+para BUTUN KURS bo'yi takrorlanadi.
+    - 16-paralik (12 <= total_lessons < 20): MAJBURIY 2 kun x 2 para = 4/hafta
+    - 8-paralik  (total_lessons < 12): MAJBURIY 1 kun x 2 para = 2/hafta
+    - FIXED PATTERN: bitta (kun, para) kombinatsiyasi BUTUN KURS bo'yi
+      har hafta bir xil takrorlanadi.
+    - Dars start_date dan boshlanadi.
     """
     from collections import defaultdict
 
@@ -213,52 +206,66 @@ def find_schedule_for_group(
     if total_lessons >= 20:
         days_needed   = 3
         search_orders = [
-            pool_A,                          # 1: faqat Dush/Chor/Juma
-            pool_A + pool_B,                 # 2: + Sesh/Paysh
-            pool_A + pool_B + pool_C,        # 3: + Shanba
+            pool_A,
+            pool_A + pool_B,
+            pool_A + pool_B + pool_C,
         ]
-    else:
+    elif total_lessons >= 12:
         days_needed   = 2
         search_orders = [
-            pool_B,                          # 1: faqat Sesh/Paysh
-            pool_B + pool_A,                 # 2: + Dush/Chor/Juma
-            pool_B + pool_A + pool_C,        # 3: + Shanba
+            pool_B,
+            pool_B + pool_A,
+            pool_B + pool_A + pool_C,
+        ]
+    else:
+        days_needed   = 1
+        search_orders = [
+            pool_A,
+            pool_B,
+            pool_A + pool_B + pool_C,
         ]
 
-    # ── FAQAT start_date haftasida fixed slots qidirish ─────────────
-    week_monday = start_date - timedelta(days=start_date.weekday())
+    def find_fixed_slots(week_monday, only_from_date):
+        for search_order in search_orders:
+            fixed_slots = []
+            days_chosen = set()
 
-    fixed_slots = []
-    days_chosen = set()
+            for wd in search_order:
+                if len(days_chosen) >= days_needed:
+                    break
 
-    for search_order in search_orders:
-        fixed_slots = []
-        days_chosen = set()
+                d = week_monday + timedelta(days=wd)
+                if d < only_from_date or d > end_date:
+                    continue
+                if d.weekday() > max_wd:
+                    continue
 
-        for wd in search_order:
+                busy = get_busy(d)
+                free = [i for i in range(len(PARA_TIMES)) if i not in busy]
+
+                if len(free) >= 2:
+                    fixed_slots.append((wd, free[0]))
+                    fixed_slots.append((wd, free[1]))
+                    days_chosen.add(wd)
+
             if len(days_chosen) >= days_needed:
-                break
+                return fixed_slots, days_chosen
 
-            d = week_monday + timedelta(days=wd)
-            if d < start_date or d > end_date:
-                continue
-            if d.weekday() > max_wd:
-                continue
+        return None, None
 
-            busy = get_busy(d)
-            free = [i for i in range(len(PARA_TIMES)) if i not in busy]
+    # ── 1-urinish: start_date haftasida, faqat start_date dan
+    #    boshlab pattern qidiriladi ────────────────────────────────
+    week_monday = start_date - timedelta(days=start_date.weekday())
+    fixed_slots, days_chosen = find_fixed_slots(week_monday, start_date)
 
-            # FAQAT to'liq 2-para bo'lgan kunlar qabul qilinadi
-            if len(free) >= 2:
-                fixed_slots.append((wd, free[0]))
-                fixed_slots.append((wd, free[1]))
-                days_chosen.add(wd)
-            # len(free) < 2 — bu kun rad etiladi
+    # ── 2-urinish: keyingi to'liq haftadan pattern aniqlanadi ──────
+    pattern_week_monday = week_monday
+    if fixed_slots is None:
+        next_monday = week_monday + timedelta(weeks=1)
+        fixed_slots, days_chosen = find_fixed_slots(next_monday, next_monday)
+        pattern_week_monday = next_monday
 
-        if len(days_chosen) >= days_needed:
-            break
-
-    if not fixed_slots or len(days_chosen) < days_needed:
+    if fixed_slots is None:
         conflict_info = []
         for wd in (pool_A + pool_B + pool_C):
             d = week_monday + timedelta(days=wd)
@@ -280,7 +287,10 @@ def find_schedule_for_group(
 
     # ── Haftama-hafta FIXED SLOTS bo'yicha joylashtirish ────────────
     result     = []
-    cur_monday = week_monday
+    cur_monday = pattern_week_monday
+
+    if pattern_week_monday > week_monday:
+        cur_monday = week_monday
 
     while len(result) < total_lessons:
         if cur_monday > end_date + timedelta(weeks=8):
@@ -294,6 +304,8 @@ def find_schedule_for_group(
                 continue
             if d > end_date + timedelta(weeks=8):
                 continue
+            if d.weekday() > max_wd:
+                continue
             busy = get_busy(d)
             if para_idx not in busy:
                 result.append((d, PARA_TIMES[para_idx][0], PARA_TIMES[para_idx][1]))
@@ -305,7 +317,7 @@ def find_schedule_for_group(
     missing       = max(0, total_lessons - len(result))
     conflict_info = []
     if missing > 0:
-        chk_monday = week_monday
+        chk_monday = pattern_week_monday
         for _ in range(10):
             if chk_monday > end_date + timedelta(weeks=8):
                 break
@@ -330,7 +342,6 @@ def find_schedule_for_group(
     find_schedule_for_group._last_conflict_info = conflict_info
     find_schedule_for_group._last_missing       = missing
     return result
-
 
 def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts):
     """
