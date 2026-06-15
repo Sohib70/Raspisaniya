@@ -332,13 +332,22 @@ def find_schedule_for_group(
     return result
 
 
-def _auto_resolve_conflicts_by_subject_swap(conflicts):
+def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts):
     """
     conflicts ichidagi har bir band talabani — ULARNING BAND BO'LGAN
-    FANI (boshqa fan) ichidagi boshqa, TIL MOS va to'qnashmaydigan
-    guruhga AVTOMATIK (tasdiqlashsiz) ko'chiradi.
+    FANI (boshqa fan) ichidagi boshqa, TIL MOS, to'qnashmaydigan
+    guruhga ko'chiradi VA O'RNIGA shu guruhdan grp_a'ga mos (til mos,
+    grp_a jadvali bilan to'qnashmaydigan) "toza" talaba qaytaradi —
+    GURUH HAJMLARI O'ZGARMAYDI.
     """
     messages_out = []
+
+    # grp_a ning (rejalashtirilmoqchi bo'lgan) jadval shabloni hali yo'q,
+    # shuning uchun grp_a talabalarining MAVJUD band vaqtlarini (boshqa
+    # fanlardagi darslarini) "grp_a jadvali" sifatida ishlatamiz —
+    # bu taxminiy, lekin yangi talaba ham grp_a bilan bir xil
+    # cheklovlarga ega bo'lishi kerak.
+    grp_a_student_ids = set(grp_a.students.values_list('id', flat=True))
 
     conflict_map = defaultdict(set)
     for c in conflicts:
@@ -355,29 +364,65 @@ def _auto_resolve_conflicts_by_subject_swap(conflicts):
 
         oc = og.course
 
+        # Shu fanning boshqa guruhlari, TIL MOS
         candidates = CourseGroup.objects.filter(
             course=oc, is_scheduled=True, language=st.language,
-        ).exclude(pk=og.pk).select_related('teacher')
+        ).exclude(pk=og.pk).select_related('teacher').prefetch_related('students')
 
         for cand in candidates:
             cand_times = set(
                 GroupSchedule.objects.filter(group=cand)
                 .values_list('date', 'start_time')
             )
-            if not (conflict_times & cand_times):
-                with transaction.atomic():
-                    og.students.remove(st)
-                    cand.students.add(st)
+            # cand guruh st ning to'qnashuv vaqtlarida band bo'lmasligi kerak
+            if conflict_times & cand_times:
+                continue
 
-                moved_student_ids.add(st.pk)
-                # messages_out.append(
-                #     f"🔄 {st.get_full_name()} ni \"{oc.subject} "
-                #     f"({og.group_number}-guruh, {og.get_language_display()})\" dan "
-                #     f"\"{oc.subject} ({cand.group_number}-guruh, "
-                #     f"{cand.get_language_display()}, {cand.teacher})\" ga "
-                #     f"avtomatik ko'chirildi — {len(conflict_times)} ta to'qnashuvni hal qildi."
-                # )
-                break
+            # ── ENDI cand dan grp_a ga qaytarish uchun "toza" talaba
+            #    qidiramiz: shu fan bo'yicha til mos, va grp_a ning
+            #    o'qituvchisi bilan to'qnashmaydigan ──
+            safe_return = None
+            for ret_st in cand.students.all():
+                if ret_st.id == st.pk or ret_st.id in grp_a_student_ids:
+                    continue
+                if ret_st.language != grp_a.language:
+                    continue
+
+                # ret_st ning barcha band vaqtlari
+                ret_busy_times = set(
+                    GroupSchedule.objects.filter(
+                        group__students=ret_st
+                    ).exclude(group=cand)
+                    .values_list('date', 'start_time')
+                )
+                # grp_a o'qituvchisining shu vaqtlardagi bandligi bilan
+                # to'qnashmasligini tekshirish uchun, ret_st ning band
+                # vaqtlarida grp_a o'qituvchisi ham band bo'lmasligi kerak
+                conflict_for_ret = False
+                for (d, t) in ret_busy_times:
+                    if GroupSchedule.objects.filter(
+                        date=d, start_time=t, group__teacher=grp_a.teacher
+                    ).exclude(group=cand).exists():
+                        conflict_for_ret = True
+                        break
+
+                if not conflict_for_ret:
+                    safe_return = ret_st
+                    break
+
+            if not safe_return:
+                continue  # bu cand mos kelmadi — keyingi cand
+
+            # ── Almashtirish: st → cand, safe_return → og ──
+            with transaction.atomic():
+                og.students.remove(st)
+                cand.students.add(st)
+                cand.students.remove(safe_return)
+                og.students.add(safe_return)
+
+            moved_student_ids.add(st.pk)
+
+            break
 
     return messages_out
 
@@ -1848,7 +1893,7 @@ def build_schedule(request):
 
             # ── 1-urinish: band talabani O'Z FANINING til-mos
             #    boshqa guruhiga AVTOMATIK ko'chirish ──
-            resolved_msgs = _auto_resolve_conflicts_by_subject_swap(conflicts)
+            resolved_msgs = _auto_resolve_conflicts_by_subject_swap(grp, conflicts)
             if resolved_msgs:
                 auto_resolve_messages.extend(resolved_msgs)
                 continue
