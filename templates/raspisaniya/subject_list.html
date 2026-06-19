@@ -35,10 +35,10 @@
                 </a>
             </th>
 
-            <!-- Qarzdor o'quvchilar Ustuni -->
+            <!-- Qarzdor talabalar Ustuni -->
             <th>
                 <a href="?q={{ q }}&sort_by=debt&direction={% if sort_by == 'debt' and direction == 'asc' %}desc{% else %}asc{% endif %}" class="text-decoration-none text-white d-inline-flex align-items-center gap-1">
-                    Qarzdor o'quvchilar
+                    Qarzdor talabalar
                     {% if sort_by == 'debt' %}
                         {% if direction == 'asc' %}<span class="text-white">▲</span>{% else %}<span class="text-white">▼</span>{% endif %}
                     {% else %}

@@ -65,17 +65,33 @@
                 <div class="col-md-4 col-sm-6">
                     <div class="border rounded p-3" style="background:white;">
                         <div class="fw-bold" style="color:#1a237e;">{{ grp.course.subject }}</div>
-                        <div class="text-muted" style="font-size:0.8rem;">{{ grp.group_number }}-guruh &bull; {{ grp.students.count }} talaba</div>
-                        {% if grp.room %}<div class="text-muted" style="font-size:0.78rem;">🏫 {{ grp.room }}</div>{% endif %}
+                        <div class="text-muted" style="font-size:0.8rem;">
+                            {{ grp.group_number }}-guruh &bull; {{ grp.students.count }} talaba
+                        </div>
+                        {% if grp.room %}
+                            <div class="text-muted" style="font-size:0.78rem;">🏫 {{ grp.room }}</div>
+                        {% endif %}
+
                         <div class="d-flex gap-1 mt-2 flex-wrap">
-                            <a href="{% url 'teacher_group_detail' grp.pk %}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">👥 Guruh</a>
-                            <a href="{% url 'teacher_attendance_overview' grp.pk %}" class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">📋 Davomat & Baho</a>
-                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">📝 Qaydnoma</a>
+                            <a href="{% url 'teacher_group_detail' grp.pk %}"
+                               class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">
+                               👥 Guruh
+                            </a>
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=att"
+                               class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">
+                               📅 Davomat
+                            </a>
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=grade"
+                               class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">
+                               ⭐ Baho
+                            </a>
+                            <a href="{% url 'download_vedomost' grp.pk %}"
+                               class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;">
+                               📄 Qaydnoma
+                            </a>
                         </div>
                     </div>
                 </div>
-                {% empty %}
-                <div class="text-muted p-2">Guruhlar yo'q</div>
                 {% endfor %}
             </div>
         </div>
@@ -147,7 +163,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header" style="background:#1a237e; color:white;">
-                <h6 class="modal-title" id="modalTitle">O'quvchilar ro'yxati</h6>
+                <h6 class="modal-title" id="modalTitle">talabalar ro'yxati</h6>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-0">

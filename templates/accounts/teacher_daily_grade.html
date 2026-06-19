@@ -72,7 +72,7 @@
 
     <div class="alert alert-info py-2 px-3 mb-3" style="font-size:13px;">
         💡 Faqat <strong>kelgan</strong> talabalarga baho qo'yiladi. <br>
-        Ruxsat etilgan ballar: <strong>0</strong> yoki <strong>{{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</strong> oralig'i. 56 dan past kiritilgan baholar avtomat 0 ga tashlanadi.
+
     </div>
 
     {% if not can_edit %}
@@ -100,7 +100,7 @@
                         <th>F.I.O</th>
                         <th style="text-align:center;width:170px;">
                             Baho
-                            <div style="font-size:11px;font-weight:400;color:#666;">0 yoki {{ min_ball|stringformat:".0f" }} — {{ max_ball|stringformat:".0f" }}</div>
+                            <div style="font-size:11px;font-weight:400;color:#666;"></div>
                         </th>
                     </tr>
                 </thead>
@@ -123,7 +123,7 @@
                                    class="form-control score-input mx-auto"
                                    min="0" max="{{ max_ball }}" step="0.1"
                                    value="{{ item.score }}"
-                                   placeholder="0 yoki 56-100">
+                                   placeholder="0">
                             {% else %}
                             <span class="text-muted">—</span>
                             {% endif %}

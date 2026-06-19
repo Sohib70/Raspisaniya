@@ -7,7 +7,7 @@ class Command(BaseCommand):
     help = 'Mavjud student va teacherlar uchun User yaratish'
 
     def handle(self, *args, **kwargs):
-        # O'quvchilar
+        # talabalar
         students = Student.objects.filter(user__isnull=True)
         for student in students:
             if not student.student_id:

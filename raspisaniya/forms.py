@@ -44,7 +44,7 @@ class StudentForm(forms.ModelForm):
 
 
 class StudentImportForm(forms.Form):
-    file = forms.FileField(label="Excel fayl (o'quvchilar)")
+    file = forms.FileField(label="Excel fayl (talabalar)")
 
 
 class TeacherImportForm(forms.Form):

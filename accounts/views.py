@@ -11,6 +11,11 @@ import json
 from datetime import timedelta, date as dt_date
 
 
+
+
+
+
+
 def login_view(request):
     if request.user.is_authenticated:
         if request.user.is_superuser:
@@ -119,11 +124,11 @@ def student_dashboard(request):
             if key not in grid:
                 grid[key] = {
                     'subject': str(grp.course.subject),
-                    'teacher': str(grp.teacher),
-                    'teacher_name': f"{grp.teacher.first_name}",
+                    'teacher': str(grp.teacher) if grp.teacher else "Tayinlanmagan",
+                    'teacher_name': grp.teacher.first_name if grp.teacher else "O'qituvchi yo'q",
+                    # ✅ Endi xato bermaydi!
                     'room': str(grp.room) if grp.room else '',
                 }
-
     table_data = []
     for day_idx, day_name in enumerate(WEEKDAY_LIST):
         for para_idx, (start, end) in enumerate(PARA_TIMES_LIST):
@@ -500,7 +505,6 @@ def teacher_attendance(request, sched_pk, group_pk=None):
         "is_today": schedule.date == today,
     })
 
-
 @login_required
 def teacher_attendance_overview(request, group_pk):
     try:
@@ -511,13 +515,18 @@ def teacher_attendance_overview(request, group_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk)
     students = list(group.students.all().order_by('last_name', 'first_name'))
     raw_schedules = list(group.schedule.all().order_by('date'))
-    total_lessons = len(raw_schedules)
+    total_lessons = len(raw_schedules) or 1
     today = dt_date.today()
 
     all_att = Attendance.objects.filter(schedule__group=group).values(
         'student_id', 'schedule_id', 'is_present'
     )
     att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in all_att}
+
+    all_daily_grades = DailyGrade.objects.filter(schedule__group=group).values(
+        'student_id', 'schedule_id', 'score'
+    )
+    grade_map = {(g['student_id'], g['schedule_id']): g['score'] for g in all_daily_grades}
 
     marked_sched_ids = set(
         Attendance.objects.filter(schedule__group=group)
@@ -528,7 +537,8 @@ def teacher_attendance_overview(request, group_pk):
     for sched in raw_schedules:
         is_marked = sched.pk in marked_sched_ids
         is_today = sched.date == today
-        is_past = sched.date < today and not is_marked
+        # dars o'tib ketgan va hali davomat qilinmagan yoki o'tib ketgan dars bo'lsa
+        is_past = sched.date < today
         if is_marked:
             sched.date_class = 'date-marked'
         elif is_today:
@@ -546,29 +556,63 @@ def teacher_attendance_overview(request, group_pk):
     for st in students:
         cells = []
         came = missed = 0
+        total_score = 0.0
+
         for sched in schedules:
             val = att_map.get((st.pk, sched.pk))
+            score = grade_map.get((st.pk, sched.pk))
+
+            # 🌟 Admin ruxsat bergan va dars o'tib ketgan bo'lsa qavs ichida bo'ladi
+            is_edited_past = sched.is_past and group.teacher_can_edit
+
             if val is True:
                 came += 1
-                cells.append('present')
+                if score is not None:
+                    total_score += float(score)
+                cells.append({
+                    'att': 'present',
+                    'score': score,
+                    'is_edited_past': is_edited_past
+                })
             elif val is False:
                 missed += 1
-                cells.append('absent')
+                cells.append({
+                    'att': 'absent',
+                    'score': None,
+                    'is_edited_past': is_edited_past
+                })
             else:
-                cells.append('none')
+                cells.append({
+                    'att': 'none',
+                    'score': None,
+                    'is_edited_past': is_edited_past
+                })
+
+        avg_100 = float(total_score) / total_lessons
+        final_current_30 = round(min(avg_100 * 0.3, 30.0), 2)
+
         missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
         is_blocked = missed_percent > 25 and not group.teacher_can_edit
+
         rows.append({
-            'student': st, 'cells': cells, 'came': came,
-            'missed': missed, 'missed_percent': missed_percent,
-            'is_blocked': is_blocked, 'total': total_lessons,
+            'student': st,
+            'cells': cells,
+            'came': came,
+            'missed': missed,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
+            'total': total_lessons,
+            'total_score': final_current_30,
         })
 
     return render(request, "accounts/teacher_attendance_overview.html", {
-        "teacher": teacher, "group": group, "students": students,
-        "schedules": schedules, "rows": rows, "total_lessons": total_lessons,
+        "teacher": teacher,
+        "group": group,
+        "students": students,
+        "schedules": schedules,
+        "rows": rows,
+        "total_lessons": total_lessons,
     })
-
 
 # 🛠️ TO'LIQ VA XATOLIKSIZ KO'RINISHGA KELTIRILGAN VEDOMOST FUNKSIYASI
 @login_required
@@ -795,16 +839,19 @@ def teacher_daily_grade(request, sched_pk):
                 try:
                     score = float(score_raw)
                 except ValueError:
-                    messages.error(request,
-                                   f"{student.first_name} {student.last_name} uchun kiritilgan baho son bo'lishi kerak!")
+                    messages.error(request, f"{student.first_name} {student.last_name} uchun kiritilgan baho son bo'lishi kerak!")
                     has_error = True
                     break
 
-            # 🌟 YANGI LOGIKA: Ball 0 bo'lishi mumkin, yoki 56 va 100 oralig'ida bo'lishi shart!
-            if score != 0.0 and (score < min_ball or score > max_ball):
+            # 🌟 LOGIKA: 56 dan past kiritsa (masalan, 25 yoki 50) avtomatik 0.0 ga aylantiramiz
+            if score < min_ball:
+                score = 0.0
+
+            # 🌟 CHEKLOV: Agar ball 100 dan oshib ketsa, o'qituvchiga xabar ko'rsatamiz
+            if score > max_ball:
                 messages.error(
                     request,
-                    f"{student.first_name} {student.last_name} uchun baho 0 yoki {min_ball | stringformat:'.0f'}-{max_ball | stringformat:'.0f'} oralig'ida bo'lishi shart! (Siz kiritdingiz: {score_raw})"
+                    f"{student.first_name} {student.last_name} uchun baho {max_ball:.0f} dan baland bo'lishi mumkin emas!"
                 )
                 has_error = True
                 break
@@ -831,7 +878,7 @@ def teacher_daily_grade(request, sched_pk):
         is_present = att_map.get(student.pk, False)
         dg = grade_map.get(student.pk)
 
-        # Agar bazada baho bo'lmasa, o'qituvchiga input bo'sh ko'rinishi uchun '' (bo'sh) qoldiramiz
+        # Agar bazada baho bo'lmasa yoki 0 bo'lsa, input ichida '0' ko'rinishi uchun
         score_val = dg.score if dg else ''
 
         students_data.append({

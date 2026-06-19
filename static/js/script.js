@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showTeachersBtn.style.display = 'none';
     });
 
-    // O'quvchilar tugmasi bosilganda
+    // talabalar tugmasi bosilganda
     showStudentsBtn?.addEventListener('click', () => {
         studentsDiv.style.display = 'block';
         showStudentsBtnDiv.style.display = 'none';

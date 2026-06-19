@@ -82,7 +82,7 @@ class Room(models.Model):
 
 class CourseGroup(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='groups')
-    teacher = models.ForeignKey(Teacher, on_delete=models.CASCADE)
+    teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True, blank=True)
     students = models.ManyToManyField(Student, blank=True)
     group_number = models.PositiveIntegerField(default=1)
     start_time = models.TimeField(null=True, blank=True)

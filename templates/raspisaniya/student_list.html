@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>👨‍🎓 O'quvchilar ro'yxati</h2>
+    <h2>👨‍🎓 talabalar ro'yxati</h2>
     <a href="{% url 'student_create' %}" class="btn btn-success">➕ O'quvchi qo'shish</a>
 </div>
 
@@ -87,7 +87,7 @@
 {% else %}
 <div class="alert alert-info">
     {% if q %}"{{ q }}" bo'yicha hech narsa topilmadi.
-    {% else %}Hozircha o'quvchilar mavjud emas.{% endif %}
+    {% else %}Hozircha talabalar mavjud emas.{% endif %}
 </div>
 {% endif %}
 

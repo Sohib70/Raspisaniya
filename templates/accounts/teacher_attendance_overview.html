@@ -1,182 +1,213 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="uz">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Davomat jadvali — {{ group }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f0f4ff; }
-        .topbar { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; }
-        .topbar h5 { margin: 0; font-weight: 700; }
-        .info-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        .section-header { background: linear-gradient(135deg, #1a237e, #1565c0); color: white; border-radius: 10px 10px 0 0; padding: 10px 18px; font-weight: 700; }
-        .att-present { background: #d4edda; color: #155724; font-weight: 700; text-align: center; font-size: 0.85rem; }
-        .att-absent  { background: #f8d7da; color: #721c24; font-weight: 700; text-align: center; font-size: 0.85rem; }
-        .att-none    { background: #f5f5f5; color: #aaa; text-align: center; font-size: 0.8rem; }
-        .blocked-row { background: #fff0f0 !important; }
-        td, th { vertical-align: middle !important; }
+{% extends 'raspisaniya/base.html' %}
+{% block content %}
+<div class="container-fluid mt-3">
 
-        th.date-th {
-            font-size: 0.72rem;
-            padding: 8px 4px;
-            white-space: nowrap;
-            text-align: center;
-            vertical-align: top !important;
-        }
-        th.date-marked { background: #c8f7c5; }
-        th.date-missed { background: #ffd5d5; }
-        th.date-future { background: #e8eaf6; }
-        th.date-today  { background: #fff9c4; }
+  {% comment %} ── SARLAVHA ── {% endcomment %}
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <h5 class="mb-0 fw-bold text-dark">
+      📋 {{ group.course.subject }} — {{ group.group_number }}-guruh
+      {% if group.teacher %}
+        <small class="text-muted fs-6">({{ group.teacher.first_name }})</small>
+      {% endif %}
+    </h5>
+    <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-secondary ms-auto">
+      ← Orqaga
+    </a>
+  </div>
 
-        .date-link {
-            color: inherit;
-            text-decoration: none;
-            display: block;
-            font-weight: 700;
-        }
-        .date-link:hover {
-            opacity: 0.75;
-        }
-        .grade-link {
-            display: inline-block;
-            margin-top: 5px;
-            padding: 2px 5px;
-            font-size: 0.65rem;
-            font-weight: bold;
-            border-radius: 4px;
-            text-decoration: none;
-            background-color: #198754;
-            color: white !important;
-        }
-        .grade-link:hover {
-            background-color: #157347;
-        }
-    </style>
-</head>
-<body>
-
-<div class="topbar">
-    <div style="display:flex;align-items:center;gap:15px;">
-        <h5>📋 Davomat & Qaydnoma jadvali</h5>
-        <a href="/teacher/" class="btn btn-sm btn-light fw-bold"
-           style="color:#1a237e!important;border-radius:6px;padding:6px 12px;font-size:0.85rem;">
-            🏠 Bosh sahifa
-        </a>
+  {% comment %} ── STATISTIKA ── {% endcomment %}
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center text-dark bg-white shadow-sm">
+        <div class="text-muted" style="font-size:0.75rem;">Fan</div>
+        <div class="fw-bold" style="font-size:0.85rem;">{{ group.course.subject }}</div>
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:16px;">
-        <span>👤 {{ teacher.first_name }} {{ teacher.last_name }}</span>
-        <a href="{% url 'logout' %}" class="btn btn-sm btn-outline-light">Chiqish</a>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center text-dark bg-white shadow-sm">
+        <div class="text-muted" style="font-size:0.75rem;">Guruh</div>
+        <div class="fw-bold">{{ group.group_number }}-guruh</div>
+      </div>
     </div>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center text-dark bg-white shadow-sm">
+        <div class="text-muted" style="font-size:0.75rem;">Jami darslar</div>
+        <div class="fw-bold">{{ total_lessons }} ta</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="border rounded p-2 text-center text-dark bg-white shadow-sm">
+        <div class="text-muted" style="font-size:0.75rem;">Bloklash chegarasi</div>
+        <div class="fw-bold text-danger">25% qoldirsa</div>
+      </div>
+    </div>
+  </div>
+
+  {% comment %} ── TAB TUGMALARI ── {% endcomment %}
+  <ul class="nav nav-tabs mb-0" id="journalTab">
+    <li class="nav-item">
+      <button class="nav-link active fw-bold" id="att-tab" onclick="switchTab('att')">
+        📅 Davomat
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link fw-bold" id="grade-tab" onclick="switchTab('grade')">
+        ⭐ Kunlik baho
+      </button>
+    </li>
+  </ul>
+
+  {% comment %} ══════════════════════════════
+     1-TAB: DAVOMAT
+  ══════════════════════════════ {% endcomment %}
+  <div id="tab-att" class="border border-top-0 rounded-bottom p-2 bg-white">
+    <div class="table-responsive">
+    <table class="table table-bordered table-sm align-middle mb-2 text-center" style="font-size:0.8rem; min-width:700px;">
+      <thead>
+        <tr style="background:#1a237e; color:white;">
+          <th style="min-width:170px; text-align:left; padding-left:8px; position:sticky; left:0; z-index:2; background:#1a237e; color:white;">
+            # Talaba
+          </th>
+          {% for sched in schedules %}
+          <th style="min-width:70px; white-space:nowrap; padding:0; position:relative; vertical-align:middle; background:#1a237e;">
+            <a href="{% url 'teacher_attendance_mark' sched_pk=sched.pk %}" class="d-block w-100 h-100 text-decoration-none p-2 text-white">
+              {{ sched.date|date:"d.m" }}<br>
+              <small style="color:#ffd54f;">{{ sched.lesson_number }}-dars</small><br>
+              {% if sched.is_marked %}
+                <span class="badge bg-success" style="font-size:0.6rem;">✓</span>
+              {% elif sched.is_today %}
+                <span class="badge bg-warning text-dark" style="font-size:0.6rem;">Bugun</span>
+              {% elif sched.is_past %}
+                <span class="badge bg-danger" style="font-size:0.6rem;">!</span>
+              {% else %}
+                <span class="badge bg-secondary" style="font-size:0.6rem;">—</span>
+              {% endif %}
+            </a>
+          </th>
+          {% endfor %}
+          <th style="min-width:50px; position:sticky; right:110px; background:#1a237e; color:white;">Keldi</th>
+          <th style="min-width:65px; position:sticky; right:40px; background:#1a237e; color:white;">Kelmadi</th>
+          <th style="min-width:55px; position:sticky; right:0; background:#1a237e; color:white;">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="position:sticky; left:0; z-index:1; white-space:nowrap; text-align:left; padding-left:8px;
+                     background:{% if row.is_blocked %}#f8d7da{% else %}#fff{% endif %}; font-weight:600;">
+            {{ forloop.counter }}. {{ row.student.first_name }}
+            {% if row.is_blocked %}
+              <span class="badge bg-danger ms-1" title="Bloklangan">🚫</span>
+            {% endif %}
+          </td>
+          {% for cell in row.cells %}
+          <td class="p-1">
+            {% if cell.att == 'present' %}
+              <span style="color:#198754; font-size:1rem; font-weight:bold;">
+                {% if cell.is_edited_past %}[ ✓ ]{% else %}✓{% endif %}
+              </span>
+            {% elif cell.att == 'absent' %}
+              <span style="color:#dc3545; font-size:1rem; font-weight:bold;">
+                {% if cell.is_edited_past %}[ ✗ ]{% else %}✗{% endif %}
+              </span>
+            {% else %}
+              <span style="color:#adb5bd;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="fw-bold text-success" style="background:#f0fdf4;">{{ row.came }}</td>
+          <td class="fw-bold text-danger" style="background:#fff5f5;">{{ row.missed }}</td>
+          <td class="fw-bold {% if row.missed_percent > 25 %}text-danger{% elif row.missed_percent > 15 %}text-warning{% else %}text-success{% endif %}">
+            {{ row.missed_percent }}%
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>{# end tab-att #}
+
+  {% comment %} ══════════════════════════════
+     2-TAB: KUNLIK BAHO
+  ══════════════════════════════ {% endcomment %}
+  <div id="tab-grade" class="border border-top-0 rounded-bottom p-2 bg-white" style="display:none;">
+    <div class="table-responsive">
+    <table class="table table-bordered table-sm align-middle mb-2 text-center" style="font-size:0.8rem; min-width:700px;">
+      <thead>
+        <tr style="background:#1a237e; color:white;">
+          <th style="min-width:170px; text-align:left; padding-left:8px; position:sticky; left:0; z-index:2; background:#1a237e; color:white;">
+            # Talaba
+          </th>
+          {% for sched in schedules %}
+          <th style="min-width:70px; white-space:nowrap; padding:0; position:relative; vertical-align:middle; background:#1a237e;">
+            <a href="{% url 'teacher_daily_grade' sched_pk=sched.pk %}" class="d-block w-100 h-100 text-decoration-none p-2 text-white">
+              {{ sched.date|date:"d.m" }}<br>
+              <small style="color:#ffd54f;">{{ sched.lesson_number }}-dars</small>
+            </a>
+          </th>
+          {% endfor %}
+          <th style="min-width:65px; position:sticky; right:0; background:#1a237e; color:white;">JN (30)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="position:sticky; left:0; z-index:1; white-space:nowrap; text-align:left; padding-left:8px;
+                     background:{% if row.is_blocked %}#f8d7da{% else %}#fff{% endif %}; font-weight:600;">
+            {{ forloop.counter }}. {{ row.student.first_name }}
+            {% if row.is_blocked %}
+              <span class="badge bg-danger ms-1">🚫</span>
+            {% endif %}
+          </td>
+          {% for cell in row.cells %}
+          <td class="p-1 text-center" style="font-size: 0.9rem;">
+            {% if cell.att == 'absent' %}
+              {% comment %} Kelmaganlar uchun hamon ✗ belgisi {% endcomment %}
+              <span style="color:#dc3545; font-weight:bold;">
+                {% if cell.is_edited_past %}[ ✗ ]{% else %}✗{% endif %}
+              </span>
+            {% elif cell.score is not None %}
+              {% comment %} Baho mavjud bo'lsa faqat bahoning o'zi chiqadi {% endcomment %}
+              <span class="text-dark fw-bold">
+                {% if cell.is_edited_past %}
+                  [ {{ cell.score|floatformat:"0" }} ]
+                {% else %}
+                  {{ cell.score|floatformat:"0" }}
+                {% endif %}
+              </span>
+            {% else %}
+              {% comment %} Talaba darsda kelgan (present) lekin hali baho qo'yilmagan bo'lsa yoki dars hali bo'lmagan bo'lsa {% endcomment %}
+              <span style="color:#dee2e6;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="fw-bold text-primary" style="background:#eff6ff; font-size:0.85rem;">
+            {{ row.total_score }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>{# end tab-grade #}
+
 </div>
 
-<div class="container-fluid mt-4 px-4">
+<script>
+function switchTab(tab) {
+  document.getElementById('tab-att').style.display   = tab === 'att'   ? '' : 'none';
+  document.getElementById('tab-grade').style.display = tab === 'grade' ? '' : 'none';
+  document.getElementById('att-tab').classList.toggle('active',   tab === 'att');
+  document.getElementById('grade-tab').classList.toggle('active', tab === 'grade');
+  localStorage.setItem('journalTab_{{ group.pk }}', tab);
+}
 
-    <div class="card info-card mb-3 p-3">
-        <div class="row text-center">
-            <div class="col-md-3">
-                <div class="text-muted small">Fan</div>
-                <div class="fw-bold">{{ group.course.subject }}</div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Guruh</div>
-                <div class="fw-bold">{{ group.group_number }}-guruh</div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Jami darslar</div>
-                <div class="fw-bold">{{ schedules|length }} ta</div>
-            </div>
-            <div class="col-md-3">
-                <div class="text-muted small">Bloklash chegarasi</div>
-                <div class="fw-bold text-danger">25% qoldirsa</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="d-flex gap-2 mb-3 align-items-center flex-wrap" style="font-size:0.82rem;">
-        <span class="px-2 py-1 rounded" style="background:#d4edda;color:#155724;font-weight:600;">✓ Keldi</span>
-        <span class="px-2 py-1 rounded" style="background:#f8d7da;color:#721c24;font-weight:600;">✗ Kelmadi</span>
-        <span class="px-2 py-1 rounded" style="background:#f5f5f5;color:#aaa;">— Belgilanmagan</span>
-        <span class="px-2 py-1 rounded" style="background:#c8f7c5;color:#155724;font-weight:600;">📅 Davomat belgilangan</span>
-        <span class="px-2 py-1 rounded" style="background:#ffd5d5;color:#c62828;font-weight:600;">⚠ O'tib ketgan</span>
-        <span class="px-2 py-1 rounded" style="background:#fff9c4;color:#856404;font-weight:600;">📌 Bugun</span>
-
-        <a href="{% url 'teacher_group_journal' group.pk %}" class="btn btn-info btn-sm text-white">📊 Jurnal</a>
-        <a href="{% url 'teacher_grades' group.pk %}" class="btn btn-success btn-sm ms-1">📝 Qaydnoma</a>
-    </div>
-
-    <div class="card info-card mb-4">
-        <div class="section-header d-flex justify-content-between align-items-center">
-            <span>Davomat & Qaydnoma — {{ group.course.subject }} {{ group.group_number }}-guruh</span>
-            <span style="font-size:0.8rem;opacity:0.85;">
-                Sanani bossangiz Davomat, ⭐ tugmasini bossangiz Kunlik Baho qo'yiladi 👆
-            </span>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-bordered mb-0" style="font-size:0.82rem;">
-                <thead>
-                    <tr>
-                        <th style="min-width:180px; vertical-align: middle !important;"># Talaba</th>
-                        {% for sched in schedules %}
-                        <th class="date-th {{ sched.date_class }}"
-                            title="{{ sched.date|date:'d.m.Y' }} — {% if sched.is_marked %}Davomat belgilangan{% elif sched.is_past %}O'tib ketgan{% elif sched.is_today %}Bugun{% else %}Kelgusi{% endif %}">
-
-                            <a href="{% url 'teacher_attendance' group_pk=group.pk sched_pk=sched.pk %}" class="date-link">
-                                {{ sched.date|date:"d.m" }}<br>
-                                <span style="font-size:0.65rem;">{{ sched.lesson_number }}-dars</span><br>
-                                {% if sched.is_today %}
-                                    <span style="font-size:0.65rem;">📌</span>
-                                {% elif sched.is_marked %}
-                                    <span style="font-size:0.65rem;">✓</span>
-                                {% elif sched.is_past %}
-                                    <span style="font-size:0.65rem;color:#c62828;">!</span>
-                                {% endif %}
-                            </a>
-
-                            <a href="{% url 'teacher_daily_grade' sched_pk=sched.pk %}" class="grade-link" title="Kunlik baho qo'yish">
-                                ⭐ Baho
-                            </a>
-                        </th>
-                        {% endfor %}
-                        <th class="text-center" style="min-width:55px; vertical-align: middle !important;">Keldi</th>
-                        <th class="text-center" style="min-width:55px; vertical-align: middle !important;">Kelmadi</th>
-                        <th class="text-center" style="min-width:80px; vertical-align: middle !important;">Qoldirgan %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in rows %}
-                    <tr {% if row.is_blocked %}class="blocked-row"{% endif %}>
-                        <td>
-                            <span class="text-muted me-1">{{ forloop.counter }}.</span>
-                            <b>{{ row.student.first_name }} {{ row.student.last_name }}</b>
-                            {% if row.is_blocked %}
-                            <span class="badge bg-danger ms-1" style="font-size:0.65rem;">🚫</span>
-                            {% endif %}
-                        </td>
-                        {% for cell in row.cells %}
-                        <td class="{% if cell == 'present' %}att-present{% elif cell == 'absent' %}att-absent{% else %}att-none{% endif %}">
-                            {% if cell == 'present' %}✓
-                            {% elif cell == 'absent' %}✗
-                            {% else %}—{% endif %}
-                        </td>
-                        {% endfor %}
-                        <td class="text-center fw-bold" style="color:#155724;">{{ row.came }}</td>
-                        <td class="text-center fw-bold" style="color:#721c24;">{{ row.missed }}</td>
-                        <td class="text-center fw-bold"
-                            style="color:{% if row.missed_percent > 25 %}#dc3545{% else %}#155724{% endif %};">
-                            {{ row.missed_percent }}%
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="100" class="text-center text-muted py-4">Talabalar yo'q</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+document.addEventListener('DOMContentLoaded', function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlTab    = urlParams.get('tab');
+  const savedTab  = localStorage.getItem('journalTab_{{ group.pk }}');
+  const activeTab = urlTab || savedTab || 'att';
+  switchTab(activeTab);
+});
+</script>
+{% endblock %}

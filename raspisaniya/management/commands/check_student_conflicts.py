@@ -86,7 +86,7 @@ class Command(BaseCommand):
                     group__teacher=grp.teacher,
                 ).select_related('group__course__subject')
 
-                # O'quvchilar band paralar
+                # talabalar band paralar
                 student_scheds = GroupSchedule.objects.filter(
                     date=cur,
                     group__students__id__in=student_ids,

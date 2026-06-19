@@ -25,13 +25,13 @@
             <option value="">— tanlang —</option>
             {% for item in subjects_data %}
                 <option value="{{ item.subject.id }}">
-                    {{ item.subject }} — {{ item.student_count }} ta o'quvchi
+                    {{ item.subject }} — {{ item.student_count }} ta talaba
                 </option>
             {% endfor %}
         </select>
         {% if not subjects_data %}
             <div class="alert alert-warning mt-2">
-                ⚠ Hozircha 10 yoki undan ko'p o'quvchi qarzdor bo'lgan fan yo'q.
+                ⚠ Hozircha 10 yoki undan ko'p talaba qarzdor bo'lgan fan yo'q.
             </div>
         {% endif %}
     </div>
@@ -125,7 +125,10 @@ const ALL_GROUP_INDICES = [
         <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh —
         jami <b>{{ total_lessons }}</b> para dars, haftada <b>{{ lessons_per_week }}</b> marta.
         <br>
-        <small class="text-muted">🤖 Tizim dars kunlari va vaqtlarini avtomatik joylastiradi</small>
+        <small class="text-muted">
+            🤖 Tizim dars kunlari va vaqtlarini avtomatik joylastiradi.
+            O'qituvchi keyinroq biriktiriladi.
+        </small>
     </div>
 
     {% if skipped_langs %}
@@ -159,7 +162,7 @@ const ALL_GROUP_INDICES = [
                 {{ forloop.counter }}-Guruh
             </span>
             <span class="badge {% if sc < 10 %}bg-danger{% else %}bg-primary{% endif %}"
-                  id="badge_{{ gi }}">{{ sc }} ta o'quvchi</span>
+                  id="badge_{{ gi }}">{{ sc }} ta talaba</span>
             <span class="badge bg-info text-dark">{{ gdata.lang_name }}</span>
             {% if sc < 10 %}
             <span class="badge bg-danger" id="warn_{{ gi }}">⚠ 10 tadan kam!</span>
@@ -168,24 +171,16 @@ const ALL_GROUP_INDICES = [
             {% endif %}
         </h5>
 
-        {# O'qituvchi #}
-        <div class="mb-3 p-2 bg-white rounded border">
-            <label class="form-label fw-bold text-secondary small">O'qituvchi tanlang</label>
-            <div class="d-flex gap-3 flex-wrap">
-                {% for t in teachers %}
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="teacher_{{ gi }}" value="{{ t.id }}" id="t_{{ gi }}_{{ t.id }}" required>
-                    <label class="form-check-label" for="t_{{ gi }}_{{ t.id }}">{{ t }}</label>
-                </div>
-                {% empty %}
-                <div class="alert alert-warning py-1 m-0 small">Bu fanning o'qituvchisi yo'q</div>
-                {% endfor %}
-            </div>
+        {# ── O'QITUVCHI BLOKI OLIB TASHLANDI ── #}
+        {# O'qituvchi keyinroq "Dars jadvali" sahifasida biriktiriladi #}
+
+        <div class="alert alert-secondary py-2 mb-3 small">
+            👤 O'qituvchi keyinroq biriktiriladi
         </div>
 
-        {# O'quvchilar ro'yxati #}
+        {# Talabalar ro'yxati #}
         <div>
-            <label class="fw-bold mb-2 text-secondary small">O'QUVCHILAR RO'YXATI</label>
+            <label class="fw-bold mb-2 text-secondary small">TALABALAR RO'YXATI</label>
 
             <div class="row g-2 px-2 py-1 bg-secondary bg-opacity-10 rounded fw-bold text-muted mb-2 small d-none d-md-flex text-center text-md-start">
                 <div class="col-md-5">F.I.Sh</div>
@@ -196,51 +191,74 @@ const ALL_GROUP_INDICES = [
 
             <div id="students_list_{{ gi }}" class="bg-white rounded border p-1">
                 {% for student in gdata.students %}
-                <div class="row g-2 align-items-center mx-0 py-2 border-bottom" id="row_{{ gi }}_{{ student.id }}">
+                <div class="row g-2 align-items-center mx-0 py-2 border-bottom"
+                     id="row_{{ gi }}_{{ student.id }}">
                     <input type="hidden" name="students_{{ gi }}" value="{{ student.id }}">
 
                     <div class="col-md-5 d-flex align-items-center text-wrap">
-                        <span class="text-muted num-span me-2" style="min-width:20px;">{{ forloop.counter }}.</span>
+                        <span class="text-muted num-span me-2" style="min-width:20px;">
+                            {{ forloop.counter }}.
+                        </span>
                         <span class="fw-medium text-dark">{{ student }}</span>
                     </div>
 
                     <div class="col-md-3 text-start text-md-center">
-                        <span class="badge bg-secondary py-1.5 px-2" style="font-size:0.8em; font-weight: 500;">
+                        <span class="badge bg-secondary py-1.5 px-2"
+                              style="font-size:0.8em; font-weight:500;">
                             🗂 {{ student.group.name|default:student.group|default:"Guruhsiz" }}
                         </span>
                     </div>
 
                     <div class="col-md-2 text-start text-md-center">
-                        <span class="badge {% if student.language == 'ru' %}bg-danger{% else %}bg-success{% endif %} py-1.5 px-2" style="font-size:0.75em;">
+                        <span class="badge {% if student.language == 'ru' %}bg-danger{% else %}bg-success{% endif %} py-1.5 px-2"
+                              style="font-size:0.75em;">
                             {{ student.language|upper }}
                         </span>
                     </div>
 
                     <div class="col-md-2 d-flex justify-content-end gap-1 align-items-center">
-                        <select class="form-select form-select-sm" style="font-size: 0.8rem;"
+                        <select class="form-select form-select-sm" style="font-size:0.8rem;"
                                 onchange="moveStudentToGroup({{ gi }}, {{ student.id }}, '{{ student|escapejs }}', this)">
                             <option value="">→ Ko'chirish</option>
                             {% for og in all_groups %}
                             {% if og.index != gi %}
-                            <option value="{{ og.index }}">{{ og.lang_name }} ({{ og.students|length }})</option>
+                            <option value="{{ og.index }}">
+                                {{ og.lang_name }} ({{ og.students|length }})
+                            </option>
                             {% endif %}
                             {% endfor %}
                         </select>
-                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" style="height:31px;"
-                                onclick="removeStudent({{ gi }}, {{ student.id }}, '{{ student|escapejs }}')">✕</button>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger py-0 px-2"
+                                style="height:31px;"
+                                onclick="removeStudent({{ gi }}, {{ student.id }}, '{{ student|escapejs }}')">
+                            ✕
+                        </button>
                     </div>
                 </div>
                 {% endfor %}
             </div>
 
             <div class="mt-2">
-                <button type="button" class="btn btn-sm btn-outline-success" onclick="toggleAddPanel({{ gi }})">➕ Talaba qo'shish</button>
-                <div id="add_panel_{{ gi }}" style="display:none;" class="mt-2 d-flex gap-2 flex-wrap">
-                    <select class="form-select form-select-sm" id="add_select_{{ gi }}" style="max-width:320px;">
+                <button type="button" class="btn btn-sm btn-outline-success"
+                        onclick="toggleAddPanel({{ gi }})">
+                    ➕ Talaba qo'shish
+                </button>
+                <div id="add_panel_{{ gi }}" style="display:none;"
+                     class="mt-2 d-flex gap-2 flex-wrap">
+                    <select class="form-select form-select-sm"
+                            id="add_select_{{ gi }}"
+                            style="max-width:320px;">
                         <option value="">— tanlang —</option>
                     </select>
-                    <button type="button" class="btn btn-sm btn-success" onclick="addStudentToGroup({{ gi }})">Qo'shish</button>
-                    <button type="button" class="btn btn-sm btn-secondary" onclick="toggleAddPanel({{ gi }})">Bekor</button>
+                    <button type="button" class="btn btn-sm btn-success"
+                            onclick="addStudentToGroup({{ gi }})">
+                        Qo'shish
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            onclick="toggleAddPanel({{ gi }})">
+                        Bekor
+                    </button>
                 </div>
             </div>
         </div>
@@ -248,13 +266,12 @@ const ALL_GROUP_INDICES = [
 
     {% endwith %}
     {% endfor %}
-
     {% endfor %}
 
     <div class="d-flex gap-2 mt-4">
         <a href="{% url 'lesson_create' %}" class="btn btn-secondary">← Orqaga</a>
         <button type="submit" class="btn btn-success w-100">
-            🤖 Avtomatik joylashtirish va saqlash
+            💾 Guruhlarni saqlash
         </button>
     </div>
 </form>
@@ -269,7 +286,9 @@ function toggleAddPanel(gi) {
     const sel = document.getElementById(`add_select_${gi}`);
     while (sel.options.length > 1) sel.remove(1);
     Object.values(ALL_STUDENTS_MAP).forEach(st => {
-        const inAny = ALL_GROUP_INDICES.some(idx => !!document.getElementById(`row_${idx}_${st.id}`));
+        const inAny = ALL_GROUP_INDICES.some(
+            idx => !!document.getElementById(`row_${idx}_${st.id}`)
+        );
         if (!inAny) {
             const optionText = `${st.name} | Guruh: ${st.group_name || 'Yo\'q'} | [${st.lang}]`;
             sel.appendChild(new Option(optionText, st.id));
@@ -299,7 +318,11 @@ function addStudentDirectly(toGi, studentId) {
 
     ALL_GROUP_INDICES.forEach(idx => {
         const existRow = document.getElementById(`row_${idx}_${studentId}`);
-        if (existRow) { existRow.remove(); updateGroupUI(idx); renumberGroup(idx); }
+        if (existRow) {
+            existRow.remove();
+            updateGroupUI(idx);
+            renumberGroup(idx);
+        }
     });
 
     const list = document.getElementById(`students_list_${toGi}`);
@@ -322,35 +345,33 @@ function addStudentDirectly(toGi, studentId) {
 
     div.innerHTML = `
         <input type="hidden" name="students_${toGi}" value="${studentId}">
-
         <div class="col-md-5 d-flex align-items-center text-wrap">
             <span class="text-muted num-span me-2" style="min-width:20px;">${num}.</span>
             <span class="fw-medium text-dark">${studentData.name}</span>
         </div>
-
         <div class="col-md-3 text-start text-md-center">
-            <span class="badge bg-secondary py-1.5 px-2" style="font-size:0.8em; font-weight: 500;">
+            <span class="badge bg-secondary py-1.5 px-2" style="font-size:0.8em;font-weight:500;">
                 🗂 ${studentData.group_name || 'Guruhsiz'}
             </span>
         </div>
-
         <div class="col-md-2 text-start text-md-center">
             <span class="badge ${langBadgeColor} py-1.5 px-2" style="font-size:0.75em;">
                 ${studentData.lang}
             </span>
         </div>
-
         <div class="col-md-2 d-flex justify-content-end gap-1 align-items-center">
-            <select class="form-select form-select-sm" style="font-size: 0.8rem;"
+            <select class="form-select form-select-sm" style="font-size:0.8rem;"
                     onchange="moveStudentToGroup(${toGi}, ${studentId}, '${escName}', this)">
                 ${moveOpts}
             </select>
-            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" style="height:31px;"
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                    style="height:31px;"
                     onclick="removeStudent(${toGi}, ${studentId}, '${escName}')">✕</button>
         </div>
     `;
     list.appendChild(div);
     updateGroupUI(toGi);
+    renumberGroup(toGi);
 }
 
 function moveStudentToGroup(fromGi, studentId, studentName, selectEl) {
@@ -368,7 +389,7 @@ function updateGroupUI(gi) {
     const warn  = document.getElementById(`warn_${gi}`);
     const card  = document.getElementById(`group_card_${gi}`);
     if (badge) {
-        badge.textContent = `${count} ta o'quvchi`;
+        badge.textContent = `${count} ta talaba`;
         badge.className = `badge ${count < 10 ? 'bg-danger' : 'bg-primary'}`;
     }
     if (warn) warn.classList.toggle('d-none', count >= 10);
