@@ -109,7 +109,7 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default='postgres://postgres:Sohib030@localhost:5432/raspisaniya_db',
+        default=env('DATABASE_URL'),
         conn_max_age=600
     )
 }
