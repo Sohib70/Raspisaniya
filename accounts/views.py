@@ -614,7 +614,7 @@ def teacher_attendance_overview(request, group_pk):
         "total_lessons": total_lessons,
     })
 
-# 🛠️ TO'LIQ VA XATOLIKSIZ KO'RINISHGA KELTIRILGAN VEDOMOST FUNKSIYASI
+
 @login_required
 def teacher_grades(request, group_pk):
     try:
@@ -660,7 +660,13 @@ def teacher_grades(request, group_pk):
         for student in students:
             if att_map_blocked.get(student.pk):
                 continue
+
             student_grades = {}
+            # Birinchi navbatda joriy bahoni yangilab, olib olamiz
+            current_grade = sync_and_get_current_grade(student)
+            student_grades['current'] = current_grade
+
+            # Har bir maydonni tekshiramiz
             for field, bounds in LIMITS.items():
                 raw_val = request.POST.get(f"{field}_{student.pk}", "").strip()
                 if raw_val == "":
@@ -680,15 +686,39 @@ def teacher_grades(request, group_pk):
                     has_error = True
                     break
                 student_grades[field] = val
+
             if has_error:
                 break
 
-            student_grades['current'] = sync_and_get_current_grade(student)
+            # === YAKUNIY BAHONI BLOKLASH SHARTI ===
+            midterm_val = student_grades.get('midterm')
+            final_val = student_grades.get('final')
+
+            if final_val is not None:
+                # 1. Joriy baho 18 dan kam bo'lsa
+                if current_grade < 18:
+                    messages.error(
+                        request,
+                        f"{student.first_name}ning joriy bahosi ({current_grade}) 18 dan kam bo'lgani uchun yakuniy baho qo'yish mumkin emas!"
+                    )
+                    has_error = True
+                    break
+
+                # 2. Oraliq baho qo'yilmagan yoki 12 dan kam bo'lsa
+                if midterm_val is None or midterm_val < 12:
+                    messages.error(
+                        request,
+                        f"{student.first_name}ning oraliq bahosi 12 dan kam yoki qo'yilmagan! Yakuniy baho qo'yish taqiqlanadi."
+                    )
+                    has_error = True
+                    break
+
             valid_grades_data.append((student, student_grades))
 
         if has_error:
             return redirect('teacher_grades', group_pk=group_pk)
 
+        # Hammasi toza o'tsa bazaga saqlaymiz
         for student, grades in valid_grades_data:
             Grade.objects.update_or_create(
                 student=student, course_group=group,
