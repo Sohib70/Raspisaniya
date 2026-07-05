@@ -36,10 +36,8 @@ from django.utils.dateparse import parse_date
 from .forms import StudentForm, StudentImportForm, TeacherForm, TeacherImportForm, SubjectForm
 from .models import (
     Attendance, Course, CourseGroup, Grade, Group, GroupSchedule,
-    LANGUAGE_CHOICES, Room, Student, Subject, Teacher
+    LANGUAGE_CHOICES, Room, Student, Subject, Teacher, DailyGrade
 )
-
-
 
 
 
@@ -1007,15 +1005,23 @@ def lesson_list(request):
     courses = Course.objects.select_related('subject').prefetch_related('groups').all()
     if q:
         courses = courses.filter(subject__name__icontains=q)
+
     courses_data = []
     for course in courses:
         total = course.groups.count()
         scheduled = course.groups.filter(is_scheduled=True).count()
+
+        # Kurs guruhlari ichida o'qituvchisi biriktirilmagan guruh bormi?
+        # Agar kamida 1 ta o'qituvchisiz guruh bo'lsa True, hammasida bo'lsa False qaytaradi
+        has_unassigned = course.groups.filter(teacher__isnull=True).exists()
+
         courses_data.append({
             'course': course,
             'total_groups': total,
             'scheduled_groups': scheduled,
+            'has_unassigned_teachers': has_unassigned,  # HTML shablonimiz uchun yangi flag
         })
+
     return render(request, "raspisaniya/lesson_list.html", {"courses_data": courses_data, "q": q})
 
 
@@ -1472,7 +1478,8 @@ def teacher_list(request):
     q = request.GET.get('q', '').strip()
     sort = request.GET.get('sort', 'name_asc')
 
-    teachers = Teacher.objects.prefetch_related('subjects').all()
+    # Guruhlarni prefetch_related qilib olamiz (bazaga ortiqcha og'irlik tushmasligi uchun)
+    teachers = Teacher.objects.prefetch_related('subjects', 'groups').all()
 
     if q:
         teachers = teachers.filter(first_name__icontains=q) | \
@@ -1484,10 +1491,10 @@ def teacher_list(request):
 
     # ID bo'yicha saralashda T- dan keyingi raqamni olib raqam sifatida tartiblash
     if sort in ('id_asc', 'id_desc'):
-        import re
         def extract_num(t):
             m = re.search(r'\d+', t.teacher_id or '')
             return int(m.group()) if m else 0
+
         reverse = (sort == 'id_desc')
         teachers = sorted(teachers, key=extract_num, reverse=reverse)
     elif sort == 'name_asc':
@@ -1501,10 +1508,22 @@ def teacher_list(request):
     else:
         teachers = teachers.order_by('first_name')
 
+    # HTML shablonda oson ishlatishimiz uchun har bir o'qituvchining dars yuklamasini yig'ib chiqamiz
+    teachers_data = []
+    for teacher in teachers:
+        # O'qituvchiga biriktirilgan jami guruhlar soni
+        group_count = teacher.groups.count()
+
+        teachers_data.append({
+            'teacher': teacher,
+            'group_count': group_count,
+            'has_groups': group_count > 0
+        })
+
     subjects = Subject.objects.all().order_by('name')
 
     return render(request, 'raspisaniya/teacher_list.html', {
-        'teachers': teachers,
+        'teachers_data': teachers_data,  # Endi shablonga teachers_data yuboramiz
         'q': q,
         'subjects': subjects,
         'selected_subject': request.GET.get('subject', ''),
@@ -4023,3 +4042,384 @@ def teacher_capacity_check(request):
         'total_impossible': sum(1 for r in results if not r['possible']),
         'total_possible':   sum(1 for r in results if r['possible']),
     })
+
+
+@login_required
+def assign_teachers_auto(request):
+    """
+    TIZIMDAGI BARCHA kurslarning o'qituvchisi yo'q guruhlariga konfliktlarsiz avtomatik o'qituvchi taqsimlash.
+    """
+    if request.method != "POST":
+        return redirect('lesson_list')
+
+    courses = Course.objects.filter(groups__teacher__isnull=True).distinct().select_related('subject')
+
+    if not courses.exists():
+        messages.info(request, "Tizimda o'qituvchi biriktirilmagan guruhlar topilmadi.")
+        return redirect('lesson_list')
+
+    total_assigned_count = 0
+    all_failed_details = []
+
+    LOCAL_PARA_TIMES = [
+        ("08:30", "09:50"), ("10:00", "11:20"), ("11:30", "12:50"),
+        ("13:30", "14:50"), ("15:00", "16:20"), ("16:30", "17:50")
+    ]
+
+    for course in courses:
+        groups = list(course.groups.filter(teacher__isnull=True).prefetch_related('students'))
+        candidates = list(Teacher.objects.filter(subjects=course.subject).order_by('pk'))
+
+        if not candidates:
+            for grp in groups:
+                all_failed_details.append(f"{course.subject.name} ({grp.group_number}-guruh): O'qituvchi umuman yo'q")
+            continue
+
+        start = course.start_date
+        end = course.end_date
+
+        if course.total_lessons >= 20:
+            check_wds = [0, 2, 4]
+        elif course.total_lessons >= 12:
+            check_wds = [1, 3]
+        else:
+            check_wds = [0, 1, 2, 3, 4]
+
+        week_monday = start - timedelta(days=start.weekday())
+
+        def get_teacher_free_slots_count(teacher, exclude_group=None):
+            qs = GroupSchedule.objects.filter(
+                group__teacher=teacher,
+                date__gte=start,
+                date__lte=end,
+            )
+            if exclude_group:
+                qs = qs.exclude(group=exclude_group)
+            busy_count = qs.count()
+            work_days = sum(
+                1 for i in range((end - start).days + 1)
+                if (start + timedelta(days=i)).weekday() <= 4
+            )
+            return work_days * 6 - busy_count
+
+        def has_first_week_slot(teacher):
+            paras = globals().get('PARA_TIMES', LOCAL_PARA_TIMES)
+            for wd in check_wds:
+                d = week_monday + timedelta(days=wd)
+                if d < start or d > end:
+                    continue
+                teacher_busy = set()
+                for sc in GroupSchedule.objects.filter(date=d, group__teacher=teacher):
+                    st = sc.start_time or sc.group.start_time
+                    if st:
+                        for i, (ps, _) in enumerate(paras):
+                            if ps == st:
+                                teacher_busy.add(i)
+                free = [i for i in range(len(paras)) if i not in teacher_busy]
+                if len(free) >= 2:
+                    return True
+            return False
+
+        # Har bir guruh uchun o'qituvchi saralash
+        for grp in groups:
+            best_teacher = None
+            max_free = -1
+
+            for teacher in candidates:
+                free = get_teacher_free_slots_count(teacher)
+
+                # 1. Yuklama yetarliligini tekshirish
+                if free < course.total_lessons:
+                    continue
+
+                # 2. Birinchi haftada bo'sh sloti bormi
+                if not has_first_week_slot(teacher):
+                    continue
+
+                # 3. TALABALARNING bandlik vaqtlarini yig'ish
+                student_ids = list(grp.students.values_list('id', flat=True))
+                student_busy_in_week = set()
+                for wd in check_wds:
+                    d = week_monday + timedelta(days=wd)
+                    if d < start or d > end:
+                        continue
+                    for sc in GroupSchedule.objects.filter(
+                            date=d,
+                            group__students__id__in=student_ids,
+                    ).distinct():
+                        st = sc.start_time or sc.group.start_time
+                        if st:
+                            student_busy_in_week.add((d, st))
+
+                # 4. O'QITUVCHINING mavjud bandlik vaqtlarini yig'ish
+                teacher_times_in_week = set()
+                for wd in check_wds:
+                    d = week_monday + timedelta(days=wd)
+                    if d < start or d > end:
+                        continue
+                    for sc in GroupSchedule.objects.filter(date=d, group__teacher=teacher):
+                        st = sc.start_time or sc.group.start_time
+                        if st:
+                            teacher_times_in_week.add((d, st))
+
+                # 5. [ASOSIY TUZATISH] QAT'IY KESISHMA TEKSHIRUVI
+                # Agar o'qituvchi boshqa bir guruh bilan aynan shu kuni va parada band bo'lsa
+                # yoki talabalar band bo'lsa → bu o'qituvchini umuman ko'rib chiqmaymiz!
+                overlap = teacher_times_in_week & student_busy_in_week
+
+                # Agar o'qituvchining o'zi shu haftada talabalar darsga keladigan vaqtda boshqa guruhda band bo'lsa:
+                if overlap:
+                    continue  # Conflict bor, keyingi o'qituvchiga o'tadi!
+
+                # Qo'shimcha tekshiruv: Kurs guruhlari darajasida (Group relation orqali)
+                # O'qituvchi allaqachon shu kursning boshqa guruhiga ayni vaqtda biriktirilgan bo'lsa:
+                if course.groups.filter(teacher=teacher,
+                                        start_time=grp.start_time).exists() and grp.start_time is not None:
+                    continue
+
+                # Agar barcha tekshiruvlardan o'tsa va eng optimali bo'lsa tanlaymiz
+                if free > max_free:
+                    max_free = free
+                    best_teacher = teacher
+
+            # O'qituvchini saqlash
+            if best_teacher:
+                grp.teacher = best_teacher
+                grp.save(update_fields=['teacher'])
+                total_assigned_count += 1
+
+                # Yangi biriktirilgan o'qituvchini nomzodlar ro'yxatida ham yangilab qo'yamiz
+                # (keyingi guruhga o'tganda uning free_slots'i kamayganini hisobga olishi uchun)
+                teacher.free_slots_updated = free - course.total_lessons
+            else:
+                all_failed_details.append(
+                    f"{course.subject.name} ({grp.group_number}-guruh): Mos keladigan konfliktlarsiz o'qituvchi topilmadi")
+
+    if total_assigned_count > 0:
+        messages.success(request,
+                         f"✅ Jami {total_assigned_count} ta guruhga o'qituvchilar konfliktlarsiz muvaffaqiyatli biriktirildi!")
+
+    if all_failed_details:
+        for fail_msg in all_failed_details:
+            messages.error(request, f"❌ Joy ajratilmadi: {fail_msg}")
+        messages.warning(request,
+                         "💡 Ayrim guruhlarga vaqt to'g'ri kelmagani (conflict bergani) sababli o'qituvchi biriktirilmadi. Ularni qo'lda ko'rib chiqishingiz mumkin.")
+
+    return redirect('lesson_list')
+
+
+@login_required
+def teacher_assignment_status(request, course_pk):
+    """
+    Kurs uchun o'qituvchi taqsimlash holati — JSON.
+    Har bir guruh uchun: o'qituvchi biriktirilganmi, kim biriktirilgan.
+    """
+    course  = get_object_or_404(Course, pk=course_pk)
+    groups  = course.groups.select_related('teacher').prefetch_related('students')
+    result  = []
+
+    for grp in groups:
+        result.append({
+            'group_number': grp.group_number,
+            'student_count': grp.students.count(),
+            'teacher': grp.teacher.first_name if grp.teacher else None,
+            'is_scheduled': grp.is_scheduled,
+        })
+
+    # Qancha o'qituvchi kerak
+    candidates = Teacher.objects.filter(subjects=course.subject).count()
+    unassigned = sum(1 for r in result if not r['teacher'])
+
+    return JsonResponse({
+        'groups':             result,
+        'total_groups':       len(result),
+        'unassigned_count':   unassigned,
+        'available_teachers': candidates,
+        'needs_more':         max(0, unassigned - candidates),
+    })
+
+
+
+HEADER_FONT = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+HEADER_FILL = PatternFill(start_color="1A237E", end_color="1A237E", fill_type="solid")
+CENTER_ALIGN = Alignment(horizontal="center", vertical="center")
+LEFT_ALIGN = Alignment(horizontal="left", vertical="center")
+
+
+def format_excel_sheet(ws):
+    """Excel jadvalini chiroyli formatlash uchun yordamchi funksiya"""
+    ws.row_dimensions[1].height = 28
+    for cell in ws[1]:
+        cell.font = HEADER_FONT
+        cell.fill = HEADER_FILL
+        cell.alignment = CENTER_ALIGN
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)   # ✅ to'g'irlandi
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+        for cell in col:
+            if cell.row > 1:
+                cell.alignment = LEFT_ALIGN if cell.column == 1 else CENTER_ALIGN
+
+
+@login_required
+def export_attendance_only_excel(request, group_pk):
+    """FAQAT DAVOMATNI EXCELGA YUKLASH"""
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    schedules = group.schedule.all().order_by('date', 'lesson_number')
+    students = group.students.all().order_by('first_name')
+    total_lessons = schedules.count()
+
+    # Barcha davomat yozuvlarini bir martada olib, tez qidirish uchun lug'atga solamiz
+    attendance_qs = Attendance.objects.filter(
+        schedule__group=group
+    ).values('student_id', 'schedule_id', 'is_present')
+    att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in attendance_qs}
+
+    rows = []
+    for student in students:
+        cells = []
+        came = missed = 0
+        for sched in schedules:
+            val = att_map.get((student.id, sched.id))
+            if val is True:
+                came += 1
+                cells.append('present')
+            elif val is False:
+                missed += 1
+                cells.append('absent')
+            else:
+                cells.append('none')
+
+        missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
+
+        rows.append({
+            'student': student,
+            'cells': cells,
+            'came': came,
+            'missed': missed,
+            'missed_percent': missed_percent,
+            'is_blocked': is_blocked,
+        })
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Davomat"
+
+    headers = ["# Talaba"]
+    for sched in schedules:
+        headers.append(f"{sched.date.strftime('%d.%m')} / {sched.lesson_number}-dars")
+    headers.extend(["Keldi", "Kelmadi", "%"])
+    ws.append(headers)
+
+    for idx, row in enumerate(rows, start=1):
+        name = f"{idx}. {row['student'].first_name}"
+        if row['is_blocked']:
+            name += " (bloklangan)"
+        row_data = [name]
+        for cell in row['cells']:
+            if cell == 'present':
+                row_data.append("✓")
+            elif cell == 'absent':
+                row_data.append("✗")
+            else:
+                row_data.append("—")
+        row_data.extend([row['came'], row['missed'], f"{row['missed_percent']}%"])
+        ws.append(row_data)
+
+    format_excel_sheet(ws)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename=davomat_{group.group_number}.xlsx'
+    wb.save(response)
+    return response
+
+
+@login_required
+def export_grades_only_excel(request, group_pk):
+    """FAQAT KUNLIK BAHOLARNI EXCELGA YUKLASH"""
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    schedules = group.schedule.all().order_by('date', 'lesson_number')
+    students = group.students.all().order_by('first_name')
+    total_lessons = schedules.count()
+
+    # Har bir darsning JN (30) ichidagi ulushi
+    per_lesson_max = (30 / total_lessons) if total_lessons > 0 else 0
+
+    attendance_qs = Attendance.objects.filter(
+        schedule__group=group
+    ).values('student_id', 'schedule_id', 'is_present')
+    att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in attendance_qs}
+
+    grade_qs = DailyGrade.objects.filter(
+        schedule__group=group
+    ).values('student_id', 'schedule_id', 'score')
+    grade_map = {(g['student_id'], g['schedule_id']): g['score'] for g in grade_qs}
+
+    rows = []
+    for student in students:
+        cells = []
+        missed = 0
+        total_score = 0.0
+        for sched in schedules:
+            is_present = att_map.get((student.id, sched.id))
+            score = grade_map.get((student.id, sched.id))
+
+            if is_present is False:
+                missed += 1
+                cells.append({'att': 'absent', 'score': None})
+            elif score is not None:
+                # ✅ TUZATILDI: xom ball emas, 30 balllik tizimga normallashtirilgan qiymat qo'shiladi
+                normalized = (score / 100) * per_lesson_max
+                total_score += normalized
+                cells.append({'att': None, 'score': score})  # jadvalda xom ball ko'rsatiladi
+            else:
+                cells.append({'att': None, 'score': None})
+
+        missed_percent = round(missed / total_lessons * 100) if total_lessons > 0 else 0
+        is_blocked = missed_percent > 25 and not group.teacher_can_edit
+
+        rows.append({
+            'student': student,
+            'cells': cells,
+            'total_score': round(total_score, 2),   # ✅ 2 xonagacha yaxlitlash (masalan 3.38)
+            'is_blocked': is_blocked,
+        })
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Kunlik baho"
+
+    headers = ["# Talaba"]
+    for sched in schedules:
+        headers.append(f"{sched.date.strftime('%d.%m')} / {sched.lesson_number}-dars")
+    headers.append("JN (30)")
+    ws.append(headers)
+
+    for idx, row in enumerate(rows, start=1):
+        name = f"{idx}. {row['student'].first_name}"
+        if row['is_blocked']:
+            name += " (bloklangan)"
+        row_data = [name]
+        for cell in row['cells']:
+            if cell['att'] == 'absent':
+                row_data.append("X")
+            elif cell['score'] is not None:
+                row_data.append(int(cell['score']))
+            else:
+                row_data.append("—")
+        row_data.append(row['total_score'])
+        ws.append(row_data)
+
+    format_excel_sheet(ws)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename=baholar_{group.group_number}.xlsx'
+    wb.save(response)
+    return response

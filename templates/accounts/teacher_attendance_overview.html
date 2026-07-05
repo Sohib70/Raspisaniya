@@ -10,9 +10,12 @@
         <small class="text-muted fs-6">({{ group.teacher.first_name }})</small>
       {% endif %}
     </h5>
-    <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-secondary ms-auto">
-      ← Orqaga
-    </a>
+
+    <div class="ms-auto d-flex gap-2">
+      <a href="{% url 'teacher_dashboard' %}" class="btn btn-sm btn-outline-secondary">
+        ← Orqaga
+      </a>
+    </div>
   </div>
 
   {% comment %} ── STATISTIKA ── {% endcomment %}
@@ -61,6 +64,14 @@
      1-TAB: DAVOMAT
   ══════════════════════════════ {% endcomment %}
   <div id="tab-att" class="border border-top-0 rounded-bottom p-2 bg-white">
+
+    <!-- FAQAT DAVOMAT UCHUN EXCEL TUGMASI -->
+    <div class="d-flex justify-content-end mb-2">
+      <a href="{% url 'export_attendance_only_excel' group.pk %}" class="btn btn-sm btn-success fw-bold shadow-sm d-inline-flex align-items-center gap-1">
+        📥 Davomatni Excel yuklash (.xlsx)
+      </a>
+    </div>
+
     <div class="table-responsive">
     <table class="table table-bordered table-sm align-middle mb-2 text-center" style="font-size:0.8rem; min-width:700px;">
       <thead>
@@ -127,10 +138,16 @@
     </div>
   </div>{# end tab-att #}
 
-  {% comment %} ══════════════════════════════
-     2-TAB: KUNLIK BAHO
-  ══════════════════════════════ {% endcomment %}
+  {% comment %} ── 2-TAB: KUNLIK BAHO ── {% endcomment %}
   <div id="tab-grade" class="border border-top-0 rounded-bottom p-2 bg-white" style="display:none;">
+
+    <!-- FAQAT BAHOLAR UCHUN EXCEL TUGMASI -->
+    <div class="d-flex justify-content-end mb-2">
+      <a href="{% url 'export_grades_only_excel' group.pk %}" class="btn btn-sm btn-primary fw-bold shadow-sm d-inline-flex align-items-center gap-1">
+        📥 Baholarni Excel yuklash (.xlsx)
+      </a>
+    </div>
+
     <div class="table-responsive">
     <table class="table table-bordered table-sm align-middle mb-2 text-center" style="font-size:0.8rem; min-width:700px;">
       <thead>
@@ -162,12 +179,10 @@
           {% for cell in row.cells %}
           <td class="p-1 text-center" style="font-size: 0.9rem;">
             {% if cell.att == 'absent' %}
-              {% comment %} Kelmaganlar uchun hamon ✗ belgisi {% endcomment %}
               <span style="color:#dc3545; font-weight:bold;">
                 {% if cell.is_edited_past %}[ ✗ ]{% else %}✗{% endif %}
               </span>
             {% elif cell.score is not None %}
-              {% comment %} Baho mavjud bo'lsa faqat bahoning o'zi chiqadi {% endcomment %}
               <span class="text-dark fw-bold">
                 {% if cell.is_edited_past %}
                   [ {{ cell.score|floatformat:"0" }} ]
@@ -176,7 +191,6 @@
                 {% endif %}
               </span>
             {% else %}
-              {% comment %} Talaba darsda kelgan (present) lekin hali baho qo'yilmagan bo'lsa yoki dars hali bo'lmagan bo'lsa {% endcomment %}
               <span style="color:#dee2e6;">—</span>
             {% endif %}
           </td>

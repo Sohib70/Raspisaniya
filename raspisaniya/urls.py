@@ -81,4 +81,9 @@ urlpatterns = [
     path('apply-swap-suggestion/',
          views.apply_swap_suggestion, name='apply_swap_suggestion'),
     path('teacher-capacity/', views.teacher_capacity_check, name='teacher_capacity_check'),
+    path('assign-teachers-auto/', views.assign_teachers_auto, name='assign_teachers_auto'),
+    path('course/<int:course_pk>/teacher-status/', views.teacher_assignment_status, name='teacher_assignment_status'),
+    path('teacher/group/<int:group_pk>/attendance/excel/', views.export_attendance_only_excel,
+         name='export_attendance_only_excel'),
+    path('teacher/group/<int:group_pk>/grades/excel/', views.export_grades_only_excel, name='export_grades_only_excel'),
 ]
