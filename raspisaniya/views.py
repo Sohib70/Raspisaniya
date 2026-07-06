@@ -1478,8 +1478,8 @@ def teacher_list(request):
     q = request.GET.get('q', '').strip()
     sort = request.GET.get('sort', 'name_asc')
 
-    # Guruhlarni prefetch_related qilib olamiz (bazaga ortiqcha og'irlik tushmasligi uchun)
-    teachers = Teacher.objects.prefetch_related('subjects', 'groups').all()
+    # 'groups' o'rniga modelingizga mos bo'lgan 'coursegroup_set' ni yuklaymiz
+    teachers = Teacher.objects.prefetch_related('subjects', 'coursegroup_set').all()
 
     if q:
         teachers = teachers.filter(first_name__icontains=q) | \
@@ -1494,7 +1494,6 @@ def teacher_list(request):
         def extract_num(t):
             m = re.search(r'\d+', t.teacher_id or '')
             return int(m.group()) if m else 0
-
         reverse = (sort == 'id_desc')
         teachers = sorted(teachers, key=extract_num, reverse=reverse)
     elif sort == 'name_asc':
@@ -1511,8 +1510,9 @@ def teacher_list(request):
     # HTML shablonda oson ishlatishimiz uchun har bir o'qituvchining dars yuklamasini yig'ib chiqamiz
     teachers_data = []
     for teacher in teachers:
-        # O'qituvchiga biriktirilgan jami guruhlar soni
-        group_count = teacher.groups.count()
+        # Keshdagi ma'lumotdan foydalanish uchun .count() o'rniga len(...all()) ishlatamiz.
+        # Bu bazaga qayta-qayta SQL so'rov yuborilishining oldini oladi (N+1 muammosi yechimi).
+        group_count = len(teacher.coursegroup_set.all())
 
         teachers_data.append({
             'teacher': teacher,
@@ -1523,7 +1523,7 @@ def teacher_list(request):
     subjects = Subject.objects.all().order_by('name')
 
     return render(request, 'raspisaniya/teacher_list.html', {
-        'teachers_data': teachers_data,  # Endi shablonga teachers_data yuboramiz
+        'teachers_data': teachers_data,
         'q': q,
         'subjects': subjects,
         'selected_subject': request.GET.get('subject', ''),
