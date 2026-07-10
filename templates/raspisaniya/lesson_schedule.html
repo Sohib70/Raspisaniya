@@ -29,8 +29,6 @@
         </div>
     </div>
 
-    {% comment %}messages base.html da ko'rsatiladi{% endcomment %}
-
     {% for item in groups_data %}
     <div class="mb-4">
         <div class="card border-0 shadow-sm mb-2" style="border-radius:12px;overflow:hidden;">
@@ -80,7 +78,7 @@
             <div class="col-md-5 mb-3">
                 <div class="card h-100">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <span>talabalar</span>
+                        <span>Talabalar</span>
                         <span class="badge bg-light text-dark">{{ item.group.students.count }} ta</span>
                     </div>
                     <div class="card-body p-0">
@@ -91,18 +89,25 @@
                                 ✏️
                             </button>
                         </p>
+
+                        {# SHU ERDA DROP-DOWN O'ZGARTIRILDI #}
                         <div style="display:none;" class="px-3 mb-2 gap-2">
                             <form method="post" action="{% url 'change_teacher' item.group.pk %}" class="d-flex gap-2 w-100">
                                 {% csrf_token %}
-                                <select name="teacher_id" class="form-select form-select-sm">
+                                <select name="teacher_id" class="form-select form-select-sm" required>
                                     <option value="">— tanlang —</option>
-                                    {% for t in teachers %}
-                                    <option value="{{ t.pk }}" {% if t.pk == item.group.teacher.pk %}selected{% endif %}>{{ t }}</option>
+                                    {% for t in item.teachers_list %}
+                                    <option value="{{ t.id }}"
+                                            {% if t.id == item.group.teacher.id %}selected{% endif %}
+                                            {% if t.is_busy %} class="text-danger fw-semibold" style="background-color: #fce8e6;" {% endif %}>
+                                        {{ t.full_name }} {% if t.is_busy %}(⚠️ Band){% endif %}
+                                    </option>
                                     {% endfor %}
                                 </select>
                                 <button type="submit" class="btn btn-sm btn-warning">Saqlash</button>
                             </form>
                         </div>
+
                         <p class="px-3 mb-2"><b>Vaqt:</b> {{ item.group.start_time|time:"H:i" }} — 80 daqiqa</p>
                         <p class="px-3 mb-2">
                             <b>Xona:</b>
@@ -170,7 +175,6 @@
                             </tbody>
                         </table>
 
-                        {# Talaba qo'shish #}
                         {% if item.addable_students %}
                         <div class="px-3 py-2 border-top bg-light">
                             <label class="fw-bold mb-1 text-success" style="font-size:13px;">➕ Talaba qo'shish</label>
@@ -279,7 +283,6 @@ function toggleTimeEdit(pk) {
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
-// Admin guruh uchun ruxsat berish/olish
 document.querySelectorAll('.permit-group-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var groupPk = this.dataset.groupPk;

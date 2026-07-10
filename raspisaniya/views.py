@@ -1201,20 +1201,60 @@ def lesson_create(request):
 @login_required
 def lesson_schedule(request, pk):
     course = get_object_or_404(Course, pk=pk)
+    # Guruhlarni va ularning jadvallarini yuklab olamiz
     groups = course.groups.prefetch_related('students', 'schedule').select_related('teacher')
     duration = timedelta(minutes=80)
 
+    # 1. Shu kursdagi barcha guruhlarda o'qiyotgan talabalar ID lari (takrorlanmaslik uchun)
     all_group_student_ids = set()
     for grp in groups:
         for s in grp.students.all():
             all_group_student_ids.add(s.id)
 
+    # Shu fandan qarzdor va hali hech qaysi guruhga qo'shilmagan talabalar
     addable_students = Student.objects.filter(
         debts=course.subject
     ).exclude(id__in=all_group_student_ids)
 
+    # 2. Shu fanga ixtisoslashgan barcha o'qituvchilar ro'yxati (Dropdown uchun asos)
+    course_teachers = Teacher.objects.filter(subjects=course.subject).order_by('first_name')
+
+    # Hafta kunlari nomlari lug'ati (agar loyihangizda yuqorida bo'lsa o'chirib qo'yishingiz mumkin)
+    WEEKDAY_NAMES = {0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba', 3: 'Payshanba', 4: 'Juma', 5: 'Shanba'}
+
     groups_data = []
     for grp in groups:
+        # Guruhning dars vaqtlari ro'yxatini shakllantiramiz
+        group_schedules = grp.schedule.exclude(start_time__isnull=True).values('date', 'start_time')
+
+        # ── O'QITUVCHILARNING BANDLIGINI TEKSHIRISH (Joriy guruh uchun) ──
+        teachers_with_status = []
+        for teacher in course_teachers:
+            is_busy = False
+
+            # Agar o'qituvchi joriy guruhning o'z o'qituvchisi bo'lsa, uni band deb ko'rsatmaymiz
+            if grp.teacher == teacher:
+                is_busy = False
+            else:
+                # O'qituvchining dars vaqtlarini joriy guruhniki bilan solishtiramiz
+                for sched in group_schedules:
+                    clash_exists = GroupSchedule.objects.filter(
+                        date=sched['date'],
+                        start_time=sched['start_time'],
+                        group__teacher=teacher
+                    ).exists()
+
+                    if clash_exists:
+                        is_busy = True
+                        break  # Bitta to'qnashuv topilsa, ushbu o'qituvchi uchun tekshiruvni to'xtatamiz
+
+            teachers_with_status.append({
+                'id': teacher.id,
+                'full_name': f"{teacher.first_name} {teacher.last_name}",
+                'is_busy': is_busy
+            })
+
+        # Jadvallarni formatlash
         schedule_list = []
         for s in grp.schedule.all().order_by('lesson_number'):
             st = s.start_time or grp.start_time
@@ -1225,22 +1265,25 @@ def lesson_schedule(request, pk):
             else:
                 start_str = "—"
                 end_str = "—"
+
             schedule_list.append({
                 "sched": s,
                 "weekday": WEEKDAY_NAMES.get(s.date.weekday(), "") if st else "",
                 "start_time": start_str,
                 "end_time": end_str,
             })
+
+        # Har bir guruh uchun unga xos bo'lgan o'qituvchilar ro'yxatini (band/bo'sh statusi bilan) qo'shamiz
         groups_data.append({
             "group": grp,
             "schedule_list": schedule_list,
             "addable_students": addable_students,
+            "teachers_list": teachers_with_status,  # <--- Yangi qo'shilgan qism
         })
 
     return render(request, "raspisaniya/lesson_schedule.html", {
         "course": course,
         "groups_data": groups_data,
-        "teachers": Teacher.objects.filter(subjects=course.subject),
         "rooms": Room.objects.all().order_by('name'),
     })
 
@@ -1341,13 +1384,63 @@ def change_lesson_time(request, sched_pk):
 @login_required
 def change_teacher(request, group_pk):
     group = get_object_or_404(CourseGroup, pk=group_pk)
-    if request.method == "POST":
-        teacher_id = request.POST.get("teacher_id")
-        if teacher_id:
-            teacher = get_object_or_404(Teacher, pk=teacher_id)
-            group.teacher = teacher
-            group.save()
-            messages.success(request, f"O'qituvchi {teacher} ga o'zgartirildi")
+    if request.method != "POST":
+        return redirect("lesson_schedule", pk=group.course.pk)
+
+    teacher_id = request.POST.get("teacher_id", "").strip()
+    if not teacher_id:
+        messages.error(request, "O'qituvchi tanlanmadi")
+        return redirect("lesson_schedule", pk=group.course.pk)
+
+    teacher = get_object_or_404(Teacher, pk=teacher_id)
+
+    # ── Vaqt to'qnashuvi tekshiruvi ──────────────────────────────
+    group_schedules = group.schedule.values('date', 'start_time')
+
+    conflicts = []
+    for sched in group_schedules:
+        if not sched['start_time']:
+            continue
+        clash = GroupSchedule.objects.filter(
+            date=sched['date'],
+            start_time=sched['start_time'],
+            group__teacher=teacher,
+        ).exclude(group=group).select_related(
+            'group__course__subject'
+        ).first()
+
+        if clash:
+            conflicts.append(
+                f"{sched['date'].strftime('%d.%m.%Y')} "
+                f"{sched['start_time'].strftime('%H:%M')} — "
+                f"{clash.group.course.subject} "
+                f"({clash.group.group_number}-guruh)"
+            )
+
+    if conflicts:
+        shown = conflicts[:3]
+        extra = len(conflicts) - 3
+        msg   = "; ".join(shown)
+        if extra > 0:
+            msg += f" va yana {extra} ta"
+        messages.error(
+            request,
+            f"❌ {teacher.first_name} o'qituvchisi band: {msg}. "
+            f"Boshqa o'qituvchi tanlang."
+        )
+        return redirect("lesson_schedule", pk=group.course.pk)
+
+    # ── To'qnashuv yo'q — saqlash ────────────────────────────────
+    old_teacher = group.teacher
+    group.teacher = teacher
+    group.save(update_fields=['teacher'])
+
+    messages.success(
+        request,
+        f"✅ {group.group_number}-guruh o'qituvchisi "
+        f"{'↳ ' + old_teacher.first_name + ' → ' if old_teacher else ''}"
+        f"{teacher.first_name} ga o'zgartirildi."
+    )
     return redirect("lesson_schedule", pk=group.course.pk)
 
 
@@ -4423,3 +4516,5 @@ def export_grades_only_excel(request, group_pk):
     response['Content-Disposition'] = f'attachment; filename=baholar_{group.group_number}.xlsx'
     wb.save(response)
     return response
+
+
