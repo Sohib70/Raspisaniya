@@ -191,38 +191,43 @@ def find_schedule_for_group(
         return busy
 
     def get_subject_busy_paras(date):
-        busy = set()
+        # MUHIM: bu yerda ENDI binary (band/bo'sh) emas, balki HAR BIR parada
+        # bitta fanning nechta guruhi allaqachon joylashganini SANAYMIZ.
+        # Shu sonlar orqali eng "bo'sh" (kam guruh joylashgan) parani tanlab,
+        # guruhlarni bir-biriga teng taqsimlashga erishamiz.
+        counts = defaultdict(int)
         for (bd, bt) in same_subject_busy:
             if bd == date:
                 for i, (ps, _) in enumerate(PARA_TIMES):
                     if ps == bt:
-                        busy.add(i)
-        return busy
+                        counts[i] += 1
+        return counts
 
     # ── TUZATILGAN: Birinchi haftadan pattern qidirish mantiqi ──
     def find_best_pair(date):
         hard_busy = get_hard_busy(date)
-        subject_busy = get_subject_busy_paras(date)
+        subject_busy_counts = get_subject_busy_paras(date)
         candidates = []
 
         for p1, p2 in VALID_PARA_PAIRS:
-            # Ustoz bir vaqtda 2 ta joyda bo'lolmaydi. Agar ustoz band bo'lsa, bu juftlikni o'tkazamiz
-            # (Agar hard_busy ichida faqat o'qituvchini qat'iy tekshirmoqchi bo'lsangiz, alohida ajratish mumkin.
-            # Lekin talabalar konfliktini ochko sifatida hisoblaymiz)
-
+            # Ustoz/talaba HAQIQIY to'qnashuvi — bu har doim BIRINCHI ustuvorlik.
+            # Fan guruhlarini taqsimlash (subj_conflicts) esa faqat ustoz/talaba
+            # to'qnashuvi TENG bo'lgan holatlar orasida ikkinchi darajali mezon —
+            # ular HECH QACHON qo'shilmaydi, aks holda "gavjum lekin xavfsiz" para
+            # "kam gavjum lekin haqiqiy to'qnashuvli" paradan yomonroq ko'rinib qolishi mumkin.
             student_conflicts = sum(1 for p in (p1, p2) if p in hard_busy)
-            subj_conflicts = sum(1 for p in (p1, p2) if p in subject_busy)
+            subj_conflicts = subject_busy_counts[p1] + subject_busy_counts[p2]
 
-            total_conflicts = student_conflicts + subj_conflicts
-            candidates.append((total_conflicts, p1, p2))
+            candidates.append((student_conflicts, subj_conflicts, p1, p2))
 
         if not candidates:
             return None
 
-        # Eng kam to'qnashuvga ega parani tanlaymiz
-        candidates.sort(key=lambda x: x[0])
+        # 1-navbatda eng kam ustoz/talaba to'qnashuvi, 2-navbatda eng kam band fan guruhi
+        candidates.sort(key=lambda x: (x[0], x[1]))
         best = candidates[0]
-        return (best[1], best[2], best[0])
+        total_conflicts = best[0] + best[1]
+        return (best[2], best[3], total_conflicts)
 
     def get_busy_detailed(date):
         busy = defaultdict(list)
@@ -2374,7 +2379,10 @@ def build_schedule(request):
         """find_schedule_for_group ni chaqirib, vaqt to'qnashuvlarisiz natijani qaytaradi."""
 
         # TUZATILGAN: Guruhlar alohida Kurs bo'lsa ham, bitta FANDAN (subject) bo'lsa ularni parallel deb hisoblaydi
-        same_subject_busy = set(
+        # MUHIM: `set()` emas, `list()` — bir xil (sana, vaqt)da nechta guruh borligini
+        # hisoblash uchun takrorlanuvchi yozuvlar saqlanishi kerak (aks holda 5 ta guruh ham
+        # 1 ta guruhdek ko'rinib, hammasi bitta paraga to'planib qolar edi).
+        same_subject_busy = list(
             GroupSchedule.objects.filter(
                 group__course__subject=course.subject,  # <--- Shuni subject bo'yicha o'zgartirdik
                 group__is_scheduled=True,
@@ -2607,7 +2615,7 @@ def build_schedule(request):
                     find_schedule_for_group._last_conflict_info   = []
                     find_schedule_for_group._last_missing         = 0
                     find_schedule_for_group._last_no_slot_in_week = False
-                    same_subject_busy_alt = set(
+                    same_subject_busy_alt = list(
                         GroupSchedule.objects.filter(
                             group__course=course,
                             group__is_scheduled=True,
@@ -3463,6 +3471,7 @@ def restore_database_view(request):
             Teacher.objects.all().delete()
             Room.objects.all().delete()
             Subject.objects.all().delete()
+            Group.objects.all().delete()
             # Auth userlarni ham tozalaymiz (superuser qolsin)
             User.objects.filter(is_superuser=False).delete()
         except Exception as e:
@@ -4516,5 +4525,3 @@ def export_grades_only_excel(request, group_pk):
     response['Content-Disposition'] = f'attachment; filename=baholar_{group.group_number}.xlsx'
     wb.save(response)
     return response
-
-

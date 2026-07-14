@@ -110,7 +110,7 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=env('DATABASE_URL'),
+        default=env.str('DATABASE_URL', default='sqlite:///db.sqlite3'),
         conn_max_age=600
     )
 }
@@ -211,4 +211,4 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'xolburiyev@gmail.com'
 EMAIL_HOST_PASSWORD = 'c b q v q w a e n z d h g z g c'  # Google account dan olingan maxsus ilova paroli
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-ADMIN_RESET_TARGET_EMAIL = env('ADMIN_RESET_TARGET_EMAIL')
+ADMIN_RESET_TARGET_EMAIL = env.str('ADMIN_RESET_TARGET_EMAIL', default='admin@example.com')
