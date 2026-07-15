@@ -1,27 +1,45 @@
 {% extends 'raspisaniya/base.html' %}
+
+{% block title_extra %}
+<div class="dropdown">
+    <button class="btn btn-outline-secondary btn-sm fw-bold" type="button"
+            data-bs-toggle="dropdown" aria-expanded="false" title="Sozlamalar"
+            style="line-height:1; padding:10px 10px;">
+        ⚙️
+    </button>
+    <ul class="dropdown-menu p-2" style="min-width:260px;">
+        <li>
+            <form method="post" action="{% url 'assign_teachers_auto' %}" class="d-grid">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-sm fw-bold text-start"
+                        onclick="return confirm('Tizimdagi barcha fan va guruhlar uchun o\'qituvchilarni avtomatik taqsimlashni boshlaysizmi?')">
+                    👨‍🏫 O'qituvchilarni taqsimlash
+                </button>
+            </form>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li class="d-grid gap-1">
+            <button class="btn btn-outline-success btn-sm fw-bold text-start" onclick="toggleAllPermit(true)">🔓 Hammaga ruxsat</button>
+            <button class="btn btn-outline-secondary btn-sm fw-bold text-start" onclick="toggleAllPermit(false)">🔒 Hammadan olish</button>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li class="d-grid gap-1">
+            <a href="{% url 'build_schedule' %}" class="btn btn-warning btn-sm fw-bold text-start">🗓 Jadval tuzish</a>
+            <a href="{% url 'weekly_schedule' %}" class="btn btn-info btn-sm fw-bold text-start">📅 Haftalik jadval</a>
+        </li>
+    </ul>
+</div>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div>
             <h4 class="mb-0 fw-bold">Darslar ro'yxati</h4>
-            <div class="text-muted small">Tizimdagi barcha faol fanlar va jadvallar boshqaruvi</div>
+
         </div>
         <div class="d-flex gap-2 flex-wrap align-items-center">
-
-            <form method="post" action="{% url 'assign_teachers_auto' %}" class="d-inline">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-sm fw-bold shadow-sm"
-                        onclick="return confirm('Tizimdagi barcha fan va guruhlar uchun o\'qituvchilarni avtomatik taqsimlashni boshlaysizmi?')">
-                    👨‍🏫 O'qituvchilarni taqsimlash
-                </button>
-            </form>
-
-            <button class="btn btn-outline-success btn-sm fw-bold" onclick="toggleAllPermit(true)">🔓 Hammaga ruxsat</button>
-            <button class="btn btn-outline-secondary btn-sm fw-bold" onclick="toggleAllPermit(false)">🔒 Hammadan olish</button>
-
-            <a href="{% url 'build_schedule' %}" class="btn btn-warning btn-sm fw-bold">🗓 Jadval tuzish</a>
             <a href="{% url 'lesson_create' %}" class="btn btn-primary btn-sm fw-bold">+ Yangi dars</a>
-            <a href="{% url 'weekly_schedule' %}" class="btn btn-info btn-sm fw-bold">📅 Haftalik jadval</a>
         </div>
     </div>
 

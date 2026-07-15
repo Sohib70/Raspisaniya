@@ -97,6 +97,10 @@
         .theme-toggle { position: fixed; bottom: 24px; left: 24px; width: 48px; height: 48px; border-radius: 50%; background: var(--md-surface); border: 1px solid var(--md-outline); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1000; transition: all 0.3s ease; color: var(--md-primary); }
         .theme-toggle:hover { transform: rotate(180deg); background: var(--md-primary-container); }
         @media (max-width: 768px) { .md-surface { margin-top: 80px; padding: 1rem; border-radius: 20px; } }
+        /* Kichik ekranlarda "Boshqaruv paneli" + ⚙️ bir qatorda, siqilmasdan chiqishi uchun (faqat mobil, kompyuterga ta'sir qilmaydi) */
+        @media (max-width: 480px) {
+            .display-small { font-size: 1.5rem; }
+        }
         .md-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
         .md-table th { text-align: left; padding: 1rem; font-weight: 600; color: var(--md-primary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
         .md-table td { padding: 1rem; background: var(--md-surface-variant); border-radius: 16px; transition: all 0.2s ease; }
@@ -237,7 +241,10 @@
         <div class="md-surface">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="display-small">{% block page_title %}Boshqaruv paneli{% endblock %}</h1>
+                    <h1 class="display-small d-inline-flex align-items-center gap-2">
+                        {% block page_title %}Boshqaruv paneli{% endblock %}
+                        {% block title_extra %}{% endblock %}
+                    </h1>
                     <p class="body-large">{% block page_subtitle %}Bugun {% now "j F, Y" %}{% endblock %}</p>
                 </div>
                 <div>{% block header_buttons %}{% endblock %}</div>

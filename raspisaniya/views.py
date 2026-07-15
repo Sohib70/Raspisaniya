@@ -3834,9 +3834,16 @@ def download_vedomost(request, group_id):
     elements.append(Spacer(1, 10))
 
     # Hujjat haqida avtomatik ma'lumotlar
+    # Hujjat haqida avtomatik ma'lumotlar
     elements.append(Paragraph(f"<b>Fan nomi:</b> {group.course.subject.name}", subtitle_style))
-    elements.append(
-        Paragraph(f"<b>Fan o'qituvchisi:</b> {group.teacher.last_name} {group.teacher.first_name}", subtitle_style))
+
+    # O'qituvchi biriktirilganligini tekshiramiz
+    if group.teacher:
+        teacher_name = f"{group.teacher.last_name} {group.teacher.first_name}"
+    else:
+        teacher_name = "O'qituvchi biriktirilmagan"
+
+    elements.append(Paragraph(f"<b>Fan o'qituvchisi:</b> {teacher_name}", subtitle_style))
     elements.append(Paragraph(f"<b>Qaydnoma to'ldirilgan sana:</b> {qayd_sana}", subtitle_style))
     elements.append(Spacer(1, 12))
 
@@ -4163,13 +4170,11 @@ def assign_teachers_auto(request):
     total_assigned_count = 0
     all_failed_details = []
 
-    LOCAL_PARA_TIMES = [
-        ("08:30", "09:50"), ("10:00", "11:20"), ("11:30", "12:50"),
-        ("13:30", "14:50"), ("15:00", "16:20"), ("16:30", "17:50")
-    ]
-
     for course in courses:
-        groups = list(course.groups.filter(teacher__isnull=True).prefetch_related('students'))
+        groups = list(
+            course.groups.filter(teacher__isnull=True)
+            .prefetch_related('students', 'schedule')
+        )
         candidates = list(Teacher.objects.filter(subjects=course.subject).order_by('pk'))
 
         if not candidates:
@@ -4180,50 +4185,34 @@ def assign_teachers_auto(request):
         start = course.start_date
         end = course.end_date
 
-        if course.total_lessons >= 20:
-            check_wds = [0, 2, 4]
-        elif course.total_lessons >= 12:
-            check_wds = [1, 3]
-        else:
-            check_wds = [0, 1, 2, 3, 4]
-
-        week_monday = start - timedelta(days=start.weekday())
-
-        def get_teacher_free_slots_count(teacher, exclude_group=None):
-            qs = GroupSchedule.objects.filter(
+        def get_teacher_free_slots_count(teacher):
+            busy_count = GroupSchedule.objects.filter(
                 group__teacher=teacher,
                 date__gte=start,
                 date__lte=end,
-            )
-            if exclude_group:
-                qs = qs.exclude(group=exclude_group)
-            busy_count = qs.count()
+            ).count()
             work_days = sum(
                 1 for i in range((end - start).days + 1)
                 if (start + timedelta(days=i)).weekday() <= 4
             )
             return work_days * 6 - busy_count
 
-        def has_first_week_slot(teacher):
-            paras = globals().get('PARA_TIMES', LOCAL_PARA_TIMES)
-            for wd in check_wds:
-                d = week_monday + timedelta(days=wd)
-                if d < start or d > end:
-                    continue
-                teacher_busy = set()
-                for sc in GroupSchedule.objects.filter(date=d, group__teacher=teacher):
-                    st = sc.start_time or sc.group.start_time
-                    if st:
-                        for i, (ps, _) in enumerate(paras):
-                            if ps == st:
-                                teacher_busy.add(i)
-                free = [i for i in range(len(paras)) if i not in teacher_busy]
-                if len(free) >= 2:
-                    return True
-            return False
-
         # Har bir guruh uchun o'qituvchi saralash
         for grp in groups:
+            # MUHIM: Guruh allaqachon "Jadval tuzish" bosqichida aniq (sana, vaqt)
+            # larga joylashtirilgan bo'ladi. Endi haftaning taxminiy kunlarini
+            # (check_wds) TAXMIN QILISH o'rniga, guruhning HAQIQIY jadvalidan
+            # foydalanamiz — bu ustozlarni bekorga rad etib, "bitta guruhdan keyin
+            # to'xtab qolish" muammosini bartaraf etadi.
+            grp_slots = list(grp.schedule.values_list('date', 'start_time'))
+
+            if not grp_slots:
+                all_failed_details.append(
+                    f"{course.subject.name} ({grp.group_number}-guruh): "
+                    f"guruh hali jadvallanmagan (avval 'Jadval tuzish'ni bajaring)"
+                )
+                continue
+
             best_teacher = None
             max_free = -1
 
@@ -4234,49 +4223,19 @@ def assign_teachers_auto(request):
                 if free < course.total_lessons:
                     continue
 
-                # 2. Birinchi haftada bo'sh sloti bormi
-                if not has_first_week_slot(teacher):
-                    continue
-
-                # 3. TALABALARNING bandlik vaqtlarini yig'ish
-                student_ids = list(grp.students.values_list('id', flat=True))
-                student_busy_in_week = set()
-                for wd in check_wds:
-                    d = week_monday + timedelta(days=wd)
-                    if d < start or d > end:
-                        continue
-                    for sc in GroupSchedule.objects.filter(
-                            date=d,
-                            group__students__id__in=student_ids,
-                    ).distinct():
-                        st = sc.start_time or sc.group.start_time
-                        if st:
-                            student_busy_in_week.add((d, st))
-
-                # 4. O'QITUVCHINING mavjud bandlik vaqtlarini yig'ish
-                teacher_times_in_week = set()
-                for wd in check_wds:
-                    d = week_monday + timedelta(days=wd)
-                    if d < start or d > end:
-                        continue
-                    for sc in GroupSchedule.objects.filter(date=d, group__teacher=teacher):
-                        st = sc.start_time or sc.group.start_time
-                        if st:
-                            teacher_times_in_week.add((d, st))
-
-                # 5. [ASOSIY TUZATISH] QAT'IY KESISHMA TEKSHIRUVI
-                # Agar o'qituvchi boshqa bir guruh bilan aynan shu kuni va parada band bo'lsa
-                # yoki talabalar band bo'lsa → bu o'qituvchini umuman ko'rib chiqmaymiz!
-                overlap = teacher_times_in_week & student_busy_in_week
-
-                # Agar o'qituvchining o'zi shu haftada talabalar darsga keladigan vaqtda boshqa guruhda band bo'lsa:
-                if overlap:
-                    continue  # Conflict bor, keyingi o'qituvchiga o'tadi!
-
-                # Qo'shimcha tekshiruv: Kurs guruhlari darajasida (Group relation orqali)
-                # O'qituvchi allaqachon shu kursning boshqa guruhiga ayni vaqtda biriktirilgan bo'lsa:
-                if course.groups.filter(teacher=teacher,
-                                        start_time=grp.start_time).exists() and grp.start_time is not None:
+                # 2. ANIQ TO'QNASHUV TEKSHIRUVI: ustoz aynan shu guruhning
+                #    HAQIQIY (sana, vaqt) laridan birortasida allaqachon BOSHQA
+                #    guruhga band bo'lsa — bu ustozni rad etamiz. Guruhning o'zi
+                #    boshqa vaqt/kunda bo'lsa, ustoz erkin hisoblanadi.
+                teacher_busy_slots = set(
+                    GroupSchedule.objects.filter(
+                        group__teacher=teacher,
+                        date__gte=start,
+                        date__lte=end,
+                    ).exclude(group=grp).values_list('date', 'start_time')
+                )
+                conflict = any(slot in teacher_busy_slots for slot in grp_slots)
+                if conflict:
                     continue
 
                 # Agar barcha tekshiruvlardan o'tsa va eng optimali bo'lsa tanlaymiz
@@ -4289,10 +4248,6 @@ def assign_teachers_auto(request):
                 grp.teacher = best_teacher
                 grp.save(update_fields=['teacher'])
                 total_assigned_count += 1
-
-                # Yangi biriktirilgan o'qituvchini nomzodlar ro'yxatida ham yangilab qo'yamiz
-                # (keyingi guruhga o'tganda uning free_slots'i kamayganini hisobga olishi uchun)
-                teacher.free_slots_updated = free - course.total_lessons
             else:
                 all_failed_details.append(
                     f"{course.subject.name} ({grp.group_number}-guruh): Mos keladigan konfliktlarsiz o'qituvchi topilmadi")
