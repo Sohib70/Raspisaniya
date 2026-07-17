@@ -1,0 +1,84 @@
+{% extends 'raspisaniya/base.html' %}
+{% block page_title %}Jadval diagnostikasi{% endblock %}
+{% block page_subtitle %}{{ course.subject.name }} — {{ grp.group_number }}-guruh{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="alert alert-info">
+        <b>Guruh:</b> {{ course.subject.name }} ({{ grp.group_number }}-guruh) &nbsp;|&nbsp;
+        <b>Jami dars:</b> {{ course.total_lessons }} para &nbsp;|&nbsp;
+        <b>Haftasiga kerak kun:</b> {{ days_needed }} kun &nbsp;|&nbsp;
+        <b>Ustoz:</b> {% if grp.teacher %}{{ grp.teacher }}{% else %}<span class="text-danger">biriktirilmagan</span>{% endif %} &nbsp;|&nbsp;
+        <b>Talabalar soni:</b> {{ grp.students.count }}
+    </div>
+
+    {% if winning_combo %}
+        <div class="alert alert-success">
+            ✅ <b>Yechim topildi:</b> {{ winning_combo|join:", " }} kunlari kombinatsiyasi ishlaydi.
+        </div>
+    {% else %}
+        <div class="alert alert-danger">
+            ❌ <b>Hech qanday kombinatsiya ishlamadi</b> — quyida sabablarni ko'ring.
+        </div>
+    {% endif %}
+
+    <h5 class="mt-4 mb-2">1. Haftalik band-bo'sh jadval (birinchi hafta, {{ week_monday|date:"d.m.Y" }} dan)</h5>
+    <div class="table-responsive mb-4">
+        <table class="table table-bordered align-middle text-center">
+            <thead class="table-dark">
+                <tr>
+                    <th>Kun</th>
+                    {% for b in grid.0.blocks %}<th>{{ b.label }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in grid %}
+                <tr>
+                    <td class="fw-bold">{{ row.wd_name }}<br><small class="text-muted">{{ row.date|date:"d.m" }}</small></td>
+                    {% for b in row.blocks %}
+                        <td class="{% if b.free %}table-success{% else %}table-danger{% endif %}" style="min-width:220px;">
+                            {% if b.free %}
+                                <span class="fw-bold">✅ BO'SH</span>
+                            {% else %}
+                                <span class="fw-bold">❌ BAND</span>
+                                <ul class="list-unstyled small text-start mt-1 mb-0">
+                                    {% for r in b.reasons %}<li>{{ r }}</li>{% endfor %}
+                                </ul>
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h5 class="mb-2">2. Kunlar kombinatsiyalari tekshiruvi ({{ combo_results|length }} ta urinildi)</h5>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered">
+            <thead class="table-dark">
+                <tr><th>#</th><th>Kombinatsiya</th><th>Natija</th><th>Tafsilot</th></tr>
+            </thead>
+            <tbody>
+                {% for c in combo_results %}
+                <tr class="{% if c.success %}table-success{% endif %}">
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ c.combo_names|join:", " }}</td>
+                    <td>{% if c.success %}✅ Ishlaydi{% else %}❌ Ishlamaydi{% endif %}</td>
+                    <td class="small">
+                        {% for d in c.detail %}
+                            <span class="badge {% if d.ok %}bg-success{% else %}bg-danger{% endif %} me-1">
+                                {{ d.wd_name }}{% if d.ok %}✓{% else %}✗{% endif %}
+                            </span>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'lesson_list' %}" class="btn btn-secondary mt-3">← Orqaga</a>
+</div>
+{% endblock %}

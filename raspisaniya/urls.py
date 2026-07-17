@@ -37,6 +37,7 @@ urlpatterns = [
 
 
     path('build-schedule/', views.build_schedule, name='build_schedule'),
+    path('group/<int:group_pk>/schedule-debug/', views.group_schedule_debug, name='group_schedule_debug'),
     path('move-students/<int:from_group_pk>/<int:to_group_pk>/', views.move_students, name='move_students'),
     path('group/<int:pk>/delete-unscheduled/', views.delete_unscheduled_group, name='delete_unscheduled_group'),
     path('course/<int:pk>/update/', views.course_update, name='course_update'),
