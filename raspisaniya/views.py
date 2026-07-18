@@ -270,13 +270,20 @@ def find_schedule_for_group(
         preferred = [(1, 3)]
         days_needed = 2
     else:
-        # 8 para: Butun hafta bo'ylab tarqatiladi — FAQAT bitta kunga (masalan doim
-        # Dushanbaga) qulflanib qolmasligi uchun barcha ish kunlarini BITTA
-        # kombinatsiya sifatida beramiz. Shunda pastdagi pattern qidiruvchi tsikl
-        # (har bir wd uchun bo'sh joy bo'lsa qo'shadi) birinchi topilgan kunda
-        # to'xtamay, haftaning bo'sh bo'lgan HAMMA kunlarini pattern'ga yig'adi va
-        # kurs davomida shu kunlar orasida aylanma tartibda taqsimlaydi.
-        preferred = [tuple(available_wds)]
+        # 8 para: FAQAT bitta kun/hafta, 2 para/hafta (haftada 1 kun 2 para).
+        # MUHIM: avvalgi versiya barcha bo'sh kunlarni BITTA pattern'ga yig'ib
+        # olardi — bu bitta guruhning bitta haftasiga bir nechta kun (masalan
+        # Sesh+Pay) sig'dirib, "haftada 1 kun 2 para" qoidasini buzardi va
+        # darslarni kerakidan tezroq (kamroq haftaga) joylashtirib yuborardi.
+        # Endi FAQAT bitta kun tanlanadi (days_needed=1). Lekin barcha
+        # guruhlar bir xil kunga (odatda Dushanbaga) to'planib qolmasligi
+        # uchun boshlang'ich kun guruh raqamiga (group_number) qarab
+        # aylantiriladi — 1-guruh Dushanbadan, 2-guruh Seshanbadan va h.k.
+        # boshlab qidiradi, shunda guruhlar tabiiy ravishda haftaning turli
+        # kunlariga tarqaladi.
+        start_offset = (group_number - 1) % len(available_wds)
+        rotated_wds = available_wds[start_offset:] + available_wds[:start_offset]
+        preferred = [(wd,) for wd in rotated_wds]
         days_needed = 1
 
     # 2. Qat'iy rejim: Faqat mavjud bo'lgan (start va end date oralig'iga tushadigan)
@@ -4763,9 +4770,12 @@ def group_schedule_debug(request, group_pk):
         candidate_wd_sets = [tuple(needed_wds)]
         days_needed = 2  # <--- Buni belgilash shart
     else:
-        # 8 para: Butun hafta bo'ylab tarqatiladi (asosiy find_schedule_for_group
-        # bilan bir xil mantiq — faqat bitta kunga qulflanib qolmasligi kerak)
-        candidate_wd_sets = [tuple(available_wds)]
+        # 8 para: FAQAT bitta kun/hafta (asosiy find_schedule_for_group bilan bir
+        # xil mantiq) — guruh raqamiga qarab boshlang'ich kun aylantiriladi,
+        # shunda barcha guruhlar bir xil kunga to'planib qolmaydi.
+        start_offset = (grp.group_number - 1) % len(available_wds)
+        rotated_wds = available_wds[start_offset:] + available_wds[:start_offset]
+        candidate_wd_sets = [(wd,) for wd in rotated_wds]
         days_needed = 1  # <--- Buni belgilash shart
     # ─────────────────────────────────────────────
 
