@@ -1571,8 +1571,8 @@ def lesson_create(request):
         subject_id = request.POST.get("subject")
         subject = get_object_or_404(Subject, id=subject_id)
 
-        start_date_raw   = request.POST.get("start_date")
-        total_lessons    = request.POST.get("total_lessons")
+        start_date_raw = request.POST.get("start_date")
+        total_lessons = request.POST.get("total_lessons")
         lessons_per_week = request.POST.get("lessons_per_week")
         include_saturday = request.POST.get("include_saturday", "0")
 
@@ -1580,9 +1580,9 @@ def lesson_create(request):
             messages.error(request, "Barcha maydonlarni to'ldiring")
             return redirect("lesson_create")
 
-        total_lessons    = int(total_lessons)
+        total_lessons = int(total_lessons)
         lessons_per_week = int(lessons_per_week)
-        start_date       = parse_date(start_date_raw)
+        start_date = parse_date(start_date_raw)
 
         # ── YANGI TEKSHIRUV: jadval tuzuvchi algoritm (find_schedule_for_group)
         # kurs turiga (24/16/8 paralik) qarab HAR DOIM qat'iy belgilangan
@@ -1601,7 +1601,7 @@ def lesson_create(request):
             lessons_per_week = expected_per_week
 
         weeks_needed = math.ceil(total_lessons / lessons_per_week)
-        end_date     = start_date + timedelta(weeks=weeks_needed)
+        end_date = start_date + timedelta(weeks=weeks_needed)
         end_date_raw = end_date.strftime("%Y-%m-%d")
 
         all_students = list(Student.objects.filter(debts=subject).distinct())
@@ -1614,14 +1614,14 @@ def lesson_create(request):
         for st in all_students:
             students_by_lang[st.language].append(st)
 
-        all_groups   = []
+        all_groups = []
         skipped_msgs = []
-        group_index  = 0
+        group_index = 0
 
         for lang in sorted(students_by_lang.keys()):
             lang_students = students_by_lang[lang]
-            lang_name     = dict(LANGUAGE_CHOICES).get(lang, lang)
-            groups        = split_into_groups(lang_students)
+            lang_name = dict(LANGUAGE_CHOICES).get(lang, lang)
+            groups = split_into_groups(lang_students)
 
             for g in groups:
                 is_small = len(g) < 10
@@ -1631,11 +1631,11 @@ def lesson_create(request):
                         f"(10 tadan kam, guruh shakillantirilmadi)"
                     )
                 all_groups.append({
-                    'index'    : group_index,
-                    'lang'     : lang,
+                    'index': group_index,
+                    'lang': lang,
                     'lang_name': lang_name,
-                    'students' : g,
-                    'is_small' : is_small,
+                    'students': g,
+                    'is_small': is_small,
                 })
                 group_index += 1
 
@@ -1647,29 +1647,29 @@ def lesson_create(request):
 
         # ── O'qituvchi bu yerda YO'Q ──
         return render(request, "raspisaniya/lesson_create.html", {
-            "step"            : 2,
-            "subject"         : subject,
-            "all_groups"      : all_groups,
-            "groups_count"    : groups_count,
-            "start_date"      : start_date_raw,
-            "end_date"        : end_date_raw,
-            "total_lessons"   : total_lessons,
+            "step": 2,
+            "subject": subject,
+            "all_groups": all_groups,
+            "groups_count": groups_count,
+            "start_date": start_date_raw,
+            "end_date": end_date_raw,
+            "total_lessons": total_lessons,
             "lessons_per_week": lessons_per_week,
-            "skipped_langs"   : skipped_msgs,
-            "all_students"    : all_students,
+            "skipped_langs": skipped_msgs,
+            "all_students": all_students,
             "include_saturday": include_saturday,
         })
 
     # ── STEP 3 ──
     if request.method == "POST" and request.POST.get("step") == "3":
-        subject_id       = request.POST.get("subject_id")
-        subject          = get_object_or_404(Subject, id=subject_id)
+        subject_id = request.POST.get("subject_id")
+        subject = get_object_or_404(Subject, id=subject_id)
 
-        start_date_raw   = request.POST.get("start_date")
-        end_date_raw     = request.POST.get("end_date")
-        total_lessons    = int(request.POST.get("total_lessons"))
+        start_date_raw = request.POST.get("start_date")
+        end_date_raw = request.POST.get("end_date")
+        total_lessons = int(request.POST.get("total_lessons"))
         lessons_per_week = int(request.POST.get("lessons_per_week"))
-        groups_count     = int(request.POST.get("groups_count", 1))
+        groups_count = int(request.POST.get("groups_count", 1))
         include_saturday = request.POST.get("include_saturday", "0") == "1"
 
         # ── Ehtiyot chorasi: STEP 2 da to'g'rilangan bo'lsa ham, formani
@@ -1678,7 +1678,7 @@ def lesson_create(request):
         lessons_per_week = get_expected_lessons_per_week(total_lessons)
 
         start_date = parse_date(start_date_raw)
-        end_date   = parse_date(end_date_raw)
+        end_date = parse_date(end_date_raw)
 
         # ── Indekslarni students_ orqali aniqlaymiz
         #    (teacher_ endi yo'q) ──────────────────
@@ -1693,17 +1693,16 @@ def lesson_create(request):
 
         with transaction.atomic():
             course = Course.objects.create(
-                subject          = subject,
-                start_date       = start_date,
-                end_date         = end_date,
-                total_lessons    = total_lessons,
-                lessons_per_week = lessons_per_week,
-                lesson_duration  = 80,
-                include_saturday = include_saturday,
+                subject=subject,
+                start_date=start_date,
+                end_date=end_date,
+                total_lessons=total_lessons,
+                lessons_per_week=lessons_per_week,
+                lesson_duration=80,
+                include_saturday=include_saturday,
             )
 
             group_number = 1
-            skipped_small_groups = []
             for i in all_indices:
                 selected_ids = request.POST.getlist(f"students_{i}")
                 if not selected_ids:
@@ -1718,25 +1717,17 @@ def lesson_create(request):
                     f"lang_{i}", selected_students[0].language
                 )
 
-                # ── 10 tadan kam guruh — faqat "Ruxsat berish" bosilgan bo'lsa yaratiladi ──
-                allow_small = request.POST.get(f"allow_small_{i}") == "1"
-                if len(selected_students) < 10 and not allow_small:
-                    lang_name = dict(LANGUAGE_CHOICES).get(lang, lang)
-                    skipped_small_groups.append(
-                        f"{lang_name} tili: {len(selected_students)} ta talaba "
-                        f"(ruxsat berilmadi, guruh yaratilmadi)"
-                    )
-                    continue
-
                 # ── O'qituvchisiz guruh — keyinroq biriktiriladi ──
+                # MUHIM: 10 tadan kam bo'lsa ham guruh HAR DOIM saqlanadi
+                # ("Ruxsat berish" talabi olib tashlandi — eski xatti-harakatga qaytarildi)
                 cgroup = CourseGroup.objects.create(
-                    course       = course,
-                    teacher      = None,
-                    group_number = group_number,
-                    start_time   = None,
-                    weekdays     = [],
-                    language     = lang,
-                    is_scheduled = False,
+                    course=course,
+                    teacher=None,
+                    group_number=group_number,
+                    start_time=None,
+                    weekdays=[],
+                    language=lang,
+                    is_scheduled=False,
                 )
                 cgroup.students.set(selected_students)
                 sync_group_language(cgroup)
@@ -1745,14 +1736,6 @@ def lesson_create(request):
                     st.debts.remove(subject)
 
                 group_number += 1
-
-        if skipped_small_groups:
-            messages.warning(
-                request,
-                "⚠ Quyidagi guruhlar 10 tadan kam bo'lgani va ruxsat berilmagani "
-                "uchun yaratilmadi (talabalar navbatda qoldi): "
-                + "; ".join(skipped_small_groups)
-            )
 
         messages.success(
             request,
