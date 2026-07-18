@@ -6,6 +6,7 @@ import json
 import math
 import os
 import random
+import re
 import time
 from collections import defaultdict
 from django.db.models import Prefetch
@@ -138,6 +139,28 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 
+def get_expected_lessons_per_week(total_lessons):
+    """
+    `find_schedule_for_group` kurs turi (24/16/8 paralik) uchun HAR DOIM
+    qat'iy shu haftalik dars (para) sonini qo'llaydi — bu son `total_lessons`
+    dan kelib chiqadi, `lessons_per_week` maydonidagi qiymatdan qat'iy nazar:
+      - 24 paralik (>=20)  -> 6 para/hafta (3 kun x 2 para)
+      - 16 paralik (12-20) -> 4 para/hafta (2 kun x 2 para)
+      - 8 paralik  (<12)   -> 2 para/hafta (1 kun x 2 para)
+
+    Kurs yaratish/tahrirlash formalarida admin "Haftada necha marta"
+    maydoniga BOSHQA son kiritib qo'ysa, tugash sanasi (`weeks_needed`)
+    noto'g'ri hisoblanib, jadval bilan sana bir-biriga mos kelmay qolardi.
+    Shu funksiya orqali kiritilgan qiymat tekshiriladi/tuzatiladi.
+    """
+    if total_lessons >= 20:
+        return 6
+    elif 12 <= total_lessons <= 20:
+        return 4
+    else:
+        return 2
+
+
 def sync_group_language(group):
     """
     Guruhning `language` maydonini shu guruhdagi TALABALARNING haqiqiy
@@ -237,6 +260,70 @@ def get_teacher_group_conflict(teacher, target_group, exclude_group=None):
     if conflict_times:
         return sorted(conflict_times)[0]
     return None
+
+
+def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=False):
+    """
+    Bitta darsning (sched) vaqtini o'zgartiradi. `apply_to_future=True`
+    bo'lsa VA sana o'zgarmagan (faqat vaqt o'zgargan) bo'lsa, xuddi shu
+    guruhning KEYINGI barcha haftalaridagi bir xil hafta kuni + bir xil
+    eski vaqtdagi darslari ham AVTOMATIK shu yangi vaqtga ko'chiriladi.
+
+    MUHIM: agar SANA ham o'zgargan bo'lsa (masalan bayram sababli bitta
+    darsni boshqa kunga ko'chirish), bu — istisno holat hisoblanadi va
+    kaskad qilinmaydi, faqat o'sha bitta dars o'zgaradi. Kaskad faqat
+    "doimiy vaqt o'zgarishi" (masalan "bugundan boshlab har doim soat
+    14:00 da bo'ladi") uchun mo'ljallangan.
+
+    Har bir nishon dars alohida to'qnashuv tekshiruvidan o'tadi — band
+    bo'lgan sanalar o'tkazib yuboriladi (o'zgartirilmaydi), qolganlari
+    yangilanadi.
+
+    Qaytaradi: (updated_count, skipped_dates_list)
+    """
+    date_changed = new_date_val != sched.date
+    old_time_val = sched.start_time
+    old_weekday = sched.date.weekday()
+
+    if apply_to_future and not date_changed:
+        candidates = GroupSchedule.objects.filter(
+            group=sched.group,
+            date__gte=sched.date,
+            start_time=old_time_val,
+        )
+        targets = [s for s in candidates if s.date.weekday() == old_weekday]
+        if sched not in targets:
+            targets.append(sched)
+    else:
+        targets = [sched]
+
+    teacher_id = sched.group.teacher_id
+    student_ids = list(sched.group.students.values_list('id', flat=True))
+
+    updated = 0
+    skipped_dates = []
+
+    for t in targets:
+        target_date = new_date_val if t.pk == sched.pk else t.date
+
+        if teacher_id and GroupSchedule.objects.filter(
+            date=target_date, start_time=new_time_val, group__teacher_id=teacher_id,
+        ).exclude(pk=t.pk).exists():
+            skipped_dates.append(target_date)
+            continue
+
+        if student_ids and GroupSchedule.objects.filter(
+            date=target_date, start_time=new_time_val, group__students__id__in=student_ids,
+        ).exclude(pk=t.pk).exists():
+            skipped_dates.append(target_date)
+            continue
+
+        t.date = target_date
+        t.start_time = new_time_val
+        t.save(update_fields=['date', 'start_time'])
+        updated += 1
+
+    return updated, skipped_dates
 
 
 def find_schedule_for_group(
@@ -1497,6 +1584,22 @@ def lesson_create(request):
         lessons_per_week = int(lessons_per_week)
         start_date       = parse_date(start_date_raw)
 
+        # ── YANGI TEKSHIRUV: jadval tuzuvchi algoritm (find_schedule_for_group)
+        # kurs turiga (24/16/8 paralik) qarab HAR DOIM qat'iy belgilangan
+        # haftalik dars sonini qo'llaydi. Agar admin "Haftada necha marta"ga
+        # boshqa son kiritgan bo'lsa, tugash sanasi noto'g'ri hisoblanib
+        # qolardi — shuning uchun bu yerda avtomatik to'g'ri qiymatga
+        # tuzatib, adminga ogohlantirish beramiz ──
+        expected_per_week = get_expected_lessons_per_week(total_lessons)
+        if lessons_per_week != expected_per_week:
+            messages.warning(
+                request,
+                f"⚠ Diqqat: {total_lessons} paralik kurs uchun tizim haftada "
+                f"faqat {expected_per_week} para joylashtira oladi (siz {lessons_per_week} "
+                f"kiritgan edingiz). Tugash sanasi shunga qarab to'g'rilandi."
+            )
+            lessons_per_week = expected_per_week
+
         weeks_needed = math.ceil(total_lessons / lessons_per_week)
         end_date     = start_date + timedelta(weeks=weeks_needed)
         end_date_raw = end_date.strftime("%Y-%m-%d")
@@ -1568,6 +1671,11 @@ def lesson_create(request):
         lessons_per_week = int(request.POST.get("lessons_per_week"))
         groups_count     = int(request.POST.get("groups_count", 1))
         include_saturday = request.POST.get("include_saturday", "0") == "1"
+
+        # ── Ehtiyot chorasi: STEP 2 da to'g'rilangan bo'lsa ham, formani
+        # kimdir qo'lda o'zgartirib yubormasligi uchun bu yerda YANA bir bor
+        # tekshiramiz ──
+        lessons_per_week = get_expected_lessons_per_week(total_lessons)
 
         start_date = parse_date(start_date_raw)
         end_date   = parse_date(end_date_raw)
@@ -1825,6 +1933,10 @@ def change_lesson_time(request, sched_pk):
     if request.method == "POST":
         new_time = request.POST.get("start_time")
         new_date = request.POST.get("date")
+        # ── YANGI: "apply_to_future" checkbox — agar belgilangan bo'lsa va
+        # faqat vaqt o'zgargan bo'lsa (sana o'sha-o'sha), shu haftadagi
+        # o'zgarish KEYINGI barcha haftalarga ham qo'llaniladi ──
+        apply_to_future = request.POST.get("apply_to_future") in ("1", "true", "on")
 
         new_date_val = parse_date(new_date) if new_date else sched.date
         if new_time:
@@ -1833,28 +1945,31 @@ def change_lesson_time(request, sched_pk):
         else:
             new_time_val = sched.start_time
 
-        group_number = sched.group.group_number
-        teacher_id = sched.group.teacher_id
-        student_ids = list(sched.group.students.values_list('id', flat=True))
+        updated, skipped_dates = apply_lesson_time_change(
+            sched, new_date_val, new_time_val, apply_to_future=apply_to_future
+        )
 
-        if GroupSchedule.objects.filter(
-            date=new_date_val, start_time=new_time_val,
-            group__teacher_id=teacher_id,
-        ).exclude(pk=sched_pk).exists():
-            messages.error(request, f"O'qituvchi {new_date_val} kuni {new_time} parada band!")
-            return redirect("lesson_schedule", pk=sched.group.course.pk)
-
-        if student_ids and GroupSchedule.objects.filter(
-            date=new_date_val, start_time=new_time_val,
-            group__students__id__in=student_ids,
-        ).exclude(pk=sched_pk).exists():
-            messages.error(request, f"Ba'zi talabalar {new_date_val} kuni {new_time} parada band!")
-            return redirect("lesson_schedule", pk=sched.group.course.pk)
-
-        sched.date = new_date_val
-        sched.start_time = new_time_val
-        sched.save()
-        messages.success(request, f"{new_date_val} dars vaqti o'zgartirildi")
+        if updated:
+            if apply_to_future and updated > 1:
+                messages.success(
+                    request,
+                    f"✅ {updated} ta hafta uchun dars vaqti {new_time} ga o'zgartirildi "
+                    f"(bu va keyingi barcha haftalar)."
+                )
+            else:
+                messages.success(request, f"{new_date_val} dars vaqti o'zgartirildi")
+        if skipped_dates:
+            dates_str = ", ".join(d.strftime('%d.%m.%Y') for d in skipped_dates[:5])
+            extra = len(skipped_dates) - 5
+            if extra > 0:
+                dates_str += f" va yana {extra} ta"
+            messages.warning(
+                request,
+                f"⚠ Quyidagi sanalarda o'qituvchi yoki talabalar band bo'lgani uchun "
+                f"o'zgartirilmadi: {dates_str}"
+            )
+        if not updated and not skipped_dates:
+            messages.error(request, "Dars topilmadi yoki o'zgartirish uchun hech narsa yo'q.")
     return redirect("lesson_schedule", pk=sched.group.course.pk)
 
 
@@ -3084,6 +3199,23 @@ def build_schedule(request):
                         time.sleep(0.5)
                         continue
 
+                # ── YANGI OGOHLANTIRISH: agar band kunlar ko'pligi sababli
+                # oxirgi dars kursning e'lon qilingan tugash sanasidan (course.end_date)
+                # keyin joylashgan bo'lsa — bu haqda ADMINGA OCHIQ xabar beramiz.
+                # Aks holda kurs "17.08.2026da tugaydi" deb ko'rsatilgan bo'lsa-da,
+                # aslida u sezilmasdan keyingi oylargacha davom etib ketishi mumkin edi.
+                last_lesson_date = schedule[-1][0] if schedule else None
+                if last_lesson_date and last_lesson_date > course.end_date:
+                    overrun_days = (last_lesson_date - course.end_date).days
+                    messages.warning(
+                        request,
+                        f"⏰ '{course.subject}' {grp.group_number}-guruh: band kunlar ko'pligi "
+                        f"sababli oxirgi dars belgilangan tugash sanasidan "
+                        f"({course.end_date.strftime('%d.%m.%Y')}) {overrun_days} kun keyin — "
+                        f"{last_lesson_date.strftime('%d.%m.%Y')} da joylashdi. Kurs muddatini "
+                        f"yoki band kunlarni ko'rib chiqishni tavsiya etamiz."
+                    )
+
                 iteration_success_count += 1
                 total_success_count += 1
 
@@ -3483,7 +3615,24 @@ def course_update(request, pk):
         course.start_date = parse_date(start_date_raw)
         course.end_date = parse_date(end_date_raw)
         course.total_lessons = int(total_lessons)
-        course.lessons_per_week = int(lessons_per_week)
+        lessons_per_week = int(lessons_per_week)
+
+        # ── YANGI TEKSHIRUV: jadval tuzuvchi algoritm total_lessons turiga
+        # (24/16/8 paralik) qarab HAR DOIM qat'iy haftalik dars sonini
+        # qo'llaydi — "Haftada necha marta" maydoniga boshqa son kiritilgan
+        # bo'lsa ham, haqiqiy jadval baribir shu qat'iy songa muvofiq
+        # tuziladi. Shuning uchun bu yerda mos qiymatga to'g'irlab, adminni
+        # ogohlantiramiz — aks holda u "Haftada necha marta"da ko'rgan soni
+        # bilan haqiqiy natija mos kelmay, keyin tushunarsiz bo'lib qolardi ──
+        expected_per_week = get_expected_lessons_per_week(course.total_lessons)
+        if lessons_per_week != expected_per_week:
+            messages.warning(
+                request,
+                f"⚠ Diqqat: {course.total_lessons} paralik kurs uchun tizim haftada "
+                f"faqat {expected_per_week} para joylashtira oladi (siz {lessons_per_week} "
+                f"kiritgan edingiz). Qiymat avtomatik {expected_per_week} ga to'g'irlandi."
+            )
+        course.lessons_per_week = expected_per_week
         course.save()
 
         course.groups.update(is_scheduled=False)
@@ -3761,44 +3910,35 @@ def change_lesson_time_ajax(request, sched_pk):
                 'success': False,
                 'error': f'Faqat bugungi ({today.strftime("%d.%m.%Y")}) darsni o\'zgartirish mumkin! Boshqa kunlar uchun admin ruxsat berishi kerak.'
             })
-    group_number = sched.group.group_number
-    teacher_id   = sched.group.teacher_id
-    student_ids  = list(sched.group.students.values_list('id', flat=True))
+    # ── YANGI: "kelajakdagi barcha haftalarga qo'llash" — faqat ADMIN uchun
+    # (o'qituvchi bugungi bitta darsni o'zgartirish huquqiga ega, lekin butun
+    # kelajakdagi jadvalni ommaviy o'zgartirish faqat admin qo'lida bo'lishi
+    # kerak) ──
+    apply_to_future = bool(body.get('apply_to_future')) and is_admin
 
-    if GroupSchedule.objects.filter(
-        date=new_date_val,
-        start_time=new_time_val,
-        group__teacher_id=teacher_id,
-    ).exclude(pk=sched_pk).exists():
-        teacher_name = str(sched.group.teacher)
-        return JsonResponse({
-            'success': False,
-            'error': f'O\'qituvchi {teacher_name} {new_date_val} kuni {new_time_raw} da band!'
-        })
+    updated, skipped_dates = apply_lesson_time_change(
+        sched, new_date_val, new_time_val, apply_to_future=apply_to_future
+    )
 
-    if student_ids and GroupSchedule.objects.filter(
-        date=new_date_val,
-        start_time=new_time_val,
-        group__students__id__in=student_ids,
-    ).exclude(pk=sched_pk).exists():
-        return JsonResponse({
-            'success': False,
-            'error': f'Ba\'zi talabalar {new_date_val} kuni {new_time_raw} da band!'
-        })
-
-    sched.date       = new_date_val
-    sched.start_time = new_time_val
-    sched.save(update_fields=['date', 'start_time'])
+    if updated == 0:
+        if skipped_dates:
+            return JsonResponse({
+                'success': False,
+                'error': f'{skipped_dates[0].strftime("%d.%m.%Y")} kuni o\'qituvchi yoki talabalar band!'
+            })
+        return JsonResponse({'success': False, 'error': 'Dars topilmadi yoki o\'zgartirilmadi'})
 
     end_time = (datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
 
     return JsonResponse({
-        'success':      True,
-        'new_date':     new_date_val.strftime('%d.%m.%Y'),
-        'new_date_iso': new_date_val.isoformat(),
-        'new_time':     new_time_val.strftime('%H:%M'),
-        'end_time':     end_time.strftime('%H:%M'),
-        'weekday':      WEEKDAY_NAMES.get(new_date_val.weekday(), ''),
+        'success':        True,
+        'new_date':       new_date_val.strftime('%d.%m.%Y'),
+        'new_date_iso':   new_date_val.isoformat(),
+        'new_time':       new_time_val.strftime('%H:%M'),
+        'end_time':       end_time.strftime('%H:%M'),
+        'weekday':        WEEKDAY_NAMES.get(new_date_val.weekday(), ''),
+        'updated_count':  updated,
+        'skipped_count':  len(skipped_dates),
     })
 
 

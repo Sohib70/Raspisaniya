@@ -52,7 +52,10 @@
                         {% elif item.group.language == 'en' %}Ingliz
                         {% else %}{{ item.group.language }}{% endif %}
                     </span>
-                    <span class="badge bg-light text-dark">{{ item.group.students.count }} ta talaba</span>
+                    <span class="badge {% if item.is_full %}bg-danger{% else %}bg-light text-dark{% endif %}">
+                        {{ item.student_count }} / {{ max_group_size }} ta talaba
+                        {% if item.is_full %}(TO'LGAN){% endif %}
+                    </span>
                     {% if item.group.teacher %}
                         <span class="badge bg-success">👨‍🏫 {{ item.group.teacher }}</span>
                     {% else %}
@@ -93,7 +96,9 @@
                 <div class="card h-100">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                         <span>Talabalar</span>
-                        <span class="badge bg-light text-dark">{{ item.group.students.count }} ta</span>
+                        <span class="badge {% if item.is_full %}bg-danger{% else %}bg-light text-dark{% endif %}">
+                            {{ item.student_count }} / {{ max_group_size }} ta
+                        </span>
                     </div>
                     <div class="card-body p-0">
                         <p class="px-3 pt-2 mb-1">
@@ -189,7 +194,15 @@
                             </tbody>
                         </table>
 
-                        {% if item.addable_students %}
+                        {# ── YANGI: guruh to'lgan bo'lsa "Talaba qo'shish" formasi o'rniga
+                           ogohlantirish ko'rsatiladi, limit oshib ketmasligi uchun ── #}
+                        {% if item.is_full %}
+                        <div class="px-3 py-2 border-top bg-danger bg-opacity-10">
+                            <span class="fw-bold text-danger" style="font-size:13px;">
+                                🚫 Guruh to'lgan ({{ max_group_size }} talaba) — yangi talaba qo'shib bo'lmaydi.
+                            </span>
+                        </div>
+                        {% elif item.addable_students %}
                         <div class="px-3 py-2 border-top bg-light">
                             <label class="fw-bold mb-1 text-success" style="font-size:13px;">➕ Talaba qo'shish</label>
                             <form method="post" action="{% url 'add_student_to_group' item.group.pk %}" class="d-flex gap-2">
@@ -269,6 +282,21 @@
                                                         <option value="15:00" {% if sched_item.start_time == "15:00" %}selected{% endif %}>5-para — 15:00–16:20</option>
                                                         <option value="16:30" {% if sched_item.start_time == "16:30" %}selected{% endif %}>6-para — 16:30–17:50</option>
                                                     </select>
+                                                </div>
+                                                {# ── YANGI: "Bu va keyingi barcha haftalarga qo'llash" checkbox.
+                                                     Faqat VAQT o'zgarganda ishlaydi — agar KUN (sana) ham
+                                                     o'zgartirilsa, bu bitta istisno hisoblanadi va checkbox
+                                                     belgilangan bo'lsa ham e'tiborga olinmaydi (backendda
+                                                     shunday himoyalangan). ── #}
+                                                <div class="form-check mt-1">
+                                                    <input class="form-check-input" type="checkbox"
+                                                        name="apply_to_future" value="1"
+                                                        id="apply-future-{{ sched_item.sched.pk }}">
+                                                    <label class="form-check-label small text-muted"
+                                                        for="apply-future-{{ sched_item.sched.pk }}">
+                                                        Bu va keyingi barcha haftalarga qo'llash
+                                                        <br><span class="text-warning">(faqat sana o'zgartirilmasa ishlaydi)</span>
+                                                    </label>
                                                 </div>
                                                 <button type="submit" class="btn btn-sm btn-warning mt-1">💾 Saqlash</button>
                                             </form>
