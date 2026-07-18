@@ -190,6 +190,55 @@ def parse_group_langs(lang_value):
     return {part for part in lang_value.split('-') if part}
 
 
+def get_student_group_conflict(student, target_group, exclude_group=None):
+    """
+    Talabaning `target_group`ga qo'shilishi, uning boshqa guruhlardagi mavjud
+    dars vaqtlari bilan to'qnashib qolmasligini tekshiradi. Agar target_group
+    hali jadvallanmagan bo'lsa (is_scheduled=False), tekshirishning hojati
+    yo'q — u holda hozircha vaqt yo'q. To'qnashuv topilsa (sana, vaqt) juftini,
+    aks holda None qaytaradi.
+    """
+    if not target_group.is_scheduled:
+        return None
+    target_times = set(
+        GroupSchedule.objects.filter(group=target_group).values_list('date', 'start_time')
+    )
+    if not target_times:
+        return None
+    busy_qs = GroupSchedule.objects.filter(group__students=student)
+    if exclude_group is not None:
+        busy_qs = busy_qs.exclude(group=exclude_group)
+    student_busy_times = set(busy_qs.values_list('date', 'start_time'))
+    conflict_times = target_times & student_busy_times
+    if conflict_times:
+        return sorted(conflict_times)[0]
+    return None
+
+
+def get_teacher_group_conflict(teacher, target_group, exclude_group=None):
+    """
+    O'qituvchining `target_group`ga biriktirilishi (yoki target_group
+    vaqtlarining o'zgarishi) o'qituvchining boshqa guruhlardagi mavjud
+    dars vaqtlari bilan to'qnashib qolmasligini tekshiradi. To'qnashuv
+    topilsa (sana, vaqt) juftini, aks holda None qaytaradi.
+    """
+    if not teacher or not target_group.is_scheduled:
+        return None
+    target_times = set(
+        GroupSchedule.objects.filter(group=target_group).values_list('date', 'start_time')
+    )
+    if not target_times:
+        return None
+    busy_qs = GroupSchedule.objects.filter(group__teacher=teacher)
+    if exclude_group is not None:
+        busy_qs = busy_qs.exclude(group=exclude_group)
+    teacher_busy_times = set(busy_qs.values_list('date', 'start_time'))
+    conflict_times = target_times & teacher_busy_times
+    if conflict_times:
+        return sorted(conflict_times)[0]
+    return None
+
+
 def find_schedule_for_group(
         start_date, end_date, total_lessons, lessons_per_week,
         teacher=None, students=None, group_number=1,
@@ -1700,6 +1749,21 @@ def add_student_to_group(request, group_pk):
         student_id = request.POST.get("student_id")
         if student_id:
             student = get_object_or_404(Student, pk=student_id)
+
+            # ── YANGI TEKSHIRUV: agar guruh allaqachon jadvallangan bo'lsa,
+            # talabaning boshqa guruhlardagi dars vaqtlari bilan to'qnashib
+            # qolmasligini tekshiramiz — aks holda talaba bir vaqtda ikki
+            # joyga tushib qolishi mumkin edi ──
+            conflict = get_student_group_conflict(student, group)
+            if conflict:
+                conflict_date, conflict_time = conflict
+                messages.error(
+                    request,
+                    f"❌ {student} allaqachon {conflict_date.strftime('%d.%m.%Y')} kuni "
+                    f"{conflict_time.strftime('%H:%M')} da boshqa darsga band — guruhga qo'shilmadi."
+                )
+                return redirect("lesson_schedule", pk=group.course.pk)
+
             group.students.add(student)
             sync_group_language(group)
             student.debts.remove(group.course.subject)
@@ -1934,6 +1998,18 @@ def move_one_student(request):
             student    = Student.objects.get(pk=student_pk)
             from_group = CourseGroup.objects.get(pk=from_group_pk)
             to_group   = CourseGroup.objects.get(pk=to_group_pk)
+
+            # ── YANGI TEKSHIRUV: talabaning to_group vaqtlari bilan
+            # (from_group'dagi darslardan tashqari) to'qnashuvi bo'lmasin ──
+            conflict = get_student_group_conflict(student, to_group, exclude_group=from_group)
+            if conflict:
+                conflict_date, conflict_time = conflict
+                messages.error(
+                    request,
+                    f"❌ {student.first_name} {conflict_date.strftime('%d.%m.%Y')} kuni "
+                    f"{conflict_time.strftime('%H:%M')} da band — {to_group.group_number}-guruhga ko'chirilmadi."
+                )
+                return redirect('build_schedule')
 
             from_group.students.remove(student)
             to_group.students.add(student)
@@ -3115,6 +3191,21 @@ def apply_teacher_suggestion(request, group_pk, teacher_pk):
     if request.method == "POST":
         grp = get_object_or_404(CourseGroup, pk=group_pk)
         teacher = get_object_or_404(Teacher, pk=teacher_pk)
+
+        # ── YANGI TEKSHIRUV: agar guruh allaqachon jadvallangan bo'lsa
+        # (masalan mavjud guruhga o'qituvchi almashtirilayotgan bo'lsa),
+        # yangi o'qituvchining boshqa guruhlardagi vaqtlari bilan
+        # to'qnashmasligini tekshiramiz ──
+        conflict = get_teacher_group_conflict(teacher, grp)
+        if conflict:
+            conflict_date, conflict_time = conflict
+            messages.error(
+                request,
+                f"❌ {teacher} {conflict_date.strftime('%d.%m.%Y')} kuni "
+                f"{conflict_time.strftime('%H:%M')} da band — biriktirilmadi."
+            )
+            return redirect('build_schedule')
+
         grp.teacher = teacher
         grp.save()
         messages.success(
@@ -3143,6 +3234,29 @@ def apply_swap_suggestion(request):
 
         sched = GroupSchedule.objects.filter(group=grp, date=d, start_time=old_t).first()
         if sched:
+            # ── YANGI TEKSHIRUV: yangi vaqtda (d, new_t) o'qituvchi yoki
+            # talabalar boshqa darsga band emasligini tekshiramiz ──
+            teacher_id = grp.teacher_id
+            student_ids = list(grp.students.values_list('id', flat=True))
+
+            if teacher_id and GroupSchedule.objects.filter(
+                date=d, start_time=new_t, group__teacher_id=teacher_id,
+            ).exclude(pk=sched.pk).exists():
+                messages.error(
+                    request,
+                    f"❌ O'qituvchi {grp.teacher} {d.strftime('%d.%m.%Y')} kuni {new_time_str} da band — ko'chirilmadi."
+                )
+                return redirect('build_schedule')
+
+            if student_ids and GroupSchedule.objects.filter(
+                date=d, start_time=new_t, group__students__id__in=student_ids,
+            ).exclude(pk=sched.pk).exists():
+                messages.error(
+                    request,
+                    f"❌ Ba'zi talabalar {d.strftime('%d.%m.%Y')} kuni {new_time_str} da band — ko'chirilmadi."
+                )
+                return redirect('build_schedule')
+
             sched.start_time = new_t
             sched.save(update_fields=['start_time'])
             messages.success(
@@ -3295,13 +3409,36 @@ def move_students(request, from_group_pk, to_group_pk):
 
     if request.method == "POST":
         student_ids = request.POST.getlist("student_ids")
-        students = from_group.students.filter(id__in=student_ids)
+        students = list(from_group.students.filter(id__in=student_ids))
+
+        # ── YANGI TEKSHIRUV: har bir talaba uchun to_group vaqtlari bilan
+        # to'qnashuvni alohida tekshiramiz — to'qnashgan talabalar
+        # ko'chirilmaydi, faqat toza (band bo'lmagan) talabalar ko'chadi ──
+        moved_students = []
+        skipped_students = []
         for st in students:
-            from_group.students.remove(st)
-            to_group.students.add(st)
+            conflict = get_student_group_conflict(st, to_group, exclude_group=from_group)
+            if conflict:
+                skipped_students.append((st, conflict))
+            else:
+                from_group.students.remove(st)
+                to_group.students.add(st)
+                moved_students.append(st)
+
         sync_group_language(from_group)
         sync_group_language(to_group)
-        messages.success(request, f"{len(student_ids)} ta talaba ko'chirildi.")
+
+        if moved_students:
+            messages.success(request, f"{len(moved_students)} ta talaba ko'chirildi.")
+        if skipped_students:
+            names = ", ".join(
+                f"{st.first_name} ({d.strftime('%d.%m.%Y')} {t.strftime('%H:%M')} da band)"
+                for st, (d, t) in skipped_students[:5]
+            )
+            extra = len(skipped_students) - 5
+            if extra > 0:
+                names += f" va yana {extra} ta"
+            messages.error(request, f"❌ Quyidagi talabalar vaqt to'qnashuvi sababli ko'chirilmadi: {names}")
         return redirect("build_schedule")
 
     return render(request, "raspisaniya/move_students.html", {
