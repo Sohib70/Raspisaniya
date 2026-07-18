@@ -86,6 +86,12 @@ VALID_PARA_PAIRS = [
     (4, 5),  # 3-blok: 15:00 - 17:50
 ]
 
+# ── Guruh hajmi chegaralari (konflikt-hal qiluvchi barcha avtomatik
+# funksiyalarda BIR XIL qo'llanadi — talaba ko'chirish/almashtirish/
+# majburiy chiqarishda guruh bu chegaradan tashqariga chiqmasligi kerak) ──
+MIN_GROUP_SIZE = 8   # guruhda bundan kam talaba qolishiga yo'l qo'yilmaydi
+MAX_GROUP_SIZE = 18  # guruhga bundan ortiq talaba qo'shilishiga yo'l qo'yilmaydi
+
 # ─────────────────────────────────────────
 # YORDAMCHI FUNKSIYALAR
 # ─────────────────────────────────────────
@@ -132,6 +138,58 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 
+def sync_group_language(group):
+    """
+    Guruhning `language` maydonini shu guruhdagi TALABALARNING haqiqiy
+    ta'lim tiliga qarab avtomatik yangilaydi:
+      - guruhda faqat 'uz' talabalar bo'lsa       -> 'uz'
+      - guruhda faqat 'ru' talabalar bo'lsa       -> 'ru'
+      - guruhda 'uz' VA 'ru' talabalar aralash    -> 'uz-ru'
+      - boshqa tillar (masalan faqat 'qq' yoki 'en') bo'lsa, o'sha til(lar)
+        alifbo tartibida '-' bilan qo'shib qo'yiladi (masalan 'qq' yoki 'en-uz')
+      - guruhda hali talaba bo'lmasa -> hech narsa o'zgartirilmaydi
+
+    Talabalar guruhga qo'shilgan/olib tashlangan/almashtirilgan HAR BIR
+    joydan keyin albatta shu funksiya chaqirilishi kerak — shunda guruh nomi
+    (tili) doim tarkibga mos bo'lib turadi (masalan bitta rus talaba qo'shilsa,
+    sof o'zbek guruh avtomatik 'uz-ru' ga aylanadi).
+    """
+    langs = set(
+        group.students.exclude(language__isnull=True)
+        .exclude(language='')
+        .values_list('language', flat=True)
+    )
+    if not langs:
+        return
+
+    if langs == {'uz'}:
+        new_lang = 'uz'
+    elif langs == {'ru'}:
+        new_lang = 'ru'
+    elif langs == {'uz', 'ru'}:
+        new_lang = 'uz-ru'
+    else:
+        new_lang = '-'.join(sorted(langs))
+
+    if group.language != new_lang:
+        group.language = new_lang
+        group.save(update_fields=['language'])
+
+
+def parse_group_langs(lang_value):
+    """
+    Guruhning `language` maydonidagi tillarni to'plam qilib ajratib beradi.
+    Masalan: 'uz' -> {'uz'}; 'ru' -> {'ru'}; 'uz-ru' -> {'uz', 'ru'}.
+    Guruhlarni til bo'yicha solishtirishda (masalan parallel-swap uchun nomzod
+    qidirishda) aniq matn tengligi ('uz' == 'uz-ru' -> False) o'rniga shu
+    to'plamlar KESISHMASINI tekshirish kerak — shunda sof 'uz' guruh bilan
+    aralash 'uz-ru' guruh ham bir-biriga mos nomzod sifatida ko'riladi.
+    """
+    if not lang_value:
+        return set()
+    return {part for part in lang_value.split('-') if part}
+
+
 def find_schedule_for_group(
         start_date, end_date, total_lessons, lessons_per_week,
         teacher=None, students=None, group_number=1,
@@ -163,8 +221,13 @@ def find_schedule_for_group(
         preferred = [(1, 3)]
         days_needed = 2
     else:
-        # 8 para: Butun hafta, ixtiyoriy 1 kun
-        preferred = [(0,), (1,), (2,), (3,), (4,)]
+        # 8 para: Butun hafta bo'ylab tarqatiladi — FAQAT bitta kunga (masalan doim
+        # Dushanbaga) qulflanib qolmasligi uchun barcha ish kunlarini BITTA
+        # kombinatsiya sifatida beramiz. Shunda pastdagi pattern qidiruvchi tsikl
+        # (har bir wd uchun bo'sh joy bo'lsa qo'shadi) birinchi topilgan kunda
+        # to'xtamay, haftaning bo'sh bo'lgan HAMMA kunlarini pattern'ga yig'adi va
+        # kurs davomida shu kunlar orasida aylanma tartibda taqsimlaydi.
+        preferred = [tuple(available_wds)]
         days_needed = 1
 
     # 2. Qat'iy rejim: Faqat mavjud bo'lgan (start va end date oralig'iga tushadigan)
@@ -754,7 +817,8 @@ def _auto_resolve_by_force_student_eviction(grp_a, conflicts, same_course_groups
     """
     Agar grp_a guruhiga dars qo'yishga ziddiyat keltirib chiqarayotgan talabalar soni
     juda kam bo'lsa (1 tadan 3 tagacha), ularni ushbu guruhdan majburlab chiqaradi va
-    boshqa ziddiyatsiz parallel guruhlarga tarqatadi. Minimal limit: 8 ta.
+    boshqa ziddiyatsiz parallel guruhlarga tarqatadi.
+    Guruh hajmi chegaralari: MIN_GROUP_SIZE / MAX_GROUP_SIZE (yuqorida belgilangan).
     """
     if not conflicts:
         return None
@@ -779,7 +843,7 @@ def _auto_resolve_by_force_student_eviction(grp_a, conflicts, same_course_groups
     for st in eviction_candidates:
         moved = False
         for target_grp in other_groups:
-            if temp_counts[target_grp.pk] + 1 > 17:
+            if temp_counts[target_grp.pk] + 1 > MAX_GROUP_SIZE:
                 continue
 
             if target_grp.is_scheduled:
@@ -802,16 +866,21 @@ def _auto_resolve_by_force_student_eviction(grp_a, conflicts, same_course_groups
         if not moved:
             return None
 
-    # Guruhda kamida 8 ta o'quvchi qolishi shart!
-    if (grp_a.students.count() - len(eviction_candidates)) < 8:
+    # Guruhda kamida MIN_GROUP_SIZE ta o'quvchi qolishi shart!
+    if (grp_a.students.count() - len(eviction_candidates)) < MIN_GROUP_SIZE:
         return None
 
     with transaction.atomic():
         evicted_names = []
+        affected_groups = {grp_a}
         for st, target_grp in migrations:
             grp_a.students.remove(st)
             target_grp.students.add(st)
+            affected_groups.add(target_grp)
             evicted_names.append(f"{st.first_name} (-> {target_grp.group_number}-guruh)")
+
+        for g in affected_groups:
+            sync_group_language(g)
 
         evicted_str = ", ".join(evicted_names)
         return (
@@ -823,8 +892,8 @@ def _auto_resolve_by_force_student_eviction(grp_a, conflicts, same_course_groups
 def _try_dissolve_and_distribute_group(grp, same_course_groups):
     """
     Muammoli grp guruhini o'chirib, uning talabalarini boshqa guruhlarga tarqatadi.
-    Faqat barcha talabalar muvaffaqiyatli joylashsa (sig'im <= 20 va dars vaqti to'qnashuvlarisiz),
-    o'zgarishni bazada saqlaydi. Aks holda rad etadi (Rollback).
+    Faqat barcha talabalar muvaffaqiyatli joylashsa (sig'im <= MAX_GROUP_SIZE va
+    dars vaqti to'qnashuvlarisiz), o'zgarishni bazada saqlaydi. Aks holda rad etadi (Rollback).
     """
     students_to_distribute = list(grp.students.all())
     other_groups = [g for g in same_course_groups if g.pk != grp.pk]
@@ -840,8 +909,8 @@ def _try_dissolve_and_distribute_group(grp, same_course_groups):
         for target_grp in other_groups:
             current_students_in_target = temp_assignments[target_grp.pk]
 
-            # 1. Yangi sig'im tekshiruvi: Maksimal 20 ta o'quvchi
-            if len(current_students_in_target) >= 17:
+            # 1. Yangi sig'im tekshiruvi
+            if len(current_students_in_target) >= MAX_GROUP_SIZE:
                 continue
 
             # 2. Agar maqsadli guruh allaqachon dars jadvaliga ega bo'lsa, talabaning vaqti mos keladimi?
@@ -865,12 +934,13 @@ def _try_dissolve_and_distribute_group(grp, same_course_groups):
 
         if not distributed:
             # Bitta talaba bo'lsa ham joylasha olmay qolsa, tarqatishni butunlay bekor qilamiz
-            return False, f"Ba'zi talabalar guruh sig'imi (max 20) yoki dars vaqti to'qnashuvi sababli boshqa guruhlarga sig'madi."
+            return False, f"Ba'zi talabalar guruh sig'imi (max {MAX_GROUP_SIZE}) yoki dars vaqti to'qnashuvi sababli boshqa guruhlarga sig'madi."
 
     # Hamma muvaffaqiyatli tarqaldi -> o'zgarishlarni bazada atomar saqlaymiz
     with transaction.atomic():
         for target_grp in other_groups:
             target_grp.students.set(temp_assignments[target_grp.pk])
+            sync_group_language(target_grp)
 
         # Eski muammoli guruhni butunlay o'chirib tashlaymiz
         GroupSchedule.objects.filter(group=grp).delete()
@@ -883,7 +953,9 @@ def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts, already_moved_stud
     """
     Parallel guruhlar orasida o'quvchilarni almashtiradi.
     Til (language) cheklovi mutlaqo olib tashlandi - o'zbek va rus guruh o'quvchilari o'rin almasha oladi!
-    O'quvchilar soni guruhda (og) kamida 10 ta bo'lib qolishi qat'iy tekshiriladi.
+    Guruh hajmi chegaralari: MIN_GROUP_SIZE / MAX_GROUP_SIZE (yuqorida belgilangan) —
+    manba guruh (og) MIN_GROUP_SIZE dan kamayib qolmasligi, maqsadli guruh (cand) esa
+    MAX_GROUP_SIZE dan oshib ketmasligi qat'iy tekshiriladi.
     """
     messages_out = []
     if not conflicts:
@@ -972,6 +1044,8 @@ def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts, already_moved_stud
             if st_full_busy & cand_times:
                 continue
 
+            cand_student_count = cand.students.count()
+
             # Nomzod talabalar ro'yxati (Til cheklovisiz)
             cand_students = [
                 ret_st for ret_st in cand.students.all()
@@ -990,9 +1064,17 @@ def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts, already_moved_stud
                         safe_return = ret_st
                         break
 
-            # ── QAT'IY SHART: Agar safe_return (o'rniga keladigan) topilmasa
-            # va original guruhda o'quvchi soni 10 tadan kamayib qolsa, ko'chirishga mutlaqo yo'l qo'ymaymiz ──
-            if not safe_return and (og_student_count - 1) < 8:
+            # ── QAT'IY SHART 1: Agar safe_return (o'rniga keladigan) topilmasa
+            # va original guruhda o'quvchi soni MIN_GROUP_SIZE dan kamayib qolsa,
+            # ko'chirishga mutlaqo yo'l qo'ymaymiz ──
+            if not safe_return and (og_student_count - 1) < MIN_GROUP_SIZE:
+                continue
+
+            # ── QAT'IY SHART 2 (YANGI): Agar safe_return topilmasa (bir tomonlama
+            # ko'chirish bo'ladi), cand guruh MAX_GROUP_SIZE dan oshib ketmasligi
+            # kerak. safe_return bo'lsa, cand hajmi o'zgarmaydi (bittasi chiqib,
+            # bittasi kiradi) — shuning uchun bu holatda tekshirish shart emas.
+            if not safe_return and cand_student_count + 1 > MAX_GROUP_SIZE:
                 continue
 
             with transaction.atomic():
@@ -1007,6 +1089,9 @@ def _auto_resolve_conflicts_by_subject_swap(grp_a, conflicts, already_moved_stud
                     log_msg += f" O'rniga '{safe_return}' qaytarildi (Swap)."
                 else:
                     log_msg += f" Bir tomonlama ko'chirish bajarildi (Guruhda {og_student_count - 1} o'quvchi qoldi)."
+
+                sync_group_language(og)
+                sync_group_language(cand)
 
                 messages_out.append(log_msg)
 
@@ -1073,13 +1158,22 @@ def _auto_resolve_via_parallel_swap(grp_a):
     bad_id = max(block_counts, key=block_counts.get)
     bad_student = Student.objects.get(id=bad_id)
 
-    parallel_groups = CourseGroup.objects.filter(
-        course__subject=grp_a.course.subject,
-        language=grp_a.language,
-    ).exclude(pk=grp_a.pk).prefetch_related('students')
-
-    safe_candidate = None
-    grp_b = None
+    # MUHIM: aniq matn tengligi (`language=grp_a.language`) o'rniga endi
+    # TIL KESISHMASI tekshiriladi. Chunki guruh tili endi talabalar tarkibiga
+    # qarab avtomatik hisoblanadi (`sync_group_language`) va aralash bo'lishi
+    # mumkin (masalan 'uz-ru'). Aniq tenglik bo'lganda sof 'uz' guruh bilan
+    # aralash 'uz-ru' guruh bir-biriga umuman mos kelmay qolardi — bu esa
+    # asossiz ravishda ko'plab haqiqiy nomzodlarni chetlab o'tishga olib kelardi.
+    grp_a_langs = parse_group_langs(grp_a.language)
+    all_subject_groups = list(
+        CourseGroup.objects.filter(
+            course__subject=grp_a.course.subject,
+        ).exclude(pk=grp_a.pk).prefetch_related('students')
+    )
+    lang_matched_groups = [
+        g for g in all_subject_groups
+        if parse_group_langs(g.language) & grp_a_langs
+    ]
 
     # MUHIM: bad_student ning O'ZI ham yangi guruhga (p_grp) mos kelishi kerak —
     # avval faqat "candidate" (qaytaruvchi talaba) tekshirilar edi, bad_student
@@ -1090,65 +1184,96 @@ def _auto_resolve_via_parallel_swap(grp_a):
         .values_list('date', 'start_time')
     )
 
-    for p_grp in parallel_groups:
-        p_grp_times = set(
-            GroupSchedule.objects.filter(group=p_grp).values_list('date', 'start_time')
-        )
-        if bad_student_full_busy & p_grp_times:
-            # bad_student ning o'zi shu guruhga to'g'ri kelmaydi — keyingisiga o'tamiz
-            continue
-
-        for candidate in p_grp.students.all():
-            if candidate.id in student_a_ids:
+    def _find_safe_swap(search_groups):
+        """Berilgan guruhlar ro'yxatidan xavfsiz swap (safe_candidate + grp_b) qidiradi."""
+        for p_grp in search_groups:
+            p_grp_times = set(
+                GroupSchedule.objects.filter(group=p_grp).values_list('date', 'start_time')
+            )
+            if bad_student_full_busy & p_grp_times:
+                # bad_student ning o'zi shu guruhga to'g'ri kelmaydi — keyingisiga o'tamiz
                 continue
 
-            cand_busy = set()
-            for sc in GroupSchedule.objects.filter(
-                    group__students=candidate,
-                    date__range=(start, end)
-            ):
-                st = sc.start_time or sc.group.start_time
-                if st:
-                    for i, (ps, _) in enumerate(PARA_TIMES):
-                        if ps == st:
-                            cand_busy.add((sc.date, i))
+            for candidate in p_grp.students.all():
+                if candidate.id in student_a_ids:
+                    continue
 
-            if not (teacher_free_slots & cand_busy):
-                safe_candidate = candidate
-                grp_b = p_grp
-                break
+                cand_busy = set()
+                for sc in GroupSchedule.objects.filter(
+                        group__students=candidate,
+                        date__range=(start, end)
+                ):
+                    st = sc.start_time or sc.group.start_time
+                    if st:
+                        for i, (ps, _) in enumerate(PARA_TIMES):
+                            if ps == st:
+                                cand_busy.add((sc.date, i))
+
+                if not (teacher_free_slots & cand_busy):
+                    return candidate, p_grp
+        return None, None
+
+    def _find_one_way(search_groups):
+        """Berilgan guruhlar ro'yxatidan bir tomonlama ko'chirish uchun bo'sh
+        VA hajmi MAX_GROUP_SIZE dan oshib ketmaydigan guruh qidiradi."""
+        bad_busy_times = set(
+            GroupSchedule.objects.filter(group__students=bad_student)
+            .exclude(group=grp_a)
+            .values_list('date', 'start_time')
+        )
+        for p_grp in search_groups:
+            # YANGI TEKSHIRUV: bir tomonlama ko'chirish guruhni MAX_GROUP_SIZE
+            # dan oshirib yubormasligi kerak (avval bu tekshirilmagan edi)
+            if p_grp.students.count() + 1 > MAX_GROUP_SIZE:
+                continue
+            p_grp_times = set(
+                GroupSchedule.objects.filter(group=p_grp)
+                .values_list('date', 'start_time')
+            )
+            if not (bad_busy_times & p_grp_times):
+                return p_grp
+        return None
+
+    # 1-URINISH: til mos keladigan guruhlar orasidan qidiramiz (afzal variant)
+    safe_candidate, grp_b = _find_safe_swap(lang_matched_groups)
+    used_cross_language = False
+
+    # 2-OXIRGI IMKON: til mos kelmasa ham, HECH bo'lmaganda joy topilishi uchun
+    # BARCHA fan guruhlaridan (tildan qat'iy nazar) qidiramiz. Bu faqat til mos
+    # guruhlar orasida yechim topilmagandagina ishga tushadi.
+    if not safe_candidate and len(lang_matched_groups) < len(all_subject_groups):
+        cross_lang_groups = [g for g in all_subject_groups if g not in lang_matched_groups]
+        safe_candidate, grp_b = _find_safe_swap(cross_lang_groups)
         if safe_candidate:
-            break
+            used_cross_language = True
 
     # Agar o'rniga qaytadigan (safe_candidate) topilmasa, bir tomonlama ko'chirishga harakat qilamiz
     if not safe_candidate:
         fallback_grp_b = None
-        # O'quvchilar kam bo'lganida ham ishlashi uchun minimal limit 8 taga tushirildi
-        if (grp_a.students.count() - 1) >= 8:
-            bad_busy_times = set(
-                GroupSchedule.objects.filter(group__students=bad_student)
-                .exclude(group=grp_a)
-                .values_list('date', 'start_time')
-            )
-            for p_grp in parallel_groups:
-                p_grp_times = set(
-                    GroupSchedule.objects.filter(group=p_grp)
-                    .values_list('date', 'start_time')
-                )
-                if not (bad_busy_times & p_grp_times):
-                    fallback_grp_b = p_grp
-                    break
+        # O'quvchilar MIN_GROUP_SIZE dan kam bo'lib qolmasligi uchun
+        if (grp_a.students.count() - 1) >= MIN_GROUP_SIZE:
+            # 1-URINISH: til mos keladigan guruhlar orasidan
+            fallback_grp_b = _find_one_way(lang_matched_groups)
+            # 2-OXIRGI IMKON: hech biri topilmasa, tildan qat'iy nazar barcha guruhlardan
+            if not fallback_grp_b and len(lang_matched_groups) < len(all_subject_groups):
+                cross_lang_groups = [g for g in all_subject_groups if g not in lang_matched_groups]
+                fallback_grp_b = _find_one_way(cross_lang_groups)
+                if fallback_grp_b:
+                    used_cross_language = True
 
         if fallback_grp_b:
             with transaction.atomic():
                 grp_a.students.remove(bad_student)
                 fallback_grp_b.students.add(bad_student)
+                sync_group_language(grp_a)
+                sync_group_language(fallback_grp_b)
 
             teacher_status = "" if has_teacher else " (O'qituvchi belgilanmagan)"
+            lang_note = " ⚠️ (til mos guruh topilmagani uchun boshqa tildagi guruhga ko'chirildi)" if used_cross_language else ""
             return (
                 f"✅ Avtomatik ko'chirish{teacher_status}: '{grp_a.course.subject}' "
                 f"{bad_student.first_name} → {fallback_grp_b.group_number}-guruhga ko'chirildi "
-                f"(guruh tarkibi 9 tadan kam bo'lib qolmadi)."
+                f"(guruh tarkibi 9 tadan kam bo'lib qolmadi).{lang_note}"
             )
         return None
 
@@ -1158,12 +1283,15 @@ def _auto_resolve_via_parallel_swap(grp_a):
         grp_b.students.add(bad_student)
         grp_b.students.remove(safe_candidate)
         grp_a.students.add(safe_candidate)
+        sync_group_language(grp_a)
+        sync_group_language(grp_b)
 
     teacher_status = "" if has_teacher else " (O'qituvchi belgilanmagan)"
+    lang_note = " ⚠️ (til mos guruh topilmagani uchun boshqa tildagi guruh bilan almashtirildi)" if used_cross_language else ""
     return (
         f"✅ Avtomatik almashtirish{teacher_status}: '{grp_a.course.subject}' "
         f"{bad_student.first_name} → {grp_b.group_number}-guruhga, "
-        f"{safe_candidate.first_name} → {grp_a.group_number}-guruhga almashtirildi."
+        f"{safe_candidate.first_name} → {grp_a.group_number}-guruhga almashtirildi.{lang_note}"
     )
 
 
@@ -1447,6 +1575,7 @@ def lesson_create(request):
                     is_scheduled = False,
                 )
                 cgroup.students.set(selected_students)
+                sync_group_language(cgroup)
 
                 for st in selected_students:
                     st.debts.remove(subject)
@@ -1488,7 +1617,9 @@ def lesson_schedule(request, pk):
     # Shu fandan qarzdor va hali hech qaysi guruhga qo'shilmagan talabalar
     addable_students = Student.objects.filter(
         debts=course.subject
-    ).exclude(id__in=all_group_student_ids)
+    ).exclude(
+        id__in=all_group_student_ids
+    )
 
     # 2. Shu fanga ixtisoslashgan barcha o'qituvchilar ro'yxati (Dropdown uchun asos)
     course_teachers = Teacher.objects.filter(subjects=course.subject).order_by('first_name')
@@ -1570,6 +1701,7 @@ def add_student_to_group(request, group_pk):
         if student_id:
             student = get_object_or_404(Student, pk=student_id)
             group.students.add(student)
+            sync_group_language(group)
             student.debts.remove(group.course.subject)
             messages.success(request, f"{student} guruhga qo'shildi.")
     return redirect("lesson_schedule", pk=group.course.pk)
@@ -1805,11 +1937,50 @@ def move_one_student(request):
 
             from_group.students.remove(student)
             to_group.students.add(student)
+            sync_group_language(from_group)
+            sync_group_language(to_group)
             messages.success(request, f"{student.first_name} → {to_group.group_number}-guruhga ko'chirildi.")
         except Exception as e:
             messages.error(request, f"Xato: {e}")
 
     return redirect('build_schedule')
+
+
+@login_required
+@transaction.atomic
+def add_group_and_redistribute(request, course_pk, language):
+    """
+    Yangi bo'sh guruh qo'shish funksiyasi.
+    Eski guruhlar, ularning o'qituvchilari, talabalari va
+    mavjud jadvallariga umuman ta'sir qilmaydi.
+    """
+    if request.method != "POST":
+        return redirect('lesson_schedule', pk=course_pk)
+
+    course = get_object_or_404(Course, pk=course_pk)
+
+    # Mavjud guruhlar ichida eng katta guruh raqamini topamiz
+    existing_groups = CourseGroup.objects.filter(course=course).order_by('-group_number')
+    max_num = existing_groups.first().group_number if existing_groups.exists() else 0
+
+    # Yangi bo'sh guruh yaratamiz
+    new_group = CourseGroup.objects.create(
+        course=course,
+        teacher=None,  # O'qituvchi yo'q
+        group_number=max_num + 1,  # Keyingi raqam
+        language=language,  # Tanlangan til
+        is_scheduled=False,  # Jadval hali tuzilmagan
+        start_time=None,
+        weekdays=[]
+    )
+
+    messages.success(
+        request,
+        f"✅ {max_num + 1}-guruh muvaffaqiyatli qo'shildi. "
+        f"Endi talabalarni boshqa guruhlardan o'chirib, bu guruhga qo'shishingiz mumkin."
+    )
+
+    return redirect('lesson_schedule', pk=course.pk)
 
 
 @login_required
@@ -1832,6 +2003,7 @@ def remove_student_from_group(request, group_pk, student_pk):
     student = get_object_or_404(Student, pk=student_pk)
     if request.method == "POST":
         group.students.remove(student)
+        sync_group_language(group)
         student.debts.add(group.course.subject)
         messages.success(request, f"{student} guruhdan o'chirildi va qayta ro'yxatga qo'shildi")
     return redirect("lesson_schedule", pk=group.course.pk)
@@ -3096,6 +3268,8 @@ def apply_student_swap_suggestion(request, group_pk):
             grp_b.students.add(bad_student)
             grp_b.students.remove(safe_candidate)
             grp_a.students.add(safe_candidate)
+            sync_group_language(grp_a)
+            sync_group_language(grp_b)
 
         messages.success(request,
             f"✅ Avtomatik almashtirish bajarildi: "
@@ -3125,6 +3299,8 @@ def move_students(request, from_group_pk, to_group_pk):
         for st in students:
             from_group.students.remove(st)
             to_group.students.add(st)
+        sync_group_language(from_group)
+        sync_group_language(to_group)
         messages.success(request, f"{len(student_ids)} ta talaba ko'chirildi.")
         return redirect("build_schedule")
 
@@ -4450,8 +4626,9 @@ def group_schedule_debug(request, group_pk):
         candidate_wd_sets = [tuple(needed_wds)]
         days_needed = 2  # <--- Buni belgilash shart
     else:
-        # 8 para: Butun hafta, ixtiyoriy 1 kun
-        candidate_wd_sets = [(wd,) for wd in range(5)]
+        # 8 para: Butun hafta bo'ylab tarqatiladi (asosiy find_schedule_for_group
+        # bilan bir xil mantiq — faqat bitta kunga qulflanib qolmasligi kerak)
+        candidate_wd_sets = [tuple(available_wds)]
         days_needed = 1  # <--- Buni belgilash shart
     # ─────────────────────────────────────────────
 

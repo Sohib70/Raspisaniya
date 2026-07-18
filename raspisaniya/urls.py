@@ -87,4 +87,5 @@ urlpatterns = [
     path('teacher/group/<int:group_pk>/attendance/excel/', views.export_attendance_only_excel,
          name='export_attendance_only_excel'),
     path('teacher/group/<int:group_pk>/grades/excel/', views.export_grades_only_excel, name='export_grades_only_excel'),
+    path('course/<int:course_pk>/add-group/<str:language>/', views.add_group_and_redistribute, name='add_group_and_redistribute'),
 ]

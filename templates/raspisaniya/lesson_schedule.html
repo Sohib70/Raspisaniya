@@ -20,14 +20,23 @@
                 </button>
             </form>
             {% endif %}
+                            <form method="post" action="{% url 'add_group_and_redistribute' course.pk 'uz' %}"
+      onsubmit="return confirm('Yangi guruh qo\'shilsin va barcha O\'zbek guruhlar qayta taqsimlansinmi? Eski jadval o\'chadi!');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-sm btn-success">
+        ➕ Guruh qo'shish
+    </button>
+</form>
             <a href="{% url 'lesson_schedule_excel' course.pk %}" class="btn btn-success">
                 ⬇ Excel
             </a>
             <a href="{% url 'lesson_list' %}" class="btn btn-secondary">
                 ← Orqaga
             </a>
+
         </div>
     </div>
+
 
     {% for item in groups_data %}
     <div class="mb-4">
