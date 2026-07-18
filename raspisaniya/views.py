@@ -3618,7 +3618,12 @@ def course_update(request, pk):
         course.lessons_per_week = expected_per_week
         course.save()
 
-        course.groups.update(is_scheduled=False)
+        # MUHIM: sana/dars soni o'zgargani uchun eski jadval endi noto'g'ri —
+        # shu bilan birga ustozlar ham eski (endi noto'g'ri) vaqtlarga
+        # asosan biriktirilgan edi, shuning uchun ularni ham bo'shatamiz,
+        # "Jadval tuzish" dan keyin "O'qituvchilarni taqsimlash" orqali
+        # qaytadan to'g'ri biriktiriladi.
+        course.groups.update(is_scheduled=False, teacher=None)
         GroupSchedule.objects.filter(group__course=course).delete()
 
         messages.success(request, "Kurs yangilandi! Qayta jadval tuzing.")
