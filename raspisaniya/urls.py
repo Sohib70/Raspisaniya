@@ -79,6 +79,8 @@ urlpatterns = [
     path('admin-password-verify/', views.admin_password_verify_and_change, name='admin_password_verify_and_change'),
     path('apply-teacher-suggestion/<int:group_pk>/<int:teacher_pk>/',
          views.apply_teacher_suggestion, name='apply_teacher_suggestion'),
+    path('apply-expand-weekdays/<int:group_pk>/',
+         views.apply_expand_weekdays_suggestion, name='apply_expand_weekdays_suggestion'),
     path('apply-swap-suggestion/',
          views.apply_swap_suggestion, name='apply_swap_suggestion'),
     path('teacher-capacity/', views.teacher_capacity_check, name='teacher_capacity_check'),

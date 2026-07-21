@@ -55,6 +55,43 @@
                     </p>
                     {% endif %}
 
+                    {% if detail.blocker_diagnosis %}
+                    <div class="alert alert-secondary">
+                        <h6 class="fw-bold">🔍 Aynan qaysini o'zgartirsa muammo hal bo'ladi:</h6>
+                        <p class="mb-2 small text-muted">
+                            Eng kam to'siqli vaqt: <b>{{ detail.blocker_diagnosis.target_weekdays|join:", " }}</b>,
+                            <b>{{ detail.blocker_diagnosis.target_time }}</b>.
+                            Shu vaqtga {{ detail.blocker_diagnosis.blockers|length }} ta talaba to'sqinlik qilyapti:
+                        </p>
+                        <ul class="mb-2">
+                            {% for b in detail.blocker_diagnosis.blockers %}
+                            <li>
+                                {% if b.has_candidate %}
+                                <span class="text-success">✅ {{ b.student }}</span> —
+                                <b>{{ b.candidate }}</b> ({{ b.candidate_group }}) bilan almashtirsa bo'ladi.
+                                {% else %}
+                                <span class="text-danger fw-bold">❌ {{ b.student }}</span> —
+                                hech qanday almashtirish nomzodi yo'q (butun haftasi band). <u>Aynan shu talaba — haqiqiy to'siq.</u>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% if detail.blocker_diagnosis.truly_stuck %}
+                        <p class="mb-0 fw-bold text-danger">
+                            Xulosa: {{ detail.blocker_diagnosis.truly_stuck|length }} ta talaba
+                            ({% for s in detail.blocker_diagnosis.truly_stuck %}{{ s }}{% if not forloop.last %}, {% endif %}{% endfor %})
+                            sababli bu guruh joylasha olmayapti. Shu talaba(lar)ning boshqa fanini
+                            boshqa vaqtga surish yoki ularni alohida (individual) hal qilish kerak.
+                        </p>
+                        {% else %}
+                        <p class="mb-0 fw-bold text-success">
+                            Barcha to'siq talabalar uchun almashtirish nomzodi bor — "Qo'llash"
+                            orqali avtomatik hal qilinishi mumkin.
+                        </p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
                     <!-- AVTOMATIK TAKLIFLAR -->
                     {% if detail.teacher_suggestion or detail.student_move_suggestions or detail.swap_suggestions %}
                     <div class="alert alert-info">
@@ -190,7 +227,16 @@
                     {% endif %}
 
                     <div class="mt-2">
-                        <form method="post" action="{% url 'delete_unscheduled_group' detail.group.pk %}">
+                        {% if detail.course.total_lessons >= 12 and detail.course.total_lessons <= 20 %}
+                        <form method="post" action="{% url 'apply_expand_weekdays_suggestion' detail.group.pk %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-warning"
+                                    onclick="return confirm('Bu guruh uchun Dushanba/Chorshanba/Juma kunlarini ham (Seshanba/Payshanba o\'rniga yoki bilan) sinab ko\'ramizmi?')">
+                                📅 Dush/Chor/Juma kunlarini ham sinash
+                            </button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="{% url 'delete_unscheduled_group' detail.group.pk %}" style="display:inline;">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-danger"
                                     onclick="return confirm('Guruhni o\'chirasizmi?')">

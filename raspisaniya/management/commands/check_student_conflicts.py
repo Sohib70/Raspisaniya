@@ -6,7 +6,7 @@
 #   python manage.py check_student_conflicts --teacher "Muxammadiyeva"
 
 from django.core.management.base import BaseCommand
-from raspisaniya.models import Teacher, CourseGroup, GroupSchedule, Student
+from raspisaniya.models import CourseGroup, GroupSchedule
 from datetime import date, timedelta
 from collections import defaultdict
 
