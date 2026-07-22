@@ -50,14 +50,34 @@
 <div class="container-fluid px-3 py-3">
 
   <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-    <a href="?week={{ prev_week }}" class="btn btn-outline-secondary btn-sm">← Oldingi hafta</a>
+    <a href="?week={{ prev_week }}{% if extra_cols %}&extra_cols={{ extra_cols }}{% endif %}" class="btn btn-outline-secondary btn-sm">← Oldingi hafta</a>
     <h5 class="mb-0 fw-bold px-3 py-1 rounded" style="background:#dc3545;color:#fff;">📅 {{ week_start_str }} — {{ week_end_str }}</h5>
-    <a href="?week={{ next_week }}" class="btn btn-outline-secondary btn-sm">Keyingi hafta →</a>
+    <a href="?week={{ next_week }}{% if extra_cols %}&extra_cols={{ extra_cols }}{% endif %}" class="btn btn-outline-secondary btn-sm">Keyingi hafta →</a>
   </div>
 
-  <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2" role="alert">
+  <div class="d-flex align-items-center justify-content-end gap-2 mb-3">
+    <span class="text-muted small">Ustunlar: {{ group_numbers|length }}{% if extra_cols %} ({{ base_group_count }} + {{ extra_cols }} qo'lda){% endif %}</span>
+    {% if extra_cols > 0 %}
+    <a href="?week={{ week_start|date:'Y-m-d' }}&extra_cols={{ extra_cols|add:'-1' }}"
+       class="btn btn-outline-danger btn-sm" title="Oxirgi qo'shilgan bo'sh ustunni olib tashlash">
+       − Ustunni olib tashlash
+    </a>
+    {% endif %}
+    <a href="?week={{ week_start|date:'Y-m-d' }}&extra_cols={{ extra_cols|add:'1' }}"
+       class="btn btn-outline-success btn-sm" title="Vizual rejalashtirish uchun bo'sh ustun qo'shish">
+       + Ustun qo'shish
+    </a>
+  </div>
+
+  <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2 flex-wrap" role="alert">
     <span>💡</span>
     <span>Darsni boshqa vaqtga ko'chirish uchun <strong>sudrab olib boring</strong> va bo'sh katakka tashlang. Ma'lumot uchun <strong>bir marta bosing</strong>.</span>
+    <div class="form-check form-switch ms-auto mb-0">
+      <input class="form-check-input" type="checkbox" id="applyToFutureToggle" checked>
+      <label class="form-check-label small fw-bold" for="applyToFutureToggle">
+        Kelajakdagi barcha haftalarga ham qo'llash
+      </label>
+    </div>
   </div>
 
   <div id="toast-container" style="position:fixed;top:80px;right:20px;z-index:9999;min-width:300px;"></div>
@@ -403,7 +423,11 @@
       fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({ new_date: newDate, new_time: newTime })
+        body: JSON.stringify({
+          new_date: newDate,
+          new_time: newTime,
+          apply_to_future: document.getElementById('applyToFutureToggle').checked
+        })
       })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -411,7 +435,11 @@
         cardRef.setAttribute('draggable', 'true');
         isFetching = false;
         if (data.success) {
-          showToast('Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\'chirildi', 'success');
+          var msg = 'Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\'chirildi';
+          if (data.updated_count > 1) {
+            msg += ' (jami ' + data.updated_count + ' ta hafta yangilandi)';
+          }
+          showToast(msg, 'success');
         } else {
           td.classList.remove('has-lesson');
           prevSource.classList.add('has-lesson');

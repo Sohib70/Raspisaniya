@@ -1,5 +1,37 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
+<style>
+.student-search-wrap { max-width: 320px; }
+.student-search-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    z-index: 60;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    margin-top: 2px;
+}
+.student-search-dropdown.show { display: block; }
+.student-search-option {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.student-search-option:hover,
+.student-search-option.active-hover {
+    background: #f1f5f9;
+}
+.student-search-option[data-hidden="1"] { display: none; }
+.student-search-empty {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+</style>
 <div class="container mt-4">
 
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -203,21 +235,30 @@
                         {% elif item.addable_students %}
                         <div class="px-3 py-2 border-top bg-light">
                             <label class="fw-bold mb-1 text-success" style="font-size:13px;">➕ Talaba qo'shish</label>
-                            <form method="post" action="{% url 'add_student_to_group' item.group.pk %}" class="d-flex gap-2">
+                            <form method="post" action="{% url 'add_student_to_group' item.group.pk %}"
+                                  class="d-flex gap-2 student-add-form">
                                 {% csrf_token %}
-                                <select name="student_id" class="form-select form-select-sm" required>
-                                    <option value="">— tanlang (Ism yonida tili ko'rsatilgan) —</option>
-                                    {% for st in item.addable_students %}
-                                        <option value="{{ st.id }}">
-                                            {{ st }}
+                                <div class="student-search-wrap position-relative flex-grow-1">
+                                    <input type="text"
+                                           class="form-control form-control-sm student-search-input"
+                                           placeholder="🔍 Ism yoki familiya bo'yicha qidiring..."
+                                           autocomplete="off"
+                                           data-target="student-options-{{ item.group.pk }}">
+                                    <input type="hidden" name="student_id" class="student-search-hidden">
+                                    <div class="student-search-dropdown" id="student-options-{{ item.group.pk }}">
+                                        {% for st in item.addable_students %}
                                             {% if st.group.language == 'ru' or 'rus' in st.group.name|lower or '(ru)' in st|lower %}
-                                                [RU GURUH]
+                                                <div class="student-search-option" data-value="{{ st.id }}" data-text="{{ st }} ru guruh">
+                                                    {{ st }} <span class="badge bg-danger ms-1">RU GURUH</span>
+                                                </div>
                                             {% else %}
-                                                [UZB GURUH]
+                                                <div class="student-search-option" data-value="{{ st.id }}" data-text="{{ st }} uzb guruh">
+                                                    {{ st }} <span class="badge bg-primary ms-1">UZB GURUH</span>
+                                                </div>
                                             {% endif %}
-                                        </option>
-                                    {% endfor %}
-                                </select>
+                                        {% endfor %}
+                                    </div>
+                                </div>
                                 <button type="submit" class="btn btn-sm btn-success px-3">Qo'sh</button>
                             </form>
                         </div>
@@ -322,6 +363,73 @@ function toggleTimeEdit(pk) {
     const el = document.getElementById('time-edit-' + pk);
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
+
+// ── Talaba qidiruvli dropdown ──
+document.querySelectorAll('.student-search-input').forEach(function(input) {
+    const dropdown = document.getElementById(input.dataset.target);
+    if (!dropdown) return;
+    const form = input.closest('form');
+    const hidden = form.querySelector('.student-search-hidden');
+    const options = Array.from(dropdown.querySelectorAll('.student-search-option'));
+    const wrap = input.closest('.student-search-wrap');
+
+    let emptyMsg = dropdown.querySelector('.student-search-empty');
+    if (!emptyMsg) {
+        emptyMsg = document.createElement('div');
+        emptyMsg.className = 'student-search-empty';
+        emptyMsg.textContent = "Mos talaba topilmadi";
+        emptyMsg.style.display = 'none';
+        dropdown.appendChild(emptyMsg);
+    }
+
+    function filterOptions() {
+        const q = input.value.trim().toLowerCase();
+        let visibleCount = 0;
+        options.forEach(function(opt) {
+            const match = opt.dataset.text.toLowerCase().indexOf(q) !== -1;
+            opt.setAttribute('data-hidden', match ? '0' : '1');
+            if (match) visibleCount++;
+        });
+        emptyMsg.style.display = visibleCount === 0 ? 'block' : 'none';
+        dropdown.classList.add('show');
+    }
+
+    input.addEventListener('focus', filterOptions);
+    input.addEventListener('input', function() {
+        hidden.value = '';
+        filterOptions();
+    });
+
+    options.forEach(function(opt) {
+        opt.addEventListener('click', function() {
+            hidden.value = opt.dataset.value;
+            input.value = opt.dataset.text.replace(/ (uzb|ru) guruh$/i, '');
+            dropdown.classList.remove('show');
+        });
+    });
+
+    document.addEventListener('click', function(e) {
+        if (wrap && !wrap.contains(e.target)) {
+            dropdown.classList.remove('show');
+        }
+    });
+});
+
+document.querySelectorAll('.student-add-form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        const hidden = form.querySelector('.student-search-hidden');
+        if (hidden && !hidden.value) {
+            e.preventDefault();
+            const input = form.querySelector('.student-search-input');
+            if (input) {
+                input.focus();
+                input.style.borderColor = '#dc3545';
+                setTimeout(function() { input.style.borderColor = ''; }, 1500);
+            }
+            alert("Iltimos, ro'yxatdan talabani tanlang.");
+        }
+    });
+});
 
 document.querySelectorAll('.permit-group-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {

@@ -1956,14 +1956,14 @@ def _diagnose_true_blockers(grp, course, teacher):
     used_candidates = set()
     blockers_info = []
 
-    for bid in blocker_ids:
+    for bid in sorted(blocker_ids):
         blocker = next((s for s in students if s.id == bid), None)
         if blocker is None:
             continue
         swap_found = None
         for og in same_subject_groups:
             og_dates_times = set(GroupSchedule.objects.filter(group=og).values_list('date', 'start_time'))
-            for cand in og.students.all():
+            for cand in og.students.order_by('id'):
                 if cand.id in used_candidates:
                     continue
                 cand_conflict = GroupSchedule.objects.filter(
@@ -2082,17 +2082,17 @@ def _try_minimal_disruption_swap(grp, course, teacher):
     times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
 
     # ── 3-BOSQICH: har bir to'siq talaba uchun almashtirish nomzodi qidirish ──
-    same_subject_groups = list(course.groups.exclude(pk=grp.pk).filter(is_scheduled=True))
+    same_subject_groups = list(course.groups.exclude(pk=grp.pk).filter(is_scheduled=True).order_by('pk'))
     swaps = []
     unresolved = []
     used_candidates = set()
 
-    for bid in blocker_ids:
+    for bid in sorted(blocker_ids):
         blocker = next(s for s in students if s.id == bid)
         swap_found = None
         for og in same_subject_groups:
             og_dates_times = set(GroupSchedule.objects.filter(group=og).values_list('date', 'start_time'))
-            for cand in og.students.all():
+            for cand in og.students.order_by('id'):
                 if cand.id in used_candidates:
                     continue
                 cand_conflict = GroupSchedule.objects.filter(
@@ -2691,571 +2691,650 @@ def build_schedule(request):
             group_number=grp.group_number,
             include_saturday=getattr(course, 'include_saturday', False),
             same_subject_busy=same_subject_busy,
-            busy_index=busy_index,   # ← YANGI: berilsa, get_hard_busy SQL yubormaydi
+            busy_index=busy_index,   # ← berilsa, get_hard_busy SQL yubormaydi
         )
         fc = len(sched)
         cf = getattr(find_schedule_for_group, '_last_conflict_info', [])
         return sched, fc, cf
 
-    # ── 🔄 MULTI-PASS OPTIMIZATION (WHILE TSIKLI) ──
-    iteration = 0
-    max_iterations = 40  # YANGILANDI: 10 -> 40. Yangi resolverlar (regroup,
-    # last-resort) ba'zan butun bir iteratsiyani "yeb qo'yishi" mumkin
-    # (masalan bitta fan uchun regroup ishlaganda, o'sha iteratsiyada
-    # boshqa guruhlar tekshirilmay qoladi) — shuning uchun ko'proq
-    # iteratsiya zaxirasi kerak, ayniqsa "hammasini boshidan qayta tuzish"
-    # kabi ko'p guruh bir vaqtda tuzilmagan holatlarda.
+    def _run_scheduling_pass():
+        # ── 🔄 MULTI-PASS OPTIMIZATION (WHILE TSIKLI) ──
+        iteration = 0
+        max_iterations = 40
 
-    while iteration < max_iterations:
-        iteration += 1
+        while iteration < max_iterations:
+            iteration += 1
 
-        # Har bir yangi urinishda jadval qilinmagan guruhlarni qayta yuklaymiz
-        unscheduled_groups = list(
-            CourseGroup.objects.filter(
-                is_scheduled=False
-            ).select_related('course', 'course__subject', 'teacher')
-            .prefetch_related('students')
-        )
-
-        if not unscheduled_groups:
-            break
-
-        # ── YANGI PRE-PASS: bir fanning bir nechta tuzilmagan guruhi bor
-        # va ular orasida hech qanday TUZILGAN parallel guruh yo'q bo'lsa
-        # (ya'ni oddiy almashtirish/taqsimlash ISHLAMAYDI, chunki almashtira-
-        # digan hech kim yo'q) — original guruh chegaralarini unutib, barcha
-        # talabalarni birlashtirib, bo'sh vaqtga qarab qaytadan guruhlaymiz.
-        from collections import defaultdict as _dd
-        by_course = _dd(list)
-        for g in unscheduled_groups:
-            if g.course_id:
-                by_course[g.course_id].append(g)
-
-        regrouped_any = False
-        for course_id, groups_here in by_course.items():
-            if len(groups_here) < 2:
-                continue  # faqat 1 ta guruh bo'lsa, bu pre-pass kerak emas
-            course_obj = groups_here[0].course
-            has_scheduled_sibling = CourseGroup.objects.filter(
-                course_id=course_id, is_scheduled=True
-            ).exists()
-            if has_scheduled_sibling:
-                continue  # tuzilgan parallel guruh bor -> oddiy almashtirish/
-                          # taqsimlash resolverlari buni allaqachon yaxshi hal qiladi
-            teacher_here = groups_here[0].teacher if groups_here[0].teacher_id else None
-            ok, msg = _try_regroup_same_subject(course_obj, teacher_here, groups_here)
-            if ok:
-                auto_resolve_messages.append(msg)
-                regrouped_any = True
-
-        if regrouped_any:
-            # Ma'lumotlar bazasi tarkibi sezilarli o'zgargani uchun (eski
-            # guruhlar o'chirilib, yangilari yaratilgani uchun) shu
-            # iteratsiyani shu yerda tugatib, KEYINGI iteratsiyada
-            # unscheduled_groups ro'yxatini yangidan yuklaymiz.
-            iteration_success_count = 1
-            continue
-
-        unscheduled_list = sorted(unscheduled_groups, key=sort_key)
-        iteration_success_count = 0  # Ushbu aylanishda nechta guruh muvaffaqiyatli joylashdi?
-
-        # ── YANGI: shu iteratsiya uchun BITTA query bilan barcha band
-        # vaqtlarni xotiraga olamiz (o'rniga: har guruh, har sana uchun
-        # alohida SQL). Iteratsiya davomida guruhlar ketma-ket saqlangani
-        # sayin, `busy_index.record_scheduled(...)` orqali xotirada (YANA
-        # query yubormasdan) yangilab boriladi — shu tufayli 2-guruh
-        # 1-guruhning yangi band vaqtini albatta ko'radi. ──
-        date_from = min((g.course.start_date for g in unscheduled_list if g.course), default=None)
-        date_to = max((g.course.end_date for g in unscheduled_list if g.course), default=None)
-        busy_index = None
-        if date_from and date_to:
-            busy_index = BusyIndex.build(
-                date_from - timedelta(weeks=4), date_to + timedelta(weeks=24),
-                GroupSchedule=GroupSchedule,
+            unscheduled_groups = list(
+                CourseGroup.objects.filter(
+                    is_scheduled=False
+                ).select_related('course', 'course__subject', 'teacher')
+                .prefetch_related('students')
             )
 
-            # ── YANGI: MRV (eng kam imkoniyatli avval) qayta saralash ──
-            # Eski `sort_key` guruhlarni faqat "kattaligi" bo'yicha (ko'p
-            # darslik, ko'p talabali avval) saralardi — bu ham GREEDY
-            # muammosining bir ko'rinishi edi: "katta" guruh ko'p imkoniyatga
-            # ega bo'lishi ham mumkin, lekin haqiqiy TOR imkoniyatli (masalan
-            # talabalari boshqa fanlarga juda band) guruh oxirida qolib,
-            # eng yaxshi joylarni "katta" guruhlar allaqachon egallab
-            # bo'lgan bo'ladi. Endi BusyIndex tayyor bo'lgani uchun, har bir
-            # guruhning HAQIQIY nechta to'qnashuvsiz slotga sig'ishini
-            # oldindan hisoblab, ENG KAM imkoniyatlisini BIRINCHI qo'yamiz.
-            def _mrv_key(g):
-                feasible = _count_feasible_slots(g, g.course, g.teacher, busy_index)
-                fallback = sort_key(g)
-                return (feasible,) + fallback
+            if not unscheduled_groups:
+                break
 
-            unscheduled_list = sorted(unscheduled_list, key=_mrv_key)
+            from collections import defaultdict as _dd
+            by_course = _dd(list)
+            for g in unscheduled_groups:
+                if g.course_id:
+                    by_course[g.course_id].append(g)
 
-        for grp in unscheduled_list:
-            if not CourseGroup.objects.filter(pk=grp.pk).exists():
-                if grp.course_id and CourseGroup.objects.filter(course_id=grp.course_id, students__isnull=False).exists():
-                    pass
+            regrouped_any = False
+            for course_id, groups_here in by_course.items():
+                if len(groups_here) < 2:
+                    continue
+                course_obj = groups_here[0].course
+                has_scheduled_sibling = CourseGroup.objects.filter(
+                    course_id=course_id, is_scheduled=True
+                ).exists()
+                if has_scheduled_sibling:
+                    continue
+                teacher_here = groups_here[0].teacher if groups_here[0].teacher_id else None
+                ok, msg = _try_regroup_same_subject(course_obj, teacher_here, groups_here)
+                if ok:
+                    auto_resolve_messages.append(msg)
+                    regrouped_any = True
+
+            if regrouped_any:
+                iteration_success_count = 1
                 continue
 
-            course = grp.course
-            teacher = grp.teacher if grp.teacher_id else None
+            unscheduled_list = sorted(unscheduled_groups, key=sort_key)
+            iteration_success_count = 0
 
-            schedule = []
-            found_count = 0
-            conflicts = []
+            date_from = min((g.course.start_date for g in unscheduled_list if g.course), default=None)
+            date_to = max((g.course.end_date for g in unscheduled_list if g.course), default=None)
+            busy_index = None
+            if date_from and date_to:
+                busy_index = BusyIndex.build(
+                    date_from - timedelta(weeks=4), date_to + timedelta(weeks=24),
+                    GroupSchedule=GroupSchedule,
+                )
 
-            # ── 1-BOSQICH: To'g'ridan-to'g'ri joylashtirish ──
-            find_schedule_for_group._last_conflict_info = []
-            find_schedule_for_group._last_missing = 0
-            find_schedule_for_group._last_no_slot_in_week = False
+                def _mrv_key(g):
+                    feasible = _count_feasible_slots(g, g.course, g.teacher, busy_index)
+                    fallback = sort_key(g)
+                    return (feasible,) + fallback
 
-            schedule, found_count, conflicts = _rebuild_schedule(grp, course, teacher, busy_index=busy_index)
+                unscheduled_list = sorted(unscheduled_list, key=_mrv_key)
 
-            # ── 2-BOSQICH: Joy topilmasa — 3 ta asosiy aqlli algoritmni ishga tushirish ──
-            if found_count < course.total_lessons:
-                MAX_ROUNDS = 80  # YANGI: 15 -> 80 (zich guruhlar uchun ko'proq urinish)
-                for _ in range(MAX_ROUNDS):
-                    if found_count >= course.total_lessons:
-                        break
-                    changed = False
+            for grp in unscheduled_list:
+                if not CourseGroup.objects.filter(pk=grp.pk).exists():
+                    if grp.course_id and CourseGroup.objects.filter(course_id=grp.course_id, students__isnull=False).exists():
+                        pass
+                    continue
 
-                    # 1. ALGORITM: Talaba almashtirish (Subject swap)
-                    sid = transaction.savepoint()
-                    resolved = _auto_resolve_conflicts_by_subject_swap(
-                        grp, conflicts, already_moved_student_ids=already_moved_students
-                    )
-                    if resolved:
-                        test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
-                        if test_fc <= found_count:
-                            transaction.savepoint_rollback(sid)
-                        else:
-                            transaction.savepoint_commit(sid)
-                            auto_resolve_messages.extend(resolved)
-                            schedule, found_count, conflicts = test_schedule, test_fc, test_cf
-                            changed = True
-                            if found_count >= course.total_lessons:
-                                break
+                course = grp.course
+                teacher = grp.teacher if grp.teacher_id else None
 
-                    # 2. ALGORITM: Parallel swap
-                    sid = transaction.savepoint()
-                    swap_msg = _auto_resolve_via_parallel_swap(grp)
-                    if swap_msg:
-                        test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
-                        if test_fc <= found_count:
-                            transaction.savepoint_rollback(sid)
-                        else:
-                            transaction.savepoint_commit(sid)
-                            auto_resolve_messages.append(swap_msg)
-                            schedule, found_count, conflicts = test_schedule, test_fc, test_cf
-                            changed = True
-                            if found_count >= course.total_lessons:
-                                break
+                schedule = []
+                found_count = 0
+                conflicts = []
 
-                    # 3. ALGORITM: Boshqa fan guruhi bilan vaqt almashish
-                    sid = transaction.savepoint()
-                    cross_msg = _auto_resolve_via_cross_subject_swap(
-                        grp, conflicts, group_last_positions=group_last_positions
-                    )
-                    if cross_msg:
-                        test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
-                        if test_fc <= found_count:
-                            transaction.savepoint_rollback(sid)
-                        else:
-                            transaction.savepoint_commit(sid)
-                            auto_resolve_messages.append(cross_msg)
-                            schedule, found_count, conflicts = test_schedule, test_fc, test_cf
-                            changed = True
-                            if found_count >= course.total_lessons:
-                                break
+                # ── 1-BOSQICH: To'g'ridan-to'g'ri joylashtirish ──
+                find_schedule_for_group._last_conflict_info = []
+                find_schedule_for_group._last_missing = 0
+                find_schedule_for_group._last_no_slot_in_week = False
 
-                    if not changed:
-                        break
+                schedule, found_count, conflicts = _rebuild_schedule(grp, course, teacher, busy_index=busy_index)
 
-                # ── 3-BOSQICH: Brute Force chorasi ──
+                # ── 2-BOSQICH: Joy topilmasa — 3 ta asosiy aqlli algoritmni ishga tushirish ──
                 if found_count < course.total_lessons:
-                    MAX_BRUTE_ROUNDS = 80  # YANGI: 15 -> 80
-                    brute_used = 0
+                    MAX_ROUNDS = 80
+                    for _ in range(MAX_ROUNDS):
+                        if found_count >= course.total_lessons:
+                            break
+                        changed = False
 
-                    while found_count < course.total_lessons and brute_used < MAX_BRUTE_ROUNDS:
+                        # 1. ALGORITM: Talaba almashtirish (Subject swap)
                         sid = transaction.savepoint()
-                        brute_msg = _brute_force_find_slot(grp)
+                        resolved = _auto_resolve_conflicts_by_subject_swap(
+                            grp, conflicts, already_moved_student_ids=already_moved_students
+                        )
+                        if resolved:
+                            test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
+                            if test_fc <= found_count:
+                                transaction.savepoint_rollback(sid)
+                            else:
+                                transaction.savepoint_commit(sid)
+                                auto_resolve_messages.extend(resolved)
+                                schedule, found_count, conflicts = test_schedule, test_fc, test_cf
+                                changed = True
+                                # ── YANGI, MUHIM TUZATISH: bu algoritm boshqa
+                                # guruhlarning talaba tarkibini o'zgartiradi
+                                # (almashtirish orqali) — busy_index bu haqda
+                                # bilmaydi, shuning uchun uni bekor qilamiz,
+                                # shu iteratsiyaning qolgan guruhlari xavfsiz
+                                # (har doim yangi SQL bilan) yo'lga o'tsin.
+                                busy_index = None
+                                if found_count >= course.total_lessons:
+                                    break
 
-                        if brute_msg is None:
+                        # 2. ALGORITM: Parallel swap
+                        sid = transaction.savepoint()
+                        swap_msg = _auto_resolve_via_parallel_swap(grp)
+                        if swap_msg:
+                            test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
+                            if test_fc <= found_count:
+                                transaction.savepoint_rollback(sid)
+                            else:
+                                transaction.savepoint_commit(sid)
+                                auto_resolve_messages.append(swap_msg)
+                                schedule, found_count, conflicts = test_schedule, test_fc, test_cf
+                                changed = True
+                                # ── YANGI: xuddi shu sabab bilan busy_index bekor qilinadi ──
+                                busy_index = None
+                                if found_count >= course.total_lessons:
+                                    break
+
+                        # 3. ALGORITM: Boshqa fan guruhi bilan vaqt almashish
+                        sid = transaction.savepoint()
+                        cross_msg = _auto_resolve_via_cross_subject_swap(
+                            grp, conflicts, group_last_positions=group_last_positions
+                        )
+                        if cross_msg:
+                            test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
+                            if test_fc <= found_count:
+                                transaction.savepoint_rollback(sid)
+                            else:
+                                transaction.savepoint_commit(sid)
+                                auto_resolve_messages.append(cross_msg)
+                                schedule, found_count, conflicts = test_schedule, test_fc, test_cf
+                                changed = True
+                                # ── YANGI: bu algoritm boshqa (b_grp) guruhning
+                                # BITTA kunlik vaqtini o'zgartiradi — busy_index
+                                # bundan bexabar qolmasligi uchun bekor qilamiz ──
+                                busy_index = None
+                                if found_count >= course.total_lessons:
+                                    break
+
+                        if not changed:
                             break
 
+                    # ── 3-BOSQICH: Brute Force chorasi ──
+                    if found_count < course.total_lessons:
+                        MAX_BRUTE_ROUNDS = 80
+                        brute_used = 0
+
+                        while found_count < course.total_lessons and brute_used < MAX_BRUTE_ROUNDS:
+                            sid = transaction.savepoint()
+                            brute_msg = _brute_force_find_slot(grp)
+
+                            if brute_msg is None:
+                                break
+
+                            test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
+                            if test_fc <= found_count:
+                                transaction.savepoint_rollback(sid)
+                                break
+                            else:
+                                transaction.savepoint_commit(sid)
+                                auto_resolve_messages.append(brute_msg)
+                                schedule, found_count, conflicts = test_schedule, test_fc, test_cf
+                                brute_used += 1
+                                # ── YANGI: brute force ham boshqa guruhni ko'chiradi ──
+                                busy_index = None
+
+                # ── 💡 4-BOSQICH: MUAMMOLI TALABANI MAJBURIY SURISH ──
+                if found_count < course.total_lessons:
+                    same_course_groups = list(course.groups.all())
+                    sid = transaction.savepoint()
+
+                    eviction_msg = _auto_resolve_by_force_student_eviction(grp, conflicts, same_course_groups)
+                    if eviction_msg:
                         test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
-                        if test_fc <= found_count:
-                            transaction.savepoint_rollback(sid)
-                            break
-                        else:
+                        if test_fc >= course.total_lessons:
                             transaction.savepoint_commit(sid)
-                            auto_resolve_messages.append(brute_msg)
+                            auto_resolve_messages.append(eviction_msg)
                             schedule, found_count, conflicts = test_schedule, test_fc, test_cf
-                            brute_used += 1
+                            # ── YANGI: talabalar boshqa guruhlarga ko'chirilgani
+                            # uchun busy_index eskirgan — bekor qilamiz ──
+                            busy_index = None
+                        else:
+                            transaction.savepoint_rollback(sid)
 
-            # ── 💡 4-BOSQICH: MUAMMOLI TALABANI MAJBURIY SURISH ──
-            if found_count < course.total_lessons:
-                same_course_groups = list(course.groups.all())
-                sid = transaction.savepoint()
-
-                eviction_msg = _auto_resolve_by_force_student_eviction(grp, conflicts, same_course_groups)
-                if eviction_msg:
-                    test_schedule, test_fc, test_cf = _rebuild_schedule(grp, course, teacher)
-                    if test_fc >= course.total_lessons:
-                        transaction.savepoint_commit(sid)
-                        auto_resolve_messages.append(eviction_msg)
-                        schedule, found_count, conflicts = test_schedule, test_fc, test_cf
-                    else:
-                        transaction.savepoint_rollback(sid)
-
-            # ── 5-BOSQICH: ENG KAM TO'SIQLI VAQTNI TOPIB, TO'LIQ ALMASHTIRISH ──
-            # YANGILANDI (foydalanuvchi talabiga ko'ra): endi bu funksiya
-            # FAQAT barcha to'siq talabalar uchun almashtirish nomzodi
-            # topilgan taqdirda muvaffaqiyatli bo'ladi. Agar biror talaba
-            # uchun nomzod topilmasa — BUTUN urinish bekor qilinadi, hech
-            # qanday kichik "qoldiq" guruh yaratilmaydi (MIN_GROUP_SIZE
-            # hech qachon buzilmaydi).
-            if found_count < course.total_lessons:
-                mds_ok, mds_msg, mds_unresolved = _try_minimal_disruption_swap(grp, course, teacher)
-                if mds_ok:
-                    auto_resolve_messages.append(mds_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 5.5-BOSQICH: KICHIK "QOLDIQ" GURUHNI AKA-UKA GURUHDAN
-            # QO'SHIMCHA TALABA TORTIB, MIN_GROUP_SIZE GA YETKAZISH ──
-            # Foydalanuvchi so'ragan "ko'p-ko'pga almashtirish" — agar
-            # guruh MIN_GROUP_SIZE dan kam bo'lsa (masalan 6 kishi), uning
-            # o'z a'zolari bo'sh bo'lgan vaqtga mos keluvchi qo'shimcha
-            # talabalarni aka-uka guruh(lar)dan tortib oladi.
-            if found_count < course.total_lessons:
-                same_course_groups_absorb = list(course.groups.all())
-                absorb_ok, absorb_msg = _try_absorb_from_sibling_to_reach_minimum(
-                    grp, course, teacher, same_course_groups_absorb
-                )
-                if absorb_ok:
-                    auto_resolve_messages.append(absorb_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 6-BOSQICH: GURUHNI IKKIGA BO'LIB, HAR BIRINI ALOHIDA JOYLASHTIRISHGA URINISH ──
-            # Tarqatishdan (butunlay o'chirish) OLDIN, kamroq buzg'unchi
-            # variant sifatida guruhni bo'lib ko'ramiz — ko'p hollarda katta
-            # guruhning BARCHASI bir vaqtda bo'sh bo'lmaydi, lekin uni ikkiga
-            # bo'lsak, har bir yarim o'z alohida vaqtini topishi mumkin.
-            if found_count < course.total_lessons:
-                split_ok, split_msg = _try_split_group_and_schedule(grp, course, teacher)
-                if split_ok:
-                    auto_resolve_messages.append(split_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 7-BOSQICH: QISMAN TAQSIMLASH (yangi, "hammasi yoki hech narsa" emas) ──
-            # Avval, to'liq (100%) tarqatishdan OLDIN — bo'sh joyga SIG'GAN
-            # qismini ko'chirib, qolganlari uchun mustaqil vaqt izlaymiz.
-            if found_count < course.total_lessons:
-                same_course_groups = list(course.groups.all())
-                partial_ok, partial_msg = _try_partial_distribute_and_reschedule(
-                    grp, course, teacher, same_course_groups
-                )
-                if partial_ok:
-                    auto_resolve_messages.append(partial_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 8-BOSQICH: JADVAL SHAKLLANMASA GURUHNI DINAMIK TARQATAMIZ (DISSOLUTION) ──
-            # Eslatma: while tsiklida birdan tarqatib yubormaslik uchun buni faqat oxirgi urinishda bajarish ham mumkin,
-            # lekin mantiqiy zanjir buzilmasligi uchun hozircha o'z joyida qoldi.
-            if found_count < course.total_lessons:
-                same_course_groups = list(course.groups.all())
-                dissolved, dissolve_msg = _try_dissolve_and_distribute_group(grp, same_course_groups)
-                if dissolved:
-                    auto_resolve_messages.append(dissolve_msg)
-                    iteration_success_count += 1  # Tarqatish ham muvaffaqiyatli qadam
-                    continue
-
-            # ── 9-BOSQICH (ENG OXIRGI CHORA): 16-paralik kurslar uchun
-            # Dush/Chor/Juma kunlarini ham sinash ──
-            # Faqat shu yergacha HECH NARSA yordam bermagan bo'lsa, VA
-            # boshqa hech qanday 24-paralik kurs hali navbatda kutmayotgan
-            # bo'lsa (funksiya ichida tekshiriladi) ishga tushadi.
-            if found_count < course.total_lessons:
-                lr_ok, lr_msg = _try_last_resort_expand_weekdays(grp, course, teacher)
-                if lr_ok:
-                    auto_resolve_messages.append(lr_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 10-BOSQICH (ENG SO'NGGI, ENG KUCHLI CHORA): to'siq
-            # qiluvchi BOSHQA GURUHNI o'zini boshqa vaqtga ko'chirish ──
-            # Faqat parallel guruh yo'q (masalan yolg'iz 18 kishilik
-            # guruh) yoki boshqa hech narsa yordam bermagan taqdirda.
-            if found_count < course.total_lessons:
-                reloc_ok, reloc_msg = _try_relocate_blocking_groups(grp, course, teacher)
-                if reloc_ok:
-                    auto_resolve_messages.append(reloc_msg)
-                    iteration_success_count += 1
-                    continue
-
-            # ── 5.7-BOSQICH: agar jadval TOPILGAN bo'lsa-yu, lekin hajmi
-            # MIN_GROUP_SIZE dan kam bo'lgani uchun saqlanmasa — ABSORB
-            # funksiyasini sinaymiz (avvalgi bosqichlar buni o'tkazib
-            # yuborgan bo'lishi mumkin, chunki ular faqat found_count
-            # yetarli emasligini tekshirar edi, hajmni emas).
-            if found_count >= course.total_lessons and grp.students.count() < MIN_GROUP_SIZE:
-                same_course_groups_absorb2 = list(course.groups.all())
-                absorb_ok2, absorb_msg2 = _try_absorb_from_sibling_to_reach_minimum(
-                    grp, course, teacher, same_course_groups_absorb2
-                )
-                if absorb_ok2:
-                    auto_resolve_messages.append(absorb_msg2)
-                    iteration_success_count += 1
-                    continue
-
-            # ── JADVALNI SAQLASH BLOKI ──
-            # YANGI: MIN_GROUP_SIZE qoidasi shu yerda ham MAJBURIY tekshiriladi.
-            # Sabab: avtomatik resolverlar (masalan minimal-disruption swap)
-            # ba'zan kichik "qoldiq" guruhlar yaratishi mumkin (masalan 1-2
-            # talabali). Bunday guruh tasodifan bo'sh vaqt topib qolsa ham,
-            # MIN_GROUP_SIZE qoidasini buzgan holda "muvaffaqiyatli" deb
-            # belgilanib qolmasligi kerak — aks holda qoidabuzar kichik
-            # guruhlar yashirincha paydo bo'lib qoladi.
-            group_size_ok = grp.students.count() >= MIN_GROUP_SIZE
-            if found_count >= course.total_lessons and group_size_ok:
-                from collections import Counter
-                para_counter = Counter(p_start for _, p_start, _ in schedule)
-                most_common_para = para_counter.most_common(1)[0][0]
-                grp.start_time = most_common_para
-                grp.weekdays = list({d.weekday() for d, _, _ in schedule})
-                grp.is_scheduled = True
-
-                for attempt in range(5):
-                    try:
-                        with transaction.atomic():
-                            grp.save()
-                            # YANGI, MUHIM TUZATISH: saqlashdan OLDIN shu
-                            # guruhning ESKI GroupSchedule yozuvlarini
-                            # TO'LIQ o'chiramiz. ESKI kod faqat "agar
-                            # (sana, dars_raqami) uchun yozuv mavjud
-                            # bo'lmasa, yarat" mantig'ida ishlar edi — bu
-                            # guruh oldingi round/iteratsiyada (masalan
-                            # boshqa naqsh bilan) allaqachon qisman
-                            # saqlangan bo'lsa, ESKI (endi noto'g'ri)
-                            # yozuvlar o'chmasdan qolib ketardi, va faqat
-                            # YANGI sanalar qo'shilardi — natijada bitta
-                            # guruh ichida ikki xil (eski va yangi) vaqt
-                            # aralashib qolardi.
-                            GroupSchedule.objects.filter(group=grp).delete()
-                            GroupSchedule.objects.bulk_create([
-                                GroupSchedule(
-                                    group=grp, date=ld,
-                                    lesson_number=idx, start_time=p_start
-                                )
-                                for idx, (ld, p_start, p_end) in enumerate(schedule, 1)
-                            ])
-                        break
-                    except Exception:
-                        time.sleep(0.5)
+                # ── 5-BOSQICH: ENG KAM TO'SIQLI VAQTNI TOPIB, TO'LIQ ALMASHTIRISH ──
+                if found_count < course.total_lessons:
+                    mds_ok, mds_msg, mds_unresolved = _try_minimal_disruption_swap(grp, course, teacher)
+                    if mds_ok:
+                        auto_resolve_messages.append(mds_msg)
+                        # ── YANGI, MUHIM TUZATISH: bu funksiya grp'ni TO'G'RIDAN-
+                        # TO'G'RI (o'zining ichida, busy_index'dan tashqarida)
+                        # GroupSchedule.bulk_create bilan saqlaydi. build_schedule
+                        # buni bilmagani uchun busy_index eskirib qoladi — aynan
+                        # shu yerda "Biofizika vs Tarix" kabi kesishmalar paydo
+                        # bo'lgan edi. Endi busy_index'ni bekor qilamiz, shunda
+                        # shu iteratsiyaning qolgan guruhlari xavfsiz SQL yo'liga
+                        # o'tadi va bu guruhning YANGI band vaqtlarini albatta ko'radi.
+                        busy_index = None
+                        iteration_success_count += 1
                         continue
 
-                # ── YANGI: BusyIndexni xotirada yangilaymiz, chunki shu
-                # iteratsiyadagi KEYINGI guruh bu guruhning ENDI band
-                # bo'lgan vaqtlarini ko'rishi kerak (aks holda ikkalasi
-                # bir xil paraga tushib qolishi mumkin). Qo'shimcha SQL
-                # YO'Q — faqat allaqachon ma'lum bo'lgan `schedule`
-                # ro'yxatidan foydalaniladi.
-                if busy_index is not None:
-                    para_index_by_time = {ps: i for i, (ps, _) in enumerate(PARA_TIMES)}
-                    dates_and_paras = [
-                        (ld, para_index_by_time[p_start])
-                        for (ld, p_start, p_end) in schedule
-                        if p_start in para_index_by_time
-                    ]
-                    busy_index.record_scheduled(
-                        group=grp,
-                        teacher_id=teacher.id if teacher else None,
-                        subject_id=course.subject_id,
-                        student_ids=[s.id for s in grp.students.all()],
-                        dates_and_paras=dates_and_paras,
+                # ── 5.5-BOSQICH: KICHIK "QOLDIQ" GURUHNI AKA-UKA GURUHDAN
+                # QO'SHIMCHA TALABA TORTIB, MIN_GROUP_SIZE GA YETKAZISH ──
+                if found_count < course.total_lessons:
+                    same_course_groups_absorb = list(course.groups.all())
+                    absorb_ok, absorb_msg = _try_absorb_from_sibling_to_reach_minimum(
+                        grp, course, teacher, same_course_groups_absorb
                     )
+                    if absorb_ok:
+                        auto_resolve_messages.append(absorb_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
 
-                # ── YANGI OGOHLANTIRISH: agar band kunlar ko'pligi sababli
-                # oxirgi dars kursning e'lon qilingan tugash sanasidan (course.end_date)
-                # keyin joylashgan bo'lsa — bu haqda ADMINGA OCHIQ xabar beramiz.
-                # Aks holda kurs "17.08.2026da tugaydi" deb ko'rsatilgan bo'lsa-da,
-                # aslida u sezilmasdan keyingi oylargacha davom etib ketishi mumkin edi.
-                last_lesson_date = schedule[-1][0] if schedule else None
-                if last_lesson_date and last_lesson_date > course.end_date:
-                    overrun_days = (last_lesson_date - course.end_date).days
-                    messages.warning(
-                        request,
-                        f"⏰ '{course.subject}' {grp.group_number}-guruh: band kunlar ko'pligi "
-                        f"sababli oxirgi dars belgilangan tugash sanasidan "
-                        f"({course.end_date.strftime('%d.%m.%Y')}) {overrun_days} kun keyin — "
-                        f"{last_lesson_date.strftime('%d.%m.%Y')} da joylashdi. Kurs muddatini "
-                        f"yoki band kunlarni ko'rib chiqishni tavsiya etamiz."
+                # ── 6-BOSQICH: GURUHNI IKKIGA BO'LIB, HAR BIRINI ALOHIDA JOYLASHTIRISHGA URINISH ──
+                if found_count < course.total_lessons:
+                    split_ok, split_msg = _try_split_group_and_schedule(grp, course, teacher)
+                    if split_ok:
+                        auto_resolve_messages.append(split_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
+
+                # ── 7-BOSQICH: QISMAN TAQSIMLASH ──
+                if found_count < course.total_lessons:
+                    same_course_groups = list(course.groups.all())
+                    partial_ok, partial_msg = _try_partial_distribute_and_reschedule(
+                        grp, course, teacher, same_course_groups
                     )
+                    if partial_ok:
+                        auto_resolve_messages.append(partial_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
 
-                iteration_success_count += 1
-                total_success_count += 1
+                # ── 8-BOSQICH: JADVAL SHAKLLANMASA GURUHNI DINAMIK TARQATAMIZ (DISSOLUTION) ──
+                if found_count < course.total_lessons:
+                    same_course_groups = list(course.groups.all())
+                    dissolved, dissolve_msg = _try_dissolve_and_distribute_group(grp, same_course_groups)
+                    if dissolved:
+                        auto_resolve_messages.append(dissolve_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
 
-        # ── ⚠️ TSICLDAN CHIQISH SHARTI: ──
-        # Agar bu aylanishda biror dona ham guruh jadvalga o'tira olmagan bo'lsa,
-        # demak qo'shimcha urinishlardan foyda yo'q — cheksiz aylanishni oldini olish uchun chiqamiz.
-        if iteration_success_count == 0:
-            break
+                # ── 9-BOSQICH (ENG OXIRGI CHORA): 16-paralik kurslar uchun
+                # Dush/Chor/Juma kunlarini ham sinash ──
+                if found_count < course.total_lessons:
+                    lr_ok, lr_msg = _try_last_resort_expand_weekdays(grp, course, teacher)
+                    if lr_ok:
+                        auto_resolve_messages.append(lr_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
 
-    # ── YANGI, YAKUNIY TOZALASH BOSQICHI ──
-    # Foydalanuvchi qoidasi: "hech qanday guruh (tuzilgan YOKI tuzilmagan)
-    # 8 talabadan kam bo'lmasligi kerak". Tuzilmagan guruhning VAQTI yo'q
-    # (jadval yo'q), shuning uchun uni to'ldirishda VAQT MOSLIGINI
-    # tekshirish shart emas — faqat SONINI 8ga yetkazish kifoya, manba
-    # guruh (undan olinadigan) 8dan kamayib qolmasligi sharti bilan.
-    small_leftover_groups = list(
-        CourseGroup.objects.filter(is_scheduled=False)
-        .select_related('course').prefetch_related('students')
-    )
-    for leftover in small_leftover_groups:
-        if not leftover.course_id:
-            continue
-        current_count = leftover.students.count()
-        if current_count == 0 or current_count >= MIN_GROUP_SIZE:
-            continue  # bo'sh guruh (keyin tozalanadi) yoki allaqachon yetarli
+                # ── 10-BOSQICH (ENG SO'NGGI, ENG KUCHLI CHORA): to'siq
+                # qiluvchi BOSHQA GURUHNI o'zini boshqa vaqtga ko'chirish ──
+                if found_count < course.total_lessons:
+                    reloc_ok, reloc_msg = _try_relocate_blocking_groups(grp, course, teacher)
+                    if reloc_ok:
+                        auto_resolve_messages.append(reloc_msg)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
 
-        needed = MIN_GROUP_SIZE - current_count
-        siblings = list(
-            CourseGroup.objects.filter(course_id=leftover.course_id)
-            .exclude(pk=leftover.pk).prefetch_related('students')
-        )
-        taken_students = []
-        for sib in siblings:
-            if len(taken_students) >= needed:
+                # ── 5.7-BOSQICH: agar jadval TOPILGAN bo'lsa-yu, lekin hajmi
+                # MIN_GROUP_SIZE dan kam bo'lgani uchun saqlanmasa — ABSORB
+                # funksiyasini sinaymiz ──
+                if found_count >= course.total_lessons and grp.students.count() < MIN_GROUP_SIZE:
+                    same_course_groups_absorb2 = list(course.groups.all())
+                    absorb_ok2, absorb_msg2 = _try_absorb_from_sibling_to_reach_minimum(
+                        grp, course, teacher, same_course_groups_absorb2
+                    )
+                    if absorb_ok2:
+                        auto_resolve_messages.append(absorb_msg2)
+                        busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
+
+                # ── JADVALNI SAQLASH BLOKI ──
+                group_size_ok = grp.students.count() >= MIN_GROUP_SIZE
+                if found_count >= course.total_lessons and group_size_ok:
+                    from collections import Counter
+                    para_counter = Counter(p_start for _, p_start, _ in schedule)
+                    most_common_para = para_counter.most_common(1)[0][0]
+                    grp.start_time = most_common_para
+                    grp.weekdays = list({d.weekday() for d, _, _ in schedule})
+                    grp.is_scheduled = True
+
+                    for attempt in range(5):
+                        try:
+                            with transaction.atomic():
+                                grp.save()
+                                GroupSchedule.objects.filter(group=grp).delete()
+                                GroupSchedule.objects.bulk_create([
+                                    GroupSchedule(
+                                        group=grp, date=ld,
+                                        lesson_number=idx, start_time=p_start
+                                    )
+                                    for idx, (ld, p_start, p_end) in enumerate(schedule, 1)
+                                ])
+                            break
+                        except Exception:
+                            time.sleep(0.5)
+                            continue
+
+                    # Bu yo'l busy_index'ni TO'G'RI, xotirada yangilaydi —
+                    # qo'shimcha SQL yo'q, shuning uchun busy_index = None qilish
+                    # SHART EMAS (aksincha, buni bekor qilish samaradorlikni
+                    # yo'qotardi). Faqat resolverlar orqali (yuqoridagi 2/4/5-10
+                    # bosqichlar) o'zgargan hollarda busy_index None qilinadi.
+                    if busy_index is not None:
+                        para_index_by_time = {ps: i for i, (ps, _) in enumerate(PARA_TIMES)}
+                        dates_and_paras = [
+                            (ld, para_index_by_time[p_start])
+                            for (ld, p_start, p_end) in schedule
+                            if p_start in para_index_by_time
+                        ]
+                        busy_index.record_scheduled(
+                            group=grp,
+                            teacher_id=teacher.id if teacher else None,
+                            subject_id=course.subject_id,
+                            student_ids=[s.id for s in grp.students.all()],
+                            dates_and_paras=dates_and_paras,
+                        )
+
+                    last_lesson_date = schedule[-1][0] if schedule else None
+                    if last_lesson_date and last_lesson_date > course.end_date:
+                        overrun_days = (last_lesson_date - course.end_date).days
+                        messages.warning(
+                            request,
+                            f"⏰ '{course.subject}' {grp.group_number}-guruh: band kunlar ko'pligi "
+                            f"sababli oxirgi dars belgilangan tugash sanasidan "
+                            f"({course.end_date.strftime('%d.%m.%Y')}) {overrun_days} kun keyin — "
+                            f"{last_lesson_date.strftime('%d.%m.%Y')} da joylashdi. Kurs muddatini "
+                            f"yoki band kunlarni ko'rib chiqishni tavsiya etamiz."
+                        )
+
+                    iteration_success_count += 1
+
+            if iteration_success_count == 0:
                 break
-            sib_students = list(sib.students.all())
-            max_takeable = len(sib_students) - MIN_GROUP_SIZE
-            if max_takeable <= 0:
+
+        # ── YANGI, YAKUNIY TOZALASH BOSQICHI ──
+        small_leftover_groups = list(
+            CourseGroup.objects.filter(is_scheduled=False)
+            .select_related('course').prefetch_related('students')
+        )
+        for leftover in small_leftover_groups:
+            if not leftover.course_id:
                 continue
-            take_n = min(max_takeable, needed - len(taken_students))
-            to_take = sib_students[:take_n]
-            remaining_sib = sib_students[take_n:]
-            sib.students.set(remaining_sib)
-            sync_group_language(sib)
-            taken_students.extend(to_take)
+            current_count = leftover.students.count()
+            if current_count == 0 or current_count >= MIN_GROUP_SIZE:
+                continue
 
-        if taken_students:
-            final_leftover_students = list(leftover.students.all()) + taken_students
-            leftover.students.set(final_leftover_students)
-            sync_group_language(leftover)
-
-    # ── YANGI: GURUH HAJMLARINI TENGLASHTIRISH ──
-    # Foydalanuvchi so'rovi: bitta fanda 2+ guruh bo'lsa (masalan 8 va 18),
-    # ular orasidagi FARQNI kamaytirish — lekin FAQAT vaqt jihatidan mos
-    # keladigan talabalarni ko'chirib (hech kimning jadvali buzilmaydi),
-    # va MIN_GROUP_SIZE(8)/MAX_GROUP_SIZE(18) chegarasi hech qachon
-    # buzilmasdan.
-    from collections import defaultdict as _dd2
-    scheduled_by_course = _dd2(list)
-    for g in CourseGroup.objects.filter(is_scheduled=True).select_related('course').prefetch_related('students'):
-        if g.course_id:
-            scheduled_by_course[g.course_id].append(g)
-
-    for course_id, course_groups in scheduled_by_course.items():
-        if len(course_groups) < 2:
-            continue
-        # Har bir marta ENG KATTA va ENG KICHIK guruhni topib, ulardan
-        # birini ikkinchisiga (agar vaqt mos kelsa) ko'chiramiz — bir
-        # nechta bosqichda, farq 1-2 talabagacha kamaygunicha.
-        for _ in range(50):  # xavfsizlik chegarasi
-            course_groups.sort(key=lambda g: g.students.count())
-            smallest = course_groups[0]
-            largest = course_groups[-1]
-            diff = largest.students.count() - smallest.students.count()
-            if diff <= 1:
-                break  # allaqachon yetarlicha teng
-
-            smallest_times = set(
-                GroupSchedule.objects.filter(group=smallest).values_list('date', 'start_time')
+            needed = MIN_GROUP_SIZE - current_count
+            siblings = list(
+                CourseGroup.objects.filter(course_id=leftover.course_id)
+                .exclude(pk=leftover.pk).prefetch_related('students')
             )
-            moved_one = False
-            for s in list(largest.students.all()):
-                if largest.students.count() - 1 < MIN_GROUP_SIZE:
+            taken_students = []
+            for sib in siblings:
+                if len(taken_students) >= needed:
                     break
-                if smallest.students.count() + 1 > MAX_GROUP_SIZE:
-                    break
-                # Talabaning largest'dan tashqari BOSHQA barcha
-                # majburiyatlari smallest vaqti bilan to'qnashmasligini
-                # tekshiramiz.
-                s_busy = set(
-                    GroupSchedule.objects.filter(group__students=s)
-                    .exclude(group=largest).values_list('date', 'start_time')
-                )
-                if s_busy & smallest_times:
+                sib_students = list(sib.students.all())
+                max_takeable = len(sib_students) - MIN_GROUP_SIZE
+                if max_takeable <= 0:
                     continue
-                # Ko'chirish
-                new_largest = [x for x in largest.students.all() if x.id != s.id]
-                largest.students.set(new_largest)
-                sync_group_language(largest)
-                new_smallest = list(smallest.students.all()) + [s]
-                smallest.students.set(new_smallest)
-                sync_group_language(smallest)
-                moved_one = True
-                break
-            if not moved_one:
-                break  # Hech kim mos kelmadi -> bu juftlik uchun tenglashtirish imkonsiz
+                take_n = min(max_takeable, needed - len(taken_students))
+                to_take = sib_students[:take_n]
+                remaining_sib = sib_students[take_n:]
+                sib.students.set(remaining_sib)
+                sync_group_language(sib)
+                taken_students.extend(to_take)
 
-    # ── YANGI: HAFTALAR IZCHILLIGINI MAJBURIY TA'MINLASH ──
-    # Foydalanuvchi kuzatuvi: ba'zan 1-hafta boshqa vaqtda, qolgan
-    # haftalar boshqa (izchil) vaqtda bo'lib qolar edi (masalan avvalgi
-    # bosqichlardan birortasi faqat 1-haftani o'zgartirib, qolganlarini
-    # tegmagan holatlar). Bu YAKUNIY bosqich har bir tuzilgan guruhning
-    # BUTUN jadvalini uning saqlangan `weekdays` + `start_time`
-    # (kanonik pattern) asosida — BARCHA haftalar uchun bir xil — qayta
-    # tiklaydi. Natijada "1-hafta boshqacha, qolganlari boshqacha" holati
-    # FIZIK JIHATDAN yuzaga kelolmaydi, chunki hammasi bitta manbadan
-    # (grp.weekdays/start_time) qayta hisoblanadi.
-    for grp in CourseGroup.objects.filter(is_scheduled=True).select_related('course').prefetch_related('students'):
-        course = grp.course
-        if not course or not grp.weekdays or not grp.start_time:
-            continue
-        wds = tuple(sorted(grp.weekdays))
-        # `start_time` qaysi VALID_PARA_PAIRS juftligiga tegishli ekanini topamiz
-        target_pair = None
-        for (pp1, pp2) in VALID_PARA_PAIRS:
-            if PARA_TIMES[pp1][0] == grp.start_time:
-                target_pair = (pp1, pp2)
-                break
-        if target_pair is None:
-            continue
-        p1, p2 = target_pair
-        canonical_dates = _slot_occurrence_dates(course.start_date, wds, course.total_lessons)
-        if not canonical_dates:
-            continue
+            if taken_students:
+                final_leftover_students = list(leftover.students.all()) + taken_students
+                leftover.students.set(final_leftover_students)
+                sync_group_language(leftover)
 
-        existing = list(GroupSchedule.objects.filter(group=grp).order_by('date', 'start_time'))
-        expected_times_by_date = {}
-        for d in canonical_dates:
-            expected_times_by_date.setdefault(d, set()).update({PARA_TIMES[p1][0], PARA_TIMES[p2][0]})
+        # ── YANGI: GURUH HAJMLARINI TENGLASHTIRISH ──
+        from collections import defaultdict as _dd2
+        scheduled_by_course = _dd2(list)
+        for g in CourseGroup.objects.filter(is_scheduled=True).select_related('course').prefetch_related('students'):
+            if g.course_id:
+                scheduled_by_course[g.course_id].append(g)
 
-        is_consistent = (
-            len(existing) == 2 * len(canonical_dates)
-            and all(
-                sc.date in expected_times_by_date and sc.start_time in expected_times_by_date[sc.date]
-                for sc in existing
-            )
+        for course_id, course_groups in scheduled_by_course.items():
+            if len(course_groups) < 2:
+                continue
+            for _ in range(50):
+                course_groups.sort(key=lambda g: g.students.count())
+                smallest = course_groups[0]
+                largest = course_groups[-1]
+                diff = largest.students.count() - smallest.students.count()
+                if diff <= 1:
+                    break
+
+                smallest_times = set(
+                    GroupSchedule.objects.filter(group=smallest).values_list('date', 'start_time')
+                )
+                moved_one = False
+                for s in list(largest.students.all()):
+                    if largest.students.count() - 1 < MIN_GROUP_SIZE:
+                        break
+                    if smallest.students.count() + 1 > MAX_GROUP_SIZE:
+                        break
+                    s_busy = set(
+                        GroupSchedule.objects.filter(group__students=s)
+                        .exclude(group=largest).values_list('date', 'start_time')
+                    )
+                    if s_busy & smallest_times:
+                        continue
+                    new_largest = [x for x in largest.students.all() if x.id != s.id]
+                    largest.students.set(new_largest)
+                    sync_group_language(largest)
+                    new_smallest = list(smallest.students.all()) + [s]
+                    smallest.students.set(new_smallest)
+                    sync_group_language(smallest)
+                    moved_one = True
+                    break
+                if not moved_one:
+                    break
+
+        # ── TENGLASHTIRISHDAN KEYIN QOLGAN TUZILMAGAN GURUHLARNI YANA BIR
+        # MARTA _try_minimal_disruption_swap BILAN SINAB KO'RISH ──
+        still_unscheduled_for_mds = list(
+            CourseGroup.objects.filter(is_scheduled=False)
+            .select_related('course', 'teacher').prefetch_related('students')
         )
-        if is_consistent:
-            continue  # Allaqachon izchil — tegmaymiz
+        for grp in still_unscheduled_for_mds:
+            course = grp.course
+            if not course:
+                continue
+            teacher = grp.teacher if grp.teacher_id else None
+            mds_ok, mds_msg, _ = _try_minimal_disruption_swap(grp, course, teacher)
+            if mds_ok:
+                auto_resolve_messages.append(mds_msg)
 
-        # Izchilsiz topildi -> BUTUN jadvalni kanonik patternga muvofiq
-        # qayta yaratamiz (barcha haftalar bir xil bo'ladi).
-        GroupSchedule.objects.filter(group=grp).delete()
-        GroupSchedule.objects.bulk_create([
-            GroupSchedule(group=grp, date=d, start_time=PARA_TIMES[p1][0], lesson_number=2 * i + 1)
-            for i, d in enumerate(canonical_dates)
-        ] + [
-            GroupSchedule(group=grp, date=d, start_time=PARA_TIMES[p2][0], lesson_number=2 * i + 2)
-            for i, d in enumerate(canonical_dates)
-        ])
+        # ── YANGI: HAFTALAR IZCHILLIGINI MAJBURIY TA'MINLASH ──
+        for grp in CourseGroup.objects.filter(is_scheduled=True).select_related('course').prefetch_related('students'):
+            course = grp.course
+            if not course or not grp.weekdays or not grp.start_time:
+                continue
+            wds = tuple(sorted(grp.weekdays))
+            target_pair = None
+            for (pp1, pp2) in VALID_PARA_PAIRS:
+                if PARA_TIMES[pp1][0] == grp.start_time:
+                    target_pair = (pp1, pp2)
+                    break
+            if target_pair is None:
+                continue
+            p1, p2 = target_pair
+            canonical_dates = _slot_occurrence_dates(course.start_date, wds, course.total_lessons)
+            if not canonical_dates:
+                continue
+
+            existing = list(GroupSchedule.objects.filter(group=grp).order_by('date', 'start_time'))
+            expected_times_by_date = {}
+            for d in canonical_dates:
+                expected_times_by_date.setdefault(d, set()).update({PARA_TIMES[p1][0], PARA_TIMES[p2][0]})
+
+            is_consistent = (
+                len(existing) == 2 * len(canonical_dates)
+                and all(
+                    sc.date in expected_times_by_date and sc.start_time in expected_times_by_date[sc.date]
+                    for sc in existing
+                )
+            )
+            if is_consistent:
+                continue
+
+            # ── 🛡️ MUHIM TUZATISH: bu blok ilgari HECH QANDAY TEKSHIRUVSIZ
+            # guruhning butun jadvalini "kanonik" sana/vaqtlarga qayta yozib
+            # qo'yardi — bu boshqa guruhlar bilan (talaba/o'qituvchi/xona
+            # bo'yicha) haqiqiy to'qnashuv keltirib chiqarishi mumkin edi,
+            # chunki bu yerda busy_index yoki boshqa hech qanday konflikt
+            # tekshiruvi ishlatilmagan. Endi qayta yozishdan OLDIN, yangi
+            # (kanonik) sana/vaqtlar boshqa allaqachon joylashtirilgan
+            # guruhlar bilan to'qnashmasligini tekshiramiz. Agar to'qnashuv
+            # aniqlansa — qayta yozish O'TKAZIB YUBORILADI (joriy, nomukammal
+            # bo'lsa-da xavfsiz jadval saqlanib qoladi) va admin ogohlantiriladi.
+            candidate_slots = [(d, PARA_TIMES[p1][0]) for d in canonical_dates] + \
+                              [(d, PARA_TIMES[p2][0]) for d in canonical_dates]
+            candidate_dates = {d for d, _ in candidate_slots}
+            candidate_set = set(candidate_slots)
+
+            conflict_reason = None
+
+            student_ids = list(grp.students.values_list('id', flat=True))
+            if student_ids:
+                clash = GroupSchedule.objects.filter(
+                    group__is_scheduled=True,
+                    group__students__id__in=student_ids,
+                    date__in=candidate_dates,
+                ).exclude(group=grp).values_list('date', 'start_time').distinct()
+                if any((d, t) in candidate_set for d, t in clash):
+                    conflict_reason = "talaba(lar) boshqa guruhda shu vaqtda band"
+
+            if conflict_reason is None and grp.teacher_id:
+                clash = GroupSchedule.objects.filter(
+                    group__is_scheduled=True,
+                    group__teacher_id=grp.teacher_id,
+                    date__in=candidate_dates,
+                ).exclude(group=grp).values_list('date', 'start_time').distinct()
+                if any((d, t) in candidate_set for d, t in clash):
+                    conflict_reason = "o'qituvchi boshqa guruhda shu vaqtda band"
+
+            if conflict_reason is None and grp.room_id:
+                clash = GroupSchedule.objects.filter(
+                    group__is_scheduled=True,
+                    group__room_id=grp.room_id,
+                    date__in=candidate_dates,
+                ).exclude(group=grp).values_list('date', 'start_time').distinct()
+                if any((d, t) in candidate_set for d, t in clash):
+                    conflict_reason = "xona boshqa guruhda shu vaqtda band"
+
+            if conflict_reason is not None:
+                messages.warning(
+                    request,
+                    f"⚠️ '{grp}' guruhining hafta izchilligi tuzatilmadi, chunki "
+                    f"bu {conflict_reason} — to'qnashuv oldini olish uchun "
+                    f"joriy jadval o'zgartirilmay qoldirildi."
+                )
+                continue
+
+            GroupSchedule.objects.filter(group=grp).delete()
+            GroupSchedule.objects.bulk_create([
+                GroupSchedule(group=grp, date=d, start_time=PARA_TIMES[p1][0], lesson_number=2 * i + 1)
+                for i, d in enumerate(canonical_dates)
+            ] + [
+                GroupSchedule(group=grp, date=d, start_time=PARA_TIMES[p2][0], lesson_number=2 * i + 2)
+                for i, d in enumerate(canonical_dates)
+            ])
+
+        # ── 🚨🚨 YANGI: OXIRGI HIMOYA QATLAMI — SUBYEKTLARARO HAQIQIY
+        # TALABA TO'QNASHUVLARINI ANIQLASH VA HAL QILISH ──
+        # Sabab: busy_index yuqoridagi tuzatishlar bilan endi to'g'ri
+        # yangilanadi, lekin bu — himoya, kafolat emas (masalan boshqa
+        # kod yo'li, qo'lda o'zgartirish yoki kelajakdagi resolver buni
+        # yana buzishi mumkin). Shuning uchun build_schedule HAR DOIM
+        # oxirida, BARCHA fanlar bo'yicha, har bir talabaning HAQIQIY
+        # (sana, vaqt) juftliklarini tekshirib, ikki xil guruhga bir
+        # vaqtda tushib qolgan hollarni topadi va ADMINGA ko'rsatadi.
+        conflict_rows = defaultdict(list)  # (student_id, date, start_time) -> [group, ...]
+        gs_qs = (
+            GroupSchedule.objects
+            .filter(group__is_scheduled=True)
+            .select_related('group__course__subject')
+            .prefetch_related('group__students')
+        )
+        for sc in gs_qs:
+            for st in sc.group.students.all():
+                conflict_rows[(st.id, sc.date, sc.start_time)].append(sc.group)
+
+        evicted_count = 0
+        real_conflicts = {
+            key: grps for key, grps in conflict_rows.items()
+            if len({g.pk for g in grps}) > 1
+        }
+
+        if real_conflicts:
+            # Har bir talaba uchun, qaysi guruhlar to'qnashayotganini yig'amiz
+            by_student = defaultdict(set)
+            for (sid, d, t), grps in real_conflicts.items():
+                for g in grps:
+                    by_student[sid].add((d, t, g.pk, str(g)))
+
+            conflict_lines = []
+            for sid, items in by_student.items():
+                try:
+                    st_obj = Student.objects.get(pk=sid)
+                    st_name = str(st_obj)
+                except Student.DoesNotExist:
+                    st_name = f"ID={sid}"
+                groups_str = ", ".join(sorted({f"{g}" for (_, _, _, g) in items}))
+                conflict_lines.append(f"{st_name}: {groups_str}")
+
+            messages.error(
+                request,
+                f"🚨 DIQQAT: {len(by_student)} ta talaba ikki (yoki undan ko'p) "
+                f"guruhga BIR XIL kun/vaqtda yozilgan — bu haqiqiy jadval "
+                f"to'qnashuvi edi, TIZIM UNI AVTOMATIK BARTARAF ETMOQDA: "
+                + " | ".join(conflict_lines[:15])
+                + (f" ... va yana {len(conflict_lines) - 15} ta" if len(conflict_lines) > 15 else "")
+            )
+
+            # ── 🔁 AVTOMATIK BARTARAF ETISH: faqat aniqlab qo'ymay, haqiqatan
+            # ham tuzatamiz. Har bir to'qnashuv klasterida (bir xil sana/vaqtda
+            # bir xil talabaga ega guruhlar to'plamida) talabalar soni ENG KAM
+            # bo'lgan guruh(lar)ni "bo'shatamiz" (is_scheduled=False qilib,
+            # jadvalini o'chiramiz) — bunday guruh odatda boshqa vaqtga
+            # ko'chirish uchun ENG QULAY hisoblanadi. Bo'shatilgan guruh
+            # keyingi "Jadval tuzish" bosilganda avtomatik qayta joylashtiriladi,
+            # shu tariqa to'qnashuv doimiy holatda QOLIB KETMAYDI.
+            groups_to_unschedule = {}
+            for key, grps in real_conflicts.items():
+                unique_groups = list({g.pk: g for g in grps}.values())
+                unique_groups.sort(key=lambda g: g.students.count(), reverse=True)
+                for loser in unique_groups[1:]:
+                    groups_to_unschedule[loser.pk] = loser
+
+            if groups_to_unschedule:
+                evicted_count = len(groups_to_unschedule)
+                unresolved_names = [str(g) for g in groups_to_unschedule.values()]
+                GroupSchedule.objects.filter(group_id__in=groups_to_unschedule.keys()).delete()
+                CourseGroup.objects.filter(pk__in=groups_to_unschedule.keys()).update(is_scheduled=False)
+                messages.warning(
+                    request,
+                    f"🔁 To'qnashuvni bartaraf etish uchun {len(groups_to_unschedule)} ta "
+                    f"guruh vaqtincha bo'shatildi (qayta joylashtirish navbatiga qo'yildi): "
+                    + ", ".join(sorted(unresolved_names)[:15])
+                    + (f" ... va yana {len(unresolved_names) - 15} ta" if len(unresolved_names) > 15 else "")
+                    + ". Tizim ularni shu so'rov ichida avtomatik qayta joylashtirishga urinmoqda..."
+                )
+
+        return evicted_count
+
+
+    MAX_AUTO_RESOLVE_ATTEMPTS = 8
+    for _outer_attempt in range(MAX_AUTO_RESOLVE_ATTEMPTS):
+        _evicted_this_pass = _run_scheduling_pass()
+        if _evicted_this_pass == 0:
+            break
 
     # ── 🚨 XATOLIKLARNI YIG'ISH (FAQAT OXIRGI NUQTADA SIG'MAY QOLGANLAR UCHUN) ──
     final_unscheduled_groups = list(
@@ -3270,7 +3349,6 @@ def build_schedule(request):
             course = grp.course
             teacher = grp.teacher if grp.teacher_id else None
 
-            # Oxirgi holatdagi konfliktlarni tekshirish uchun qayta rebuild qilib olamiz
             schedule, found_count, conflicts = _rebuild_schedule(grp, course, teacher)
             no_slot = getattr(find_schedule_for_group, '_last_no_slot_in_week', False)
 
@@ -3280,9 +3358,6 @@ def build_schedule(request):
 
             teacher_conflicts_display = []
             seen_teacher_groups = set()
-            # YANGI: avval sana+vaqt bo'yicha saralaymiz — aks holda [:10]
-            # tasodifiy tartibda kesib, eng muhim (masalan har kuni
-            # takrorlanadigan) to'qnashuvni ko'rsatmasdan qoldirishi mumkin edi.
             for c in sorted(conflicts, key=lambda c: (c['date'], c['para_time'][0])):
                 if c['type'] != 'teacher':
                     continue
@@ -3306,10 +3381,6 @@ def build_schedule(request):
                 student_groups[key].append(c)
 
             student_conflicts_display = []
-            # YANGI: shu yerda ham sana+vaqt bo'yicha saralab, ShUNDAN KEYIN
-            # birinchi 10 tasini olamiz — endi "eng erta" (va odatda eng
-            # ko'p takrorlanadigan) to'qnashuvlar hech qachon tasodifan
-            # ro'yxatdan tushib qolmaydi.
             sorted_keys = sorted(student_groups.items(), key=lambda kv: (kv[0][0], kv[0][1]))
             for key, items in sorted_keys[:10]:
                 first = items[0]
@@ -3330,10 +3401,6 @@ def build_schedule(request):
             student_move_suggestions = []
             swap_suggestions = []
 
-            # (Sizning mavjud suggestion mantiqlaringiz...)
-            # ... [Bu yerda o'zgarishsiz qoladi] ...
-
-            # ── YANGI: "AYNAN QAYSINI O'ZGARTIRSA MUAMMO HAL BO'LADI" DIAGNOSTIKASI ──
             blocker_diagnosis = _diagnose_true_blockers(grp, course, teacher)
 
             error_details.append({
@@ -3356,9 +3423,6 @@ def build_schedule(request):
             for msg in auto_resolve_messages:
                 messages.info(request, msg)
 
-        # YANGI, MUHIM TUZATISH: xuddi shu bug' bu yerda ham bor edi —
-        # `total_success_count` faqat asosiy yo'l bilan tuzilgan
-        # guruhlarni sanardi. Endi bazadan haqiqiy sonni hisoblaymiz.
         real_scheduled_count = CourseGroup.objects.filter(is_scheduled=True).count()
         return render(request, "raspisaniya/build_schedule_errors.html", {
             "error_details": error_details,
@@ -3369,12 +3433,6 @@ def build_schedule(request):
         for msg in auto_resolve_messages:
             messages.info(request, msg)
 
-    # YANGI, MUHIM TUZATISH: `total_success_count` faqat ASOSIY (oddiy)
-    # yo'l bilan tuzilgan guruhlarni sanardi — bo'lish, qayta guruhlash,
-    # almashtirish, oxirgi chora kabi KEYINGI bosqichlar orqali tuzilgan
-    # guruhlarni HISOBGA OLMASDI, shuning uchun yakuniy xabar haqiqiy
-    # natijadan ANCHA KAM ko'rsatardi (masalan "17" o'rniga real "72").
-    # Endi BAZADAN to'g'ridan-to'g'ri, haqiqiy sonni hisoblaymiz.
     real_scheduled_count = CourseGroup.objects.filter(is_scheduled=True).count()
     messages.success(request, f"Jadval muvaffaqiyatli tuzildi! Jami {real_scheduled_count} ta guruh tuzilgan.")
     return redirect("lesson_list")
@@ -3994,3 +4052,31 @@ HEADER_FONT = Font(name="Arial", size=10, bold=True, color="FFFFFF")
 HEADER_FILL = PatternFill(start_color="1A237E", end_color="1A237E", fill_type="solid")
 CENTER_ALIGN = Alignment(horizontal="center", vertical="center")
 LEFT_ALIGN = Alignment(horizontal="left", vertical="center")
+
+@login_required
+def apply_minimal_disruption_swap(request, group_pk):
+    """
+    Diagnostika ('_diagnose_true_blockers') ko'rsatgan almashtirishlarni
+    HAQIQATDA bajaradigan tugma — '_try_minimal_disruption_swap' orqali.
+    """
+    if request.method != "POST":
+        return redirect('build_schedule')
+
+    grp = get_object_or_404(CourseGroup, pk=group_pk)
+    course = grp.course
+    teacher = grp.teacher if grp.teacher_id else None
+
+    if not course:
+        messages.error(request, f"'{grp}' uchun kurs topilmadi.")
+        return redirect('build_schedule')
+
+    ok, msg, _ = _try_minimal_disruption_swap(grp, course, teacher)
+    if ok:
+        messages.success(request, f"✅ {msg}")
+    else:
+        messages.error(
+            request,
+            f"❌ '{grp}' uchun avtomatik almashtirish endi ishlamadi "
+            f"(holat o'zgargan bo'lishi mumkin — sahifani yangilab qayta urinib ko'ring)."
+        )
+    return redirect('build_schedule')

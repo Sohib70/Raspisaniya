@@ -59,22 +59,17 @@ urlpatterns = [
 
     path('reset-database/', views.reset_database_view, name='reset_database'),
     path('group/<int:group_pk>/grades/', views.admin_group_grades, name='admin_group_grades'),
-    path('schedule/<int:sched_pk>/toggle-permission/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
     path('group/<int:group_pk>/delete/', views.delete_course_group, name='delete_course_group'),
     path('move-one-student/', views.move_one_student, name='move_one_student'),
     path('export-database/', views.export_database_view, name='export_database'),  # Nusxa olish
     path('restore-database/', views.restore_database_view, name='restore_database'),  # Qayta tiklash
 
     # Statistikalar va API
-    path('api/stats/', views.stats_api, name='stats_api'),
-    path('change-lesson-time-ajax/<int:sched_pk>/', views.change_lesson_time_ajax, name='change_lesson_time_ajax'),
-    path('toggle-teacher-edit/<int:group_pk>/', views.toggle_teacher_edit_permission, name='toggle_teacher_edit_permission'),
     path('teacher/<int:pk>/change-password/', views.admin_change_teacher_password, name='admin_change_teacher_password'),
     path('toggle-all-teacher-edit/', views.toggle_all_teacher_edit_permission, name='toggle_all_teacher_edit'),
     path('student-schedule/<int:student_pk>/', views.student_schedule_info, name='student_schedule_info'),
     path('sched-info/<int:sched_id>/', views.sched_info_ajax, name='sched_info_ajax'),
 
-    path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
     path('admin-password-reset/', views.admin_password_reset_request, name='admin_password_reset_request'),
     path('admin-password-verify/', views.admin_password_verify_and_change, name='admin_password_verify_and_change'),
     path('apply-teacher-suggestion/<int:group_pk>/<int:teacher_pk>/',

@@ -35,16 +35,18 @@ def get_expected_lessons_per_week(total_lessons):
 
 def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=False):
     """
-    Bitta darsning (sched) vaqtini o'zgartiradi. `apply_to_future=True`
-    bo'lsa VA sana o'zgarmagan (faqat vaqt o'zgargan) bo'lsa, xuddi shu
-    guruhning KEYINGI barcha haftalaridagi bir xil hafta kuni + bir xil
-    eski vaqtdagi darslari ham AVTOMATIK shu yangi vaqtga ko'chiriladi.
+    Bitta darsning (sched) sana/vaqtini o'zgartiradi. `apply_to_future=True`
+    bo'lsa, xuddi shu guruhning KEYINGI barcha haftalaridagi bir xil hafta
+    kuni + bir xil eski vaqtdagi darslari ham AVTOMATIK, HAR BIR HAFTANING
+    OʻZIGA XOS yangi hafta kuni + yangi vaqtiga ko'chiriladi — ya'ni agar
+    dars Dushanbadan Seshanbaga ko'chirilsa, keyingi barcha haftalarda ham
+    o'sha hafta ichidagi Seshanba kuniga o'tkaziladi (shu hafta ichidagi
+    boshqa kunga emas).
 
-    MUHIM: agar SANA ham o'zgargan bo'lsa (masalan bayram sababli bitta
-    darsni boshqa kunga ko'chirish), bu — istisno holat hisoblanadi va
-    kaskad qilinmaydi, faqat o'sha bitta dars o'zgaradi. Kaskad faqat
-    "doimiy vaqt o'zgarishi" (masalan "bugundan boshlab har doim soat
-    14:00 da bo'ladi") uchun mo'ljallangan.
+    Bu — doimiy jadval tuzatishlari uchun (masalan "bu darsni doim
+    Seshanba, soat 14:00 ga ko'chiramiz") mo'ljallangan. Agar faqat BITTA
+    haftaga tegishli bir martalik istisno kerak bo'lsa (masalan bayram
+    sababli), admin apply_to_future'ni yoqmasligi kerak.
 
     Har bir nishon dars alohida to'qnashuv tekshiruvidan o'tadi — band
     bo'lgan sanalar o'tkazib yuboriladi (o'zgartirilmaydi), qolganlari
@@ -52,11 +54,11 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
 
     Qaytaradi: (updated_count, skipped_dates_list)
     """
-    date_changed = new_date_val != sched.date
     old_time_val = sched.start_time
     old_weekday = sched.date.weekday()
+    new_weekday = new_date_val.weekday()
 
-    if apply_to_future and not date_changed:
+    if apply_to_future:
         candidates = GroupSchedule.objects.filter(
             group=sched.group,
             date__gte=sched.date,
@@ -75,7 +77,14 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
     skipped_dates = []
 
     for t in targets:
-        target_date = new_date_val if t.pk == sched.pk else t.date
+        if t.pk == sched.pk:
+            target_date = new_date_val
+        else:
+            # Shu darsning o'z haftasi Dushanbasini topib, o'sha hafta
+            # ichidagi YANGI hafta-kuniga ko'chiramiz (haftani o'zgartirmaymiz,
+            # faqat o'sha hafta ichidagi kunni/vaqtni moslashtiramiz).
+            week_monday = t.date - timedelta(days=t.date.weekday())
+            target_date = week_monday + timedelta(days=new_weekday)
 
         if teacher_id and GroupSchedule.objects.filter(
             date=target_date, start_time=new_time_val, group__teacher_id=teacher_id,
@@ -564,7 +573,7 @@ def lesson_schedule_excel(request, pk):
         ws.append(["#", "Sana", "Hafta kuni", "Boshlanish", "Tugash", "O'qituvchi"])
         for s in grp.schedule.all():
             if grp.start_time:
-                end_t = (datetime.combine(s.date, grp.start_time) + duration).time()
+                end_t = (datetime.datetime.combine(s.date, grp.start_time) + duration).time()
                 ws.append([
                     s.lesson_number,
                     s.date.strftime("%d.%m.%Y"),
@@ -1002,7 +1011,18 @@ def weekly_schedule_view(request):
     prev_week = (week_start - timedelta(weeks=1)).isoformat()
     next_week = (week_start + timedelta(weeks=1)).isoformat()
 
-    group_numbers = list(range(1, max_group + 1))
+    # ── Qo'lda qo'shimcha ustun qo'shish/olib tashlash ──
+    # extra_cols — admin "+ Ustun qo'shish" tugmasi orqali qo'shgan bo'sh
+    # ustunlar soni (haqiqiy jadval ma'lumotidan mustaqil, faqat vizual
+    # rejalashtirish uchun). Hafta bo'yicha navigatsiya qilinganda ham
+    # saqlanib qolishi uchun URL parametri sifatida uzatiladi.
+    try:
+        extra_cols = int(request.GET.get('extra_cols', 0))
+    except (TypeError, ValueError):
+        extra_cols = 0
+    extra_cols = max(0, min(extra_cols, 30))
+
+    group_numbers = list(range(1, max_group + extra_cols + 1))
 
     SUBJECT_COLORS = [
         {'bg': '#dbeafe', 'text': '#1e40af', 'border': '#93c5fd'},
@@ -1071,6 +1091,8 @@ def weekly_schedule_view(request):
         "week_end_str": week_end.strftime("%d.%m.%Y"),
         "prev_week": prev_week,
         "next_week": next_week,
+        "extra_cols": extra_cols,
+        "base_group_count": max_group,
     })
 
 
@@ -1262,7 +1284,7 @@ def change_lesson_time_ajax(request, sched_pk):
             })
         return JsonResponse({'success': False, 'error': 'Dars topilmadi yoki o\'zgartirilmadi'})
 
-    end_time = (datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
+    end_time = (datetime.datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
 
     return JsonResponse({
         'success':        True,
