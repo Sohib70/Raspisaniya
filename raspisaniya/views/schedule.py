@@ -1190,6 +1190,20 @@ def _try_relocate_blocking_groups(grp, course, teacher):
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
                 continue
+            # ── MUHIM TUZATISH: bu yerda ham "bitta fandan bir parada
+            # MAX_GROUPS_PER_SLOT_NO_TEACHER (4) tadan ortiq guruh
+            # bo'lmasin" chegarasi yo'q edi — grp shu funksiya orqali
+            # allaqachon 4 ta guruh bilan to'lgan slotga ham joylashib
+            # qolishi mumkin edi (agar u yerda haqiqiy talaba to'qnashuvi
+            # bo'lmasa). Endi bunday to'lgan slotlar chetlab o'tiladi.
+            if teacher_id is None:
+                existing_same_subject = GroupSchedule.objects.filter(
+                    date__in=dates, start_time__in=times,
+                    group__course__subject=course.subject,
+                    group__is_scheduled=True,
+                ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
+                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER
+                    continue
             blocking_group_ids = set(GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__students__id__in=student_ids,
             ).exclude(group=grp).values_list('group_id', flat=True))
@@ -1340,6 +1354,18 @@ def _try_absorb_from_sibling_to_reach_minimum(grp, course, teacher, same_course_
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
                 continue
+
+            # ── MUHIM TUZATISH: "bitta fandan bir parada MAX_GROUPS_PER_SLOT_
+            # NO_TEACHER (4) tadan ortiq guruh bo'lmasin" chegarasi bu yerda
+            # yo'q edi. Endi tekshiriladi.
+            if teacher_id is None:
+                existing_same_subject = GroupSchedule.objects.filter(
+                    date__in=dates, start_time__in=times,
+                    group__course__subject=course.subject,
+                    group__is_scheduled=True,
+                ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
+                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER
+                    continue
 
             # 1) grp'ning O'Z a'zolari shu vaqtda TO'LIQ bo'sh bo'lishi shart
             own_conflict = GroupSchedule.objects.filter(
@@ -1506,6 +1532,23 @@ def _try_last_resort_expand_weekdays(grp, course, teacher):
             if conflict:
                 continue
 
+            # ── MUHIM TUZATISH: bu funksiya ilgari faqat QATTIQ (o'qituvchi/
+            # talaba) to'qnashuvlarni tekshirar, lekin "bitta fandan bir
+            # parada MAX_GROUPS_PER_SLOT_NO_TEACHER (4) tadan ortiq guruh
+            # bo'lmasin" chegarasini UMUMAN hisobga olmasdi. Natijada bu
+            # "eng so'nggi chora" orqali cheksiz ko'p guruh (masalan 6 ta)
+            # bitta parada to'planib qolishi mumkin edi — garchi asosiy
+            # find_schedule_for_group bu chegarani to'g'ri qo'llasa ham.
+            # Endi shu yerda ham xuddi shu chegara tekshiriladi.
+            if teacher_id is None:
+                existing_same_subject = GroupSchedule.objects.filter(
+                    date__in=dates, start_time__in=times,
+                    group__course__subject=course.subject,
+                    group__is_scheduled=True,
+                ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
+                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER bilan bir xil qiymat
+                    continue
+
             # Topildi — saqlaymiz
             with transaction.atomic():
                 grp.start_time = times[0]
@@ -1594,9 +1637,40 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
     remaining = list(all_students)
     new_groups = []  # [(students, wds, p1, p2, dates), ...]
 
+    # ── MUHIM TUZATISH: bu "ochko'z klasterlash" tsikli ilgari HAR BIR
+    # iteratsiyada eng ko'p talabaga mos keladigan (hafta_kuni, para)
+    # kombinatsiyasini tanlar, lekin shu kombinatsiya ALLAQACHON NECHTA
+    # YANGI GURUHGA ishlatilganini hisobga OLMAS edi. Natijada — agar
+    # talabalarning aksariyati faqat BITTA vaqtda bo'sh bo'lsa (masalan
+    # 08:30) — barcha yangi guruhlar (6 tagacha yoki undan ham ko'p)
+    # xuddi shu bitta vaqtga cheksiz ravishda to'planib qolardi, chunki
+    # o'qituvchi biriktirilmagan bosqichda bu combo hech qachon "band"
+    # deb belgilanmasdi. Endi har bir combo uchun nechta guruh
+    # yaratilganini sanaymiz va MAX_GROUPS_PER_SLOT_NO_TEACHER (4) ga
+    # yetgach, o'sha combo keyingi tanlovlardan CHIQARIB TASHLANADI —
+    # shunda qolgan talabalar haqiqatan ham BOSHQA vaqtga taqsimlanadi.
+    MAX_GROUPS_PER_SLOT_NO_TEACHER = 4
+    combo_usage_count = defaultdict(int)
+
+    # ── TUZATILGAN: endi bu tsikl "eng ko'p talabaga mos keladigan"
+    # combo'ni EMAS, balki "ENG KAM ISHLATILGAN (iloji bo'lsa hali
+    # umuman ishlatilmagan) combo'ni AFZAL ko'radi — mos keladigan
+    # talaba soni faqat TENGLIK bo'lganda hal qiluvchi omil bo'ladi.
+    # Shunday qilib guruhlar avval BOSHQA-BOSHQA bo'sh vaqtlarga
+    # tarqaladi (masalan 2-2-2), va faqat haqiqatan boshqa imkoniyat
+    # qolmaganda bitta vaqtga 4 tagacha to'planadi. Bu — kamroq
+    # o'qituvchi bilan ko'proq guruhni qamrab olish imkonini beradi
+    # (turli vaqtdagi guruhlarni bitta o'qituvchi ketma-ket o'qitishi
+    # mumkin bo'ladi).
     while len(remaining) >= MIN_GROUP_SIZE and all_candidates:
-        best = None  # (matched_count, wds, p1, p2, dates, matched_students)
+        best = None  # (score, wds, p1, p2, dates, matched_students)
         for wds, p1, p2, dates, times in all_candidates:
+            usage = 0
+            if teacher_id is None:
+                combo_key = (wds, p1, p2)
+                usage = combo_usage_count[combo_key]
+                if usage >= MAX_GROUPS_PER_SLOT_NO_TEACHER:
+                    continue  # bu vaqt allaqachon 4 ta guruh bilan to'lgan — o'tkazib yuboramiz
             matched = [
                 s for s in remaining
                 if not GroupSchedule.objects.filter(
@@ -1604,8 +1678,10 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
                 ).exists()
             ]
             if len(matched) >= MIN_GROUP_SIZE:
-                if best is None or len(matched) > best[0]:
-                    best = (len(matched), wds, p1, p2, dates, matched)
+                # Ustuvorlik: 1) kamroq ishlatilgan combo, 2) ko'proq mos kelgan talaba
+                score = (usage, -len(matched))
+                if best is None or score < best[0]:
+                    best = (score, wds, p1, p2, dates, matched)
 
         if best is None:
             break
@@ -1613,6 +1689,7 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
         _, wds, p1, p2, dates, matched = best
         group_students = matched[:MAX_GROUP_SIZE]  # MAX_GROUP_SIZE — hech qachon buzilmaydi
         new_groups.append([group_students, wds, p1, p2, dates])
+        combo_usage_count[(wds, p1, p2)] += 1
         matched_ids = {s.id for s in group_students}
         remaining = [s for s in remaining if s.id not in matched_ids]
 
@@ -2069,6 +2146,20 @@ def _try_minimal_disruption_swap(grp, course, teacher):
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
                 continue  # o'qituvchi band -> bu slot umuman ishlamaydi
+            # ── MUHIM TUZATISH: bu yerda ham "bitta fandan bir parada
+            # MAX_GROUPS_PER_SLOT_NO_TEACHER (4) tadan ortiq guruh
+            # bo'lmasin" chegarasi hisobga olinmagan edi — natijada bu
+            # funksiya (talaba almashtirish orqali) allaqachon 4 ta guruh
+            # bilan TO'LGAN slotga yana bir guruhni "siqib kirita" olardi.
+            # Endi bunday to'lgan slotlar butunlay nomzodlikdan chiqariladi.
+            if teacher_id is None:
+                existing_same_subject = GroupSchedule.objects.filter(
+                    date__in=dates, start_time__in=times,
+                    group__course__subject=course.subject,
+                    group__is_scheduled=True,
+                ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
+                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER
+                    continue
             blocker_ids = set(GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__students__id__in=student_ids,
             ).exclude(group=grp).values_list('group__students__id', flat=True))
