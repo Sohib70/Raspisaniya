@@ -52,7 +52,7 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
     bo'lgan sanalar o'tkazib yuboriladi (o'zgartirilmaydi), qolganlari
     yangilanadi.
 
-    Qaytaradi: (updated_count, skipped_dates_list)
+    Qaytaradi: (updated_count, skipped_dates_list, conflict_details_list)
     """
     old_time_val = sched.start_time
     old_weekday = sched.date.weekday()
@@ -75,6 +75,7 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
 
     updated = 0
     skipped_dates = []
+    conflict_details = []  # [{'date': date, 'reason': 'teacher'|'student', 'names': [...], 'other_group': str}, ...]
 
     for t in targets:
         if t.pk == sched.pk:
@@ -86,24 +87,48 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
             week_monday = t.date - timedelta(days=t.date.weekday())
             target_date = week_monday + timedelta(days=new_weekday)
 
-        if teacher_id and GroupSchedule.objects.filter(
-            date=target_date, start_time=new_time_val, group__teacher_id=teacher_id,
-        ).exclude(pk=t.pk).exists():
-            skipped_dates.append(target_date)
-            continue
+        if teacher_id:
+            teacher_clash = GroupSchedule.objects.filter(
+                date=target_date, start_time=new_time_val, group__teacher_id=teacher_id,
+            ).exclude(pk=t.pk).select_related('group__course__subject', 'group__teacher').first()
+            if teacher_clash:
+                skipped_dates.append(target_date)
+                conflict_details.append({
+                    'date': target_date,
+                    'reason': 'teacher',
+                    'names': [str(teacher_clash.group.teacher)],
+                    'other_group': str(teacher_clash.group),
+                })
+                continue
 
-        if student_ids and GroupSchedule.objects.filter(
-            date=target_date, start_time=new_time_val, group__students__id__in=student_ids,
-        ).exclude(pk=t.pk).exists():
-            skipped_dates.append(target_date)
-            continue
+        if student_ids:
+            clashing_schedules = list(GroupSchedule.objects.filter(
+                date=target_date, start_time=new_time_val, group__students__id__in=student_ids,
+            ).exclude(pk=t.pk).select_related('group__course__subject').prefetch_related('group__students').distinct())
+            if clashing_schedules:
+                busy_student_names = []
+                other_group_names = []
+                own_students_set = set(student_ids)
+                for cs in clashing_schedules:
+                    other_group_names.append(str(cs.group))
+                    for st in cs.group.students.all():
+                        if st.id in own_students_set:
+                            busy_student_names.append(str(st))
+                skipped_dates.append(target_date)
+                conflict_details.append({
+                    'date': target_date,
+                    'reason': 'student',
+                    'names': sorted(set(busy_student_names)),
+                    'other_group': ", ".join(sorted(set(other_group_names))),
+                })
+                continue
 
         t.date = target_date
         t.start_time = new_time_val
         t.save(update_fields=['date', 'start_time'])
         updated += 1
 
-    return updated, skipped_dates
+    return updated, skipped_dates, conflict_details
 
 
 def get_student_group_conflict(student, target_group, exclude_group=None):
@@ -171,13 +196,37 @@ def get_weekly_schedule_data(week_start=None):
                 'room'        : str(grp.room) if grp.room else '',
                 'sched_id'    : sched.pk,
                 'group_number': grp.group_number,
+                'group_id'    : grp.pk,
+                'display_col' : grp.display_col,
             })
 
     max_cols = max((len(v) for v in grid_lists.values()), default=0)
 
     grid = {}
     for (weekday, para_idx), items in grid_lists.items():
-        for col, item in enumerate(items, 1):
+        # ── Avval admin qo'lda belgilagan ustunlarni (display_col) o'z
+        # joyiga qo'yamiz; keyin ustuni belgilanmagan (yoki band ustunga
+        # to'g'ri kelib qolgan) darslarni bo'sh qolgan birinchi ustunlarga
+        # ketma-ket taqsimlaymiz. Shu tariqa foydalanuvchi tortib qo'ygan
+        # ustun sahifa yangilanganda ham DOIMIY saqlanib qoladi.
+        placed = {}
+        unplaced = []
+        for item in items:
+            col = item.get('display_col')
+            if col and col not in placed:
+                placed[col] = item
+            else:
+                unplaced.append(item)
+
+        next_col = 1
+        for item in unplaced:
+            while next_col in placed:
+                next_col += 1
+            placed[next_col] = item
+            next_col += 1
+
+        max_cols = max(max_cols, max(placed.keys(), default=0))
+        for col, item in placed.items():
             grid[(weekday, para_idx, col)] = item
 
     return {
@@ -614,7 +663,7 @@ def change_lesson_time(request, sched_pk):
         else:
             new_time_val = sched.start_time
 
-        updated, skipped_dates = apply_lesson_time_change(
+        updated, skipped_dates, conflict_details = apply_lesson_time_change(
             sched, new_date_val, new_time_val, apply_to_future=apply_to_future
         )
 
@@ -627,15 +676,23 @@ def change_lesson_time(request, sched_pk):
                 )
             else:
                 messages.success(request, f"{new_date_val} dars vaqti o'zgartirildi")
-        if skipped_dates:
-            dates_str = ", ".join(d.strftime('%d.%m.%Y') for d in skipped_dates[:5])
-            extra = len(skipped_dates) - 5
-            if extra > 0:
-                dates_str += f" va yana {extra} ta"
+        if conflict_details:
+            detail_lines = []
+            for cd in conflict_details[:5]:
+                d_str = cd['date'].strftime('%d.%m.%Y')
+                if cd['reason'] == 'teacher':
+                    detail_lines.append(f"{d_str}: o'qituvchi ({cd['names'][0]}) band — {cd['other_group']}")
+                else:
+                    names_str = ", ".join(cd['names'][:5])
+                    if len(cd['names']) > 5:
+                        names_str += f" va yana {len(cd['names']) - 5} ta talaba"
+                    detail_lines.append(f"{d_str}: {names_str} band — {cd['other_group']}")
+            extra = len(conflict_details) - 5
+            extra_str = f" ... va yana {extra} ta sana" if extra > 0 else ""
             messages.warning(
                 request,
-                f"⚠ Quyidagi sanalarda o'qituvchi yoki talabalar band bo'lgani uchun "
-                f"o'zgartirilmadi: {dates_str}"
+                "⚠ Quyidagi sabablarga ko'ra ba'zi sanalar o'zgartirilmadi: "
+                + " | ".join(detail_lines) + extra_str
             )
         if not updated and not skipped_dates:
             messages.error(request, "Dars topilmadi yoki o'zgartirish uchun hech narsa yo'q.")
@@ -1065,12 +1122,14 @@ def weekly_schedule_view(request):
                         'teacher': info['teacher'],
                         'room': info.get('room', ''),
                         'group_number': info.get('group_number', ''),
+                        'group_id': info.get('group_id'),
+                        'col': gnum,
                         'bg': color['bg'],
                         'text': color['text'],
                         'border': color['border'],
                     })
                 else:
-                    cells.append({'filled': False})
+                    cells.append({'filled': False, 'col': gnum})
             table_data.append({
                 'day': day_name,
                 'time': f"{start} - {end}",
@@ -1245,7 +1304,24 @@ def change_lesson_time_ajax(request, sched_pk):
     except (ValueError, AttributeError):
         return JsonResponse({'success': False, 'error': 'Noto\'g\'ri vaqt formati'}, status=400)
 
+    new_col_raw = body.get('new_col')
+    new_col = None
+    if new_col_raw not in (None, ''):
+        try:
+            new_col = int(new_col_raw)
+        except (TypeError, ValueError):
+            new_col = None
+
     if sched.date == new_date_val and sched.start_time == new_time_val:
+        # ── YANGI: sana/vaqt o'zgarmagan, faqat ustun (N-QATOR) almashtirilgan
+        # bo'lishi mumkin — bu holatda hech qanday to'qnashuv tekshiruvi
+        # kerak emas (vaqt allaqachon shu guruh uchun band edi), shunchaki
+        # tanlangan ustunni saqlab qo'yamiz, shunda sahifa yangilanganda
+        # ham o'sha ustunda qoladi.
+        if new_col is not None:
+            sched.group.display_col = new_col
+            sched.group.save(update_fields=['display_col'])
+            return JsonResponse({'success': True, 'updated_count': 0, 'skipped_count': 0, 'col_only': True})
         return JsonResponse({'success': False, 'error': 'Dars allaqachon shu vaqtda'})
 
     # Faqat bugungi kun o'zgartiriladi (admin istisno yoki ruxsat berilgan)
@@ -1272,17 +1348,33 @@ def change_lesson_time_ajax(request, sched_pk):
     # kerak) ──
     apply_to_future = bool(body.get('apply_to_future')) and is_admin
 
-    updated, skipped_dates = apply_lesson_time_change(
+    updated, skipped_dates, conflict_details = apply_lesson_time_change(
         sched, new_date_val, new_time_val, apply_to_future=apply_to_future
     )
 
     if updated == 0:
-        if skipped_dates:
+        if conflict_details:
+            cd = conflict_details[0]
+            d_str = cd['date'].strftime('%d.%m.%Y')
+            if cd['reason'] == 'teacher':
+                error_msg = f"{d_str} kuni o'qituvchi ({cd['names'][0]}) band — {cd['other_group']} guruhida dars bor!"
+            else:
+                names_str = ", ".join(cd['names'][:5])
+                if len(cd['names']) > 5:
+                    names_str += f" va yana {len(cd['names']) - 5} ta talaba"
+                error_msg = f"{d_str} kuni {names_str} band — {cd['other_group']} guruhida dars bor!"
             return JsonResponse({
                 'success': False,
-                'error': f'{skipped_dates[0].strftime("%d.%m.%Y")} kuni o\'qituvchi yoki talabalar band!'
+                'error': error_msg,
+                'conflict_details': [
+                    {**c, 'date': c['date'].strftime('%d.%m.%Y')} for c in conflict_details
+                ],
             })
         return JsonResponse({'success': False, 'error': 'Dars topilmadi yoki o\'zgartirilmadi'})
+
+    if new_col is not None:
+        sched.group.display_col = new_col
+        sched.group.save(update_fields=['display_col'])
 
     end_time = (datetime.datetime.combine(new_date_val, new_time_val) + timedelta(minutes=80)).time()
 

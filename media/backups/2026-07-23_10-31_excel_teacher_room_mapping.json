@@ -1,0 +1,387 @@
+[
+  {
+    "course_group_id": 1581,
+    "subject": "Analitik kimyo 3-semestr",
+    "group_number": 1,
+    "teacher_name": "O.O'.Taniyev",
+    "room": "1-bino 2/30-xona"
+  },
+  {
+    "course_group_id": 1584,
+    "subject": "Analitik kimyo 3-semestr",
+    "group_number": 4,
+    "teacher_name": "D.A.Ziyeyev",
+    "room": "1-bino 2/29-xona"
+  },
+  {
+    "course_group_id": 1582,
+    "subject": "Analitik kimyo 3-semestr",
+    "group_number": 2,
+    "teacher_name": "O.R.Maxammadiyev",
+    "room": "1-bino 2/34-xona"
+  },
+  {
+    "course_group_id": 1583,
+    "subject": "Analitik kimyo 3-semestr",
+    "group_number": 3,
+    "teacher_name": "O.O'.Taniyev",
+    "room": "1-bino 2/30-xona"
+  },
+  {
+    "course_group_id": 1587,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 3,
+    "teacher_name": "B.I.Muxamedova",
+    "room": "1-bino 2/26-xona"
+  },
+  {
+    "course_group_id": 1589,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 5,
+    "teacher_name": "O.R.Maxammadiyev",
+    "room": "1-bino 2/34-xona"
+  },
+  {
+    "course_group_id": 1585,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 1,
+    "teacher_name": "B.I.Muxamedova",
+    "room": "1-bino 2/26-xona"
+  },
+  {
+    "course_group_id": 1588,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 4,
+    "teacher_name": "D.A.Ziyeyev",
+    "room": "1-bino 2/29-xona"
+  },
+  {
+    "course_group_id": 1590,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 6,
+    "teacher_name": "O.R.Maxammadiyev",
+    "room": "1-bino 2/34-xona"
+  },
+  {
+    "course_group_id": 1586,
+    "subject": "Analitik kimyo 4-semestr",
+    "group_number": 2,
+    "teacher_name": "D.A.Ziyeyev",
+    "room": "1-bino 2/29-xona"
+  },
+  {
+    "course_group_id": 392,
+    "subject": "Biofizika, Fizika",
+    "group_number": 1,
+    "teacher_name": "Z.B.Tursunova",
+    "room": "2-bino 105-xona"
+  },
+  {
+    "course_group_id": 1601,
+    "subject": "Biologik  kimyo 6-semestr",
+    "group_number": 1,
+    "teacher_name": "S.A.Abduraximov",
+    "room": "1-bino 332-xona"
+  },
+  {
+    "course_group_id": 1602,
+    "subject": "Biologik  kimyo 6-semestr",
+    "group_number": 2,
+    "teacher_name": "S.O.Axmedova",
+    "room": "1-bino 335-xona"
+  },
+  {
+    "course_group_id": 1603,
+    "subject": "Biologik  kimyo 6-semestr",
+    "group_number": 3,
+    "teacher_name": "S.A.Abduraximov",
+    "room": "1-bino 332-xona"
+  },
+  {
+    "course_group_id": 1625,
+    "subject": "Biologik  kimyo SF",
+    "group_number": 1,
+    "teacher_name": "S.A.Abduraximov",
+    "room": "1-bino 332-xona"
+  },
+  {
+    "course_group_id": 1626,
+    "subject": "Biologik  kimyo SF",
+    "group_number": 2,
+    "teacher_name": "S.O.Axmedova",
+    "room": "1-bino 335-xona"
+  },
+  {
+    "course_group_id": 394,
+    "subject": "Dinshunoslik",
+    "group_number": 1,
+    "teacher_name": "2-bino 106-xona X.I.Abduraxmonov",
+    "room": null
+  },
+  {
+    "course_group_id": 395,
+    "subject": "Dori vositalarining sifatini ta’minlash va boshqarish",
+    "group_number": 1,
+    "teacher_name": "D.T.Safarova",
+    "room": "3-bino 7-xona"
+  },
+  {
+    "course_group_id": 393,
+    "subject": "Dorixonalarda ish yuritish",
+    "group_number": 1,
+    "teacher_name": "F.O'.Eshmurodova",
+    "room": "2-bino 206-xona"
+  },
+  {
+    "course_group_id": 436,
+    "subject": "Ekologiya va gigiyena",
+    "group_number": 1,
+    "teacher_name": "I.K.Mamajonov",
+    "room": "1-bino 316-xona"
+  },
+  {
+    "course_group_id": 434,
+    "subject": "FAT, ATJMM, TAT",
+    "group_number": 1,
+    "teacher_name": "A.T.Tursunov",
+    "room": "2-bino 105-xona"
+  },
+  {
+    "course_group_id": 440,
+    "subject": "Farmakognoziya 5-semestr",
+    "group_number": 1,
+    "teacher_name": "Sh.R.Xalilova",
+    "room": "1-bino 217-xona"
+  },
+  {
+    "course_group_id": 1606,
+    "subject": "Farmakognoziya 6-semestr",
+    "group_number": 1,
+    "teacher_name": "N.T.Farmonova",
+    "room": "1-bino 217-xona"
+  },
+  {
+    "course_group_id": 1607,
+    "subject": "Farmakognoziya 6-semestr",
+    "group_number": 2,
+    "teacher_name": "M.K.Muxitdinova",
+    "room": "1-bino 211-xona"
+  },
+  {
+    "course_group_id": 1611,
+    "subject": "Farmatsevtik kimyo 6-semestr",
+    "group_number": 1,
+    "teacher_name": "L.N.Bozorova",
+    "room": "1-bino 2/50-xona"
+  },
+  {
+    "course_group_id": 1612,
+    "subject": "Farmatsevtik kimyo 6-semestr",
+    "group_number": 2,
+    "teacher_name": "L.N.Bozorova",
+    "room": "1-bino 2/50-xona"
+  },
+  {
+    "course_group_id": 421,
+    "subject": "Farmatsevtik texnologiya 5-semestr",
+    "group_number": 1,
+    "teacher_name": "M.N.Rizayeva",
+    "room": "3-bino 18-xona"
+  },
+  {
+    "course_group_id": 422,
+    "subject": "Farmatsevtik texnologiya 6-semestr",
+    "group_number": 1,
+    "teacher_name": "N.X.Tashpo'latova",
+    "room": "3-bino 18-xona"
+  },
+  {
+    "course_group_id": 1591,
+    "subject": "Fizik va kolloid kimyo 3-semestr",
+    "group_number": 1,
+    "teacher_name": "S.M.Xazratkulova",
+    "room": "1-bino 322-xona"
+  },
+  {
+    "course_group_id": 1592,
+    "subject": "Fizik va kolloid kimyo 3-semestr",
+    "group_number": 2,
+    "teacher_name": "D.U.Rustamova",
+    "room": "1-bino 322-xona"
+  },
+  {
+    "course_group_id": 439,
+    "subject": "Fiziologiya odam anatomiyasi asoslari bilan",
+    "group_number": 1,
+    "teacher_name": "S.O.Saliboyeva",
+    "room": "1-bino 316-xona"
+  },
+  {
+    "course_group_id": 435,
+    "subject": "Gistologiya, sitologiya, embriologiya 1",
+    "group_number": 1,
+    "teacher_name": "D.I.Abdukarimov",
+    "room": "2-bino 105-xona"
+  },
+  {
+    "course_group_id": 432,
+    "subject": "Matematika va matematik statistika",
+    "group_number": 1,
+    "teacher_name": "D.A,Sunatova",
+    "room": "2-bino 105-xona"
+  },
+  {
+    "course_group_id": 1628,
+    "subject": "Mikrobiologiya",
+    "group_number": 2,
+    "teacher_name": "M.R.Buriyeva",
+    "room": "1-bino 312-xona"
+  },
+  {
+    "course_group_id": 1627,
+    "subject": "Mikrobiologiya",
+    "group_number": 1,
+    "teacher_name": "M.R.Buriyeva",
+    "room": "1-bino 312-xona"
+  },
+  {
+    "course_group_id": 441,
+    "subject": "Mutaxassislikka kirish SF",
+    "group_number": 1,
+    "teacher_name": "D.T.Safarova",
+    "room": "3-bino 7-xona"
+  },
+  {
+    "course_group_id": 429,
+    "subject": "O'zbekistonning eng yangi tarixi",
+    "group_number": 1,
+    "teacher_name": "A.K.Abdujalilov",
+    "room": "1-bino 316-xona"
+  },
+  {
+    "course_group_id": 433,
+    "subject": "Oliy matematika",
+    "group_number": 1,
+    "teacher_name": "D.A.Sunatova",
+    "room": "2-bino 105-xona"
+  },
+  {
+    "course_group_id": 391,
+    "subject": "Organik  sintez",
+    "group_number": 1,
+    "teacher_name": "B.G..Maxkamov",
+    "room": "2-bino 106-xona"
+  },
+  {
+    "course_group_id": 1594,
+    "subject": "Organik kimyo 3-semestr",
+    "group_number": 2,
+    "teacher_name": "G.B.Saliyeva",
+    "room": "1-bino 323-xona"
+  },
+  {
+    "course_group_id": 1595,
+    "subject": "Organik kimyo 3-semestr",
+    "group_number": 3,
+    "teacher_name": "G.B.Saliyeva",
+    "room": "1-bino 323-xona"
+  },
+  {
+    "course_group_id": 1593,
+    "subject": "Organik kimyo 3-semestr",
+    "group_number": 1,
+    "teacher_name": "G.B.Saliyeva",
+    "room": "1-bino 323-xona"
+  },
+  {
+    "course_group_id": 413,
+    "subject": "Sanoat farmatsiyasi 7-semestr",
+    "group_number": 1,
+    "teacher_name": "Z.U.Mamatqulov",
+    "room": "3-bino 7-xona"
+  },
+  {
+    "course_group_id": 415,
+    "subject": "Sanoat farmatsiyasi 8-semestr",
+    "group_number": 1,
+    "teacher_name": "N.N.Nusratova",
+    "room": "3-bino 7-xona"
+  },
+  {
+    "course_group_id": 414,
+    "subject": "Sanoat texnologiyasi 5-semestr",
+    "group_number": 1,
+    "teacher_name": "N.M.Vaxidova",
+    "room": "3-bino 8-xona"
+  },
+  {
+    "course_group_id": 1613,
+    "subject": "Sanoat texnologiyasi 6-semestr",
+    "group_number": 1,
+    "teacher_name": "N.M.Vaxidova",
+    "room": "3-bino 8-xona"
+  },
+  {
+    "course_group_id": 1614,
+    "subject": "Sanoat texnologiyasi 6-semestr",
+    "group_number": 2,
+    "teacher_name": "D.T.Safarova",
+    "room": "3-bino 7-xona"
+  },
+  {
+    "course_group_id": 1622,
+    "subject": "Tibbiyotda xorijiy til, Xorijiy til 1,2",
+    "group_number": 3,
+    "teacher_name": "U.D.Yo'lchiyeva",
+    "room": "2-bino 705-xona"
+  },
+  {
+    "course_group_id": 1620,
+    "subject": "Tibbiyotda xorijiy til, Xorijiy til 1,2",
+    "group_number": 1,
+    "teacher_name": "U.D.Yo'lchiyeva",
+    "room": "2-bino 705-xona"
+  },
+  {
+    "course_group_id": 1621,
+    "subject": "Tibbiyotda xorijiy til, Xorijiy til 1,2",
+    "group_number": 2,
+    "teacher_name": "U.D.Yo'lchiyeva",
+    "room": "2-bino 705-xona"
+  },
+  {
+    "course_group_id": 1618,
+    "subject": "Toksikologik kimyo 7-semestr",
+    "group_number": 1,
+    "teacher_name": "D.SH.Muxammedova",
+    "room": "1-bino 325-xona"
+  },
+  {
+    "course_group_id": 1619,
+    "subject": "Toksikologik kimyo 7-semestr",
+    "group_number": 2,
+    "teacher_name": "D.SH.Muxammedova",
+    "room": "1-bino 327-xona"
+  },
+  {
+    "course_group_id": 1616,
+    "subject": "Toksikologik kimyo 8-semestr",
+    "group_number": 2,
+    "teacher_name": "G.K.Umarova",
+    "room": "1-bino 325-xona"
+  },
+  {
+    "course_group_id": 1617,
+    "subject": "Toksikologik kimyo 8-semestr",
+    "group_number": 3,
+    "teacher_name": "Z.A.Yuldashev 1-bino 329-xons",
+    "room": null
+  },
+  {
+    "course_group_id": 1615,
+    "subject": "Toksikologik kimyo 8-semestr",
+    "group_number": 1,
+    "teacher_name": "Z.A.Yuldashev 1-bino 329-xons",
+    "room": null
+  }
+]

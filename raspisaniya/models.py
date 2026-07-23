@@ -91,6 +91,7 @@ class CourseGroup(models.Model):
     is_scheduled = models.BooleanField(default=False)
     room = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL)
     teacher_can_edit = models.BooleanField(default=False)  # Admin ruxsat bergan
+    display_col = models.PositiveIntegerField(null=True, blank=True)  # Haftalik jadval ustuni (N-QATOR) — admin qo'lda tortib qo'ygan ustun raqami
 
     def __str__(self):
         return f"{self.course.subject} — {self.group_number}-guruh"

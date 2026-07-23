@@ -1134,6 +1134,171 @@ def _try_dissolve_and_distribute_group(grp, same_course_groups):
     return True, f"'{grp}' guruhi dars jadvalida bo'sh joy topilmagani sababli tarqatib yuborildi. Talabalar qolgan guruhlarga muvaffaqiyatli qo'shildi."
 
 
+def _try_deep_cascade_relocate(grp, course, teacher, max_depth=12, max_nodes=400):
+    """
+    ENG SO'NGGI, ENG CHUQUR CHORA — foydalanuvchi so'roviga ko'ra:
+    "yo'q qil, joy topish yo'li qanday bo'lsa ham hammasini ko'rib chiq,
+    10-11 bosqich bo'lsa ham qil".
+
+    `_try_relocate_blocking_groups`dan farqi: o'sha funksiya faqat BITTA
+    bosqichli ko'chirishga urinadi (to'siq guruhni ko'chirish uchun uning
+    o'zi albatta bo'sh joy topishi kerak). Bu funksiya esa REKURSIV
+    zanjir quradi: agar to'siq guruhning o'zi ham band bo'lsa, UNI
+    bloklayotgan guruh(lar)ni ham ko'chirishga urinadi, va h.k. —
+    `max_depth` (standart 12) bosqichgacha.
+
+    Butun zanjir XOTIRADA (`virtual` lug'at orqali) simulyatsiya
+    qilinadi — hech narsa bazaga yozilmaydi, toki BUTUN zanjir охиригача
+    muvaffaqiyatli bo'lmaguncha. Faqat to'liq ishlagan yechim topilsa,
+    barcha ishtirokchi guruhlar bitta atomik tranzaksiyada saqlanadi.
+
+    Xavfsizlik: `max_nodes` — umumiy rekursiv chaqiruvlar soni chegarasi
+    (juda katta/zich ma'lumotlarda cheksiz qidiruvning oldini olish uchun).
+    """
+    node_counter = {'count': 0}
+
+    def get_weekday_options(total_lessons, include_saturday):
+        max_wd = 5 if include_saturday else 4
+        if total_lessons >= 20:
+            return [(0, 2, 4)]
+        elif 12 <= total_lessons <= 20:
+            return [(1, 3)]
+        else:
+            return [(wd,) for wd in range(0, max_wd + 1)]
+
+    def real_slots(group_id):
+        return set(GroupSchedule.objects.filter(group_id=group_id).values_list('date', 'start_time'))
+
+    def effective_slots(group_id, virtual):
+        if group_id in virtual:
+            wds, p1, p2, dates = virtual[group_id]
+            return (set((d, PARA_TIMES[p1][0]) for d in dates)
+                     | set((d, PARA_TIMES[p2][0]) for d in dates))
+        return real_slots(group_id)
+
+    def find_blockers(students, dates, times, virtual, exclude_group_id):
+        student_ids = set(s.id for s in students)
+        target_set = {(d, t) for d in dates for t in times}
+        relevant = set(
+            GroupSchedule.objects.filter(
+                group__students__id__in=student_ids
+            ).values_list('group_id', flat=True).distinct()
+        ) | set(virtual.keys())
+        relevant.discard(exclude_group_id)
+
+        blockers = set()
+        for gid in relevant:
+            g_student_ids = set(
+                CourseGroup.objects.get(pk=gid).students.values_list('id', flat=True)
+            )
+            if not (g_student_ids & student_ids):
+                continue
+            if effective_slots(gid, virtual) & target_set:
+                blockers.add(gid)
+        return blockers
+
+    def try_place(g, g_course, g_teacher, virtual, locked, depth):
+        node_counter['count'] += 1
+        if node_counter['count'] > max_nodes or depth > max_depth:
+            return False
+
+        students = list(g.students.all())
+        if len(students) < MIN_GROUP_SIZE:
+            return False
+        teacher_id = g_teacher.id if g_teacher else None
+        total_lessons = g_course.total_lessons
+        include_saturday = getattr(g_course, 'include_saturday', False)
+        wd_options = get_weekday_options(total_lessons, include_saturday)
+
+        candidates = []
+        for wds in wd_options:
+            dates = _slot_occurrence_dates(g_course.start_date, wds, total_lessons)
+            if not dates:
+                continue
+            for (p1, p2) in VALID_PARA_PAIRS:
+                if g.is_scheduled and tuple(g.weekdays or []) == wds and PARA_TIMES[p1][0] == g.start_time:
+                    continue  # bu o'zining hozirgi joyi
+                times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+                if teacher_id and GroupSchedule.objects.filter(
+                    date__in=dates, start_time__in=times, group__teacher_id=teacher_id
+                ).exclude(group=g).exists():
+                    continue
+                blockers = find_blockers(students, dates, times, virtual, g.pk)
+                candidates.append((len(blockers), wds, p1, p2, dates, blockers))
+
+        candidates.sort(key=lambda c: c[0])
+
+        for _, wds, p1, p2, dates, blockers in candidates:
+            if not blockers:
+                virtual[g.pk] = (wds, p1, p2, dates)
+                return True
+
+            if g.pk in locked:
+                continue
+
+            new_locked = locked | {g.pk}
+            saved_keys = set(virtual.keys())
+            all_resolved = True
+            for bgid in blockers:
+                if bgid in new_locked:
+                    all_resolved = False
+                    break
+                bg = CourseGroup.objects.select_related('course__subject', 'teacher').get(pk=bgid)
+                if not bg.course:
+                    all_resolved = False
+                    break
+                if not try_place(bg, bg.course, bg.teacher, virtual, new_locked, depth + 1):
+                    all_resolved = False
+                    break
+
+            if all_resolved:
+                virtual[g.pk] = (wds, p1, p2, dates)
+                return True
+            else:
+                for k in list(virtual.keys()):
+                    if k not in saved_keys:
+                        del virtual[k]
+
+        return False
+
+    virtual = {}
+    ok = try_place(grp, course, teacher, virtual, set(), 0)
+    if not ok or not virtual:
+        return False, None
+
+    # ── Barcha zanjir a'zolarini bitta atomik tranzaksiyada saqlaymiz ──
+    moved_names = []
+    with transaction.atomic():
+        for gid, (wds, p1, p2, dates) in virtual.items():
+            g2 = CourseGroup.objects.get(pk=gid)
+            t1, t2 = PARA_TIMES[p1][0], PARA_TIMES[p2][0]
+            g2.weekdays = list(wds)
+            g2.start_time = t1
+            g2.is_scheduled = True
+            g2.save()
+            sync_group_language(g2)
+            GroupSchedule.objects.filter(group=g2).delete()
+            GroupSchedule.objects.bulk_create([
+                GroupSchedule(group=g2, date=d, start_time=t1, lesson_number=2 * i + 1)
+                for i, d in enumerate(dates)
+            ] + [
+                GroupSchedule(group=g2, date=d, start_time=t2, lesson_number=2 * i + 2)
+                for i, d in enumerate(dates)
+            ])
+            if gid != grp.pk:
+                moved_names.append(str(g2))
+
+    if moved_names:
+        msg = (
+            f"'{grp}' guruhi CHUQUR ZANJIRLI qidiruv orqali joylashtirildi — "
+            f"buning uchun {len(moved_names)} ta guruh zanjir bo'ylab boshqa vaqtga "
+            f"ko'chirildi: {', '.join(moved_names)}."
+        )
+    else:
+        msg = f"'{grp}' guruhi to'liq bo'sh vaqtga joylashtirildi."
+    return True, msg
+
+
 def _try_relocate_blocking_groups(grp, course, teacher):
     """
     YANGI, ENG KUCHLI ZANJIRLI CHORA — foydalanuvchi so'rovi bo'yicha:
@@ -3064,6 +3229,20 @@ def build_schedule(request):
                     if reloc_ok:
                         auto_resolve_messages.append(reloc_msg)
                         busy_index = None  # ── YANGI ──
+                        iteration_success_count += 1
+                        continue
+
+                # ── 11-BOSQICH (ENG CHUQUR, ENG OXIRGI CHORA): 10-bosqich
+                # faqat BITTA bosqichli ko'chirishga urinadi. Agar bu ham
+                # yordam bermasa — endi REKURSIV, ko'p bosqichli (12
+                # bosqichgacha) zanjirli qidiruvni sinaymiz: to'siq
+                # guruhni ko'chirish uchun UNI bloklovchi guruh(lar)ni ham,
+                # kerak bo'lsa ularni ham bloklovchilarni ham ko'chiramiz. ──
+                if found_count < course.total_lessons:
+                    deep_ok, deep_msg = _try_deep_cascade_relocate(grp, course, teacher)
+                    if deep_ok:
+                        auto_resolve_messages.append(deep_msg)
+                        busy_index = None
                         iteration_success_count += 1
                         continue
 

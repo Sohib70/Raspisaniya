@@ -113,6 +113,7 @@
               <td class="drop-zone {% if cell.filled %}has-lesson{% endif %}"
                   data-date="{{ row.iso_date }}"
                   data-time="{{ row.start_time }}"
+                  data-col="{{ cell.col }}"
                   style="padding:4px;vertical-align:middle;min-height:60px;
                          {% if not cell.filled %}background:#f9f9f9;{% endif %}
                          transition:background 0.2s;">
@@ -126,6 +127,8 @@
                        data-teacher="{{ cell.teacher }}"
                        data-room="{{ cell.room }}"
                        data-group="{{ cell.group_number }}"
+                       data-group-id="{{ cell.group_id }}"
+                       data-col="{{ cell.col }}"
                        data-time="{{ row.time }}"
                        data-day="{{ row.day }}"
                        data-date="{{ row.iso_date }}"
@@ -393,18 +396,11 @@
 
       var newDate = td.dataset.date;
       var newTime = td.dataset.time;
+      var newCol  = td.dataset.col;
       var url     = draggedCard.dataset.schedUrl;
 
       if (!newDate || !newTime || !url) {
         showToast('Sana yoki vaqt topilmadi', 'error');
-        return;
-      }
-
-      if (newDate === sourceCell.dataset.date && newTime === sourceCell.dataset.time) {
-        sourceCell.classList.remove('has-lesson');
-        td.classList.add('has-lesson');
-        td.appendChild(draggedCard);
-        sourceCell = td;
         return;
       }
 
@@ -425,6 +421,7 @@
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         body: JSON.stringify({
           new_date: newDate,
+          new_col: newCol,
           new_time: newTime,
           apply_to_future: document.getElementById('applyToFutureToggle').checked
         })
@@ -435,9 +432,14 @@
         cardRef.setAttribute('draggable', 'true');
         isFetching = false;
         if (data.success) {
-          var msg = 'Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\'chirildi';
-          if (data.updated_count > 1) {
-            msg += ' (jami ' + data.updated_count + ' ta hafta yangilandi)';
+          var msg;
+          if (data.col_only) {
+            msg = 'Ustun o\'rni saqlandi';
+          } else {
+            msg = 'Dars ' + data.weekday + ' ' + data.new_time + ' ga ko\'chirildi';
+            if (data.updated_count > 1) {
+              msg += ' (jami ' + data.updated_count + ' ta hafta yangilandi)';
+            }
           }
           showToast(msg, 'success');
         } else {
