@@ -12,10 +12,16 @@
             <form method="post" action="{% url 'assign_teachers_auto' %}" class="d-grid">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-success btn-sm fw-bold text-start"
-                        onclick="return confirm('Tizimdagi barcha fan va guruhlar uchun o\'qituvchilarni avtomatik taqsimlashni boshlaysizmi?')">
+                        onclick="return confirm('Tizimdagi barcha fan va guruhlar uchun o\'qituvchilarni avtomatik (minimal sonda) taqsimlashni boshlaysizmi?')">
                     👨‍🏫 O'qituvchilarni taqsimlash
                 </button>
             </form>
+        </li>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+            <a href="{% url 'auto_assign_rooms' %}" class="btn btn-outline-primary btn-sm fw-bold text-start w-100">
+                🚪 Xonalarni taqsimlash
+            </a>
         </li>
         <li><hr class="dropdown-divider"></li>
         <li class="d-grid gap-1">

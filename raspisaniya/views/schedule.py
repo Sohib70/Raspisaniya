@@ -4203,105 +4203,90 @@ def apply_student_swap_suggestion(request, group_pk):
 @login_required
 def assign_teachers_auto(request):
     """
-    TIZIMDAGI BARCHA kurslarning o'qituvchisi yo'q guruhlariga konfliktlarsiz avtomatik o'qituvchi taqsimlash.
+    TIZIMDAGI BARCHA kurslarning o'qituvchisi yo'q guruhlariga
+    konfliktlarsiz avtomatik o'qituvchi taqsimlash.
+
+    TAKOMILLASHTIRILGAN MANTIQ:
+      - Agar Teacher.subjects bo'sh bo'lmasa: faqat o'sha fan(lar)ni
+        o'qitishi mumkin (qat'iy cheklov).
+      - Agar Teacher.subjects bo'sh bo'lsa: bu o'qituvchi "umumiy"
+        hisoblanadi, istalgan fanni o'qitishi mumkin.
+      - ALLAQACHON ishlatilgan (biror guruhga tayinlangan) o'qituvchi
+        birinchi navbatda qayta ishlatiladi (reuse) — shu orqali jami
+        ishlatiladigan ANIQ o'qituvchilar soni MINIMAL bo'ladi (avval
+        "eng ko'p bo'sh joyli"ni tanlardi — bu esa aksincha ko'proq
+        turli o'qituvchi ishlatilishiga olib kelardi).
     """
     if request.method != "POST":
         return redirect('lesson_list')
 
-    courses = Course.objects.filter(groups__teacher__isnull=True).distinct().select_related('subject')
+    groups = list(
+        CourseGroup.objects.filter(teacher__isnull=True, is_scheduled=True)
+        .select_related('course__subject')
+        .prefetch_related('students', 'schedule')
+        .order_by('course__subject__name', 'group_number')
+    )
 
-    if not courses.exists():
-        messages.info(request, "Tizimda o'qituvchi biriktirilmagan guruhlar topilmadi.")
+    if not groups:
+        messages.info(request, "Tizimda o'qituvchi biriktirilmagan (va jadval tuzilgan) guruhlar topilmadi.")
         return redirect('lesson_list')
+
+    all_teachers = list(Teacher.objects.prefetch_related('subjects'))
+    teacher_subject_ids = {t.id: set(t.subjects.values_list('id', flat=True)) for t in all_teachers}
+
+    # Boshlang'ich holat: ALLAQACHON biriktirilgan (boshqa guruhlardagi)
+    # o'qituvchilarning haqiqiy band sana/vaqtlarini oldindan yig'amiz —
+    # shunda yangi tayinlashlar ular bilan ham to'qnashmaydi.
+    teacher_busy = defaultdict(set)
+    for sc in GroupSchedule.objects.filter(group__teacher__isnull=False).values_list('group__teacher_id', 'date', 'start_time'):
+        teacher_busy[sc[0]].add((sc[1], sc[2]))
+    teacher_used_count = defaultdict(int)
+    for tid in CourseGroup.objects.filter(teacher__isnull=False).values_list('teacher_id', flat=True):
+        teacher_used_count[tid] += 1
 
     total_assigned_count = 0
     all_failed_details = []
 
-    for course in courses:
-        groups = list(
-            course.groups.filter(teacher__isnull=True)
-            .prefetch_related('students', 'schedule')
-        )
-        candidates = list(Teacher.objects.filter(subjects=course.subject).order_by('pk'))
+    for grp in groups:
+        subj_id = grp.course.subject_id
+        my_slots = set(grp.schedule.values_list('date', 'start_time'))
 
-        if not candidates:
-            for grp in groups:
-                all_failed_details.append(f"{course.subject.name} ({grp.group_number}-guruh): O'qituvchi umuman yo'q")
+        if not my_slots:
+            all_failed_details.append(
+                f"{grp.course.subject.name} ({grp.group_number}-guruh): "
+                f"guruh hali jadvallanmagan (avval 'Jadval tuzish'ni bajaring)"
+            )
             continue
 
-        start = course.start_date
-        end = course.end_date
+        candidates = []
+        for t in all_teachers:
+            t_subjects = teacher_subject_ids.get(t.id, set())
+            if t_subjects and subj_id not in t_subjects:
+                continue  # bu oqituvchi bu fanni bilmaydi (va "umumiy" ham emas)
+            if teacher_busy[t.id] & my_slots:
+                continue  # vaqt toqnashadi
+            already_used = teacher_used_count[t.id] > 0
+            candidates.append((not already_used, teacher_used_count[t.id], t.id, t))
 
-        def get_teacher_free_slots_count(teacher):
-            busy_count = GroupSchedule.objects.filter(
-                group__teacher=teacher,
-                date__gte=start,
-                date__lte=end,
-            ).count()
-            work_days = sum(
-                1 for i in range((end - start).days + 1)
-                if (start + timedelta(days=i)).weekday() <= 4
-            )
-            return work_days * 6 - busy_count
-
-        # Har bir guruh uchun o'qituvchi saralash
-        for grp in groups:
-            # MUHIM: Guruh allaqachon "Jadval tuzish" bosqichida aniq (sana, vaqt)
-            # larga joylashtirilgan bo'ladi. Endi haftaning taxminiy kunlarini
-            # (check_wds) TAXMIN QILISH o'rniga, guruhning HAQIQIY jadvalidan
-            # foydalanamiz — bu ustozlarni bekorga rad etib, "bitta guruhdan keyin
-            # to'xtab qolish" muammosini bartaraf etadi.
-            grp_slots = list(grp.schedule.values_list('date', 'start_time'))
-
-            if not grp_slots:
-                all_failed_details.append(
-                    f"{course.subject.name} ({grp.group_number}-guruh): "
-                    f"guruh hali jadvallanmagan (avval 'Jadval tuzish'ni bajaring)"
-                )
-                continue
-
-            best_teacher = None
-            max_free = -1
-
-            for teacher in candidates:
-                free = get_teacher_free_slots_count(teacher)
-
-                # 1. Yuklama yetarliligini tekshirish
-                if free < course.total_lessons:
-                    continue
-
-                # 2. ANIQ TO'QNASHUV TEKSHIRUVI: ustoz aynan shu guruhning
-                #    HAQIQIY (sana, vaqt) laridan birortasida allaqachon BOSHQA
-                #    guruhga band bo'lsa — bu ustozni rad etamiz. Guruhning o'zi
-                #    boshqa vaqt/kunda bo'lsa, ustoz erkin hisoblanadi.
-                teacher_busy_slots = set(
-                    GroupSchedule.objects.filter(
-                        group__teacher=teacher,
-                        date__gte=start,
-                        date__lte=end,
-                    ).exclude(group=grp).values_list('date', 'start_time')
-                )
-                conflict = any(slot in teacher_busy_slots for slot in grp_slots)
-                if conflict:
-                    continue
-
-                # Agar barcha tekshiruvlardan o'tsa va eng optimali bo'lsa tanlaymiz
-                if free > max_free:
-                    max_free = free
-                    best_teacher = teacher
-
-            # O'qituvchini saqlash
-            if best_teacher:
-                grp.teacher = best_teacher
-                grp.save(update_fields=['teacher'])
-                total_assigned_count += 1
-            else:
-                all_failed_details.append(
-                    f"{course.subject.name} ({grp.group_number}-guruh): Mos keladigan konfliktlarsiz o'qituvchi topilmadi")
+        if candidates:
+            candidates.sort(key=lambda c: (c[0], c[1]))
+            chosen = candidates[0][3]
+            grp.teacher = chosen
+            grp.save(update_fields=['teacher'])
+            teacher_busy[chosen.id] |= my_slots
+            teacher_used_count[chosen.id] += 1
+            total_assigned_count += 1
+        else:
+            all_failed_details.append(
+                f"{grp.course.subject.name} ({grp.group_number}-guruh): Mos keladigan konfliktlarsiz o'qituvchi topilmadi")
 
     if total_assigned_count > 0:
-        messages.success(request,
-                         f"✅ Jami {total_assigned_count} ta guruhga o'qituvchilar konfliktlarsiz muvaffaqiyatli biriktirildi!")
+        distinct_used = sum(1 for c in teacher_used_count.values() if c > 0)
+        messages.success(
+            request,
+            f"✅ Jami {total_assigned_count} ta guruhga o'qituvchilar konfliktlarsiz biriktirildi "
+            f"(jami {distinct_used} ta aniq o'qituvchi ishlatilmoqda)."
+        )
 
     if all_failed_details:
         for fail_msg in all_failed_details:
@@ -4313,6 +4298,111 @@ def assign_teachers_auto(request):
 
 
 @login_required
+def auto_assign_rooms(request):
+    """
+    Barcha JADVAL TUZILGAN (is_scheduled=True) guruhlarga xona tayinlaydi:
+      - MINIMAL sonli aniq xonadan foydalanishga harakat qiladi —
+        ALLAQACHON ishlatilgan xona birinchi navbatda qayta ishlatiladi
+        (reuse), shu orqali jami ishlatiladigan ANIQ xonalar soni
+        minimal bo'ladi (o'qituvchi tayinlashdagi bilan bir xil
+        tamoyil).
+      - Shu ustuvorlik doirasida — guruh hajmi xona sig'imidan
+        oshmasin (afzal ko'riladi, sig'imga eng yaqin xona tanlanadi —
+        isrofgarchiliksiz).
+      - Mos sig'imli xona topilmasa ham, BO'SH TURGAN istalgan xona
+        beriladi (xonasiz qoldirmaslik ustuvor).
+      - Bir xil kun/vaqtda bitta xona ikkita guruhga berilmaydi.
+
+    Faqat GET so'rovida — natijani ko'rsatadi (tasdiqlash uchun).
+    POST so'rovida — haqiqatan qo'llaydi va saqlaydi.
+    """
+    scheduled_groups = list(
+        CourseGroup.objects.filter(is_scheduled=True)
+        .select_related('course__subject', 'room')
+        .prefetch_related('students')
+        .order_by('course__subject__name', 'group_number')
+    )
+
+    group_slots = defaultdict(set)
+    for sc in GroupSchedule.objects.filter(group__in=scheduled_groups).only('group_id', 'date', 'start_time'):
+        group_slots[sc.group_id].add((sc.date, sc.start_time))
+
+    all_rooms = list(Room.objects.all())
+
+    if not all_rooms:
+        messages.error(request, "❌ Tizimda hech qanday xona mavjud emas. Avval 'Xonalar' sahifasidan xona qo'shing.")
+        return redirect('room_list')
+
+    room_busy = defaultdict(set)
+    room_used_count = defaultdict(int)
+    room_assignment = {}
+    unassigned_room_groups = []
+
+    for grp in scheduled_groups:
+        need = grp.students.count()
+        my_slots = group_slots.get(grp.pk, set())
+
+        fitting = []
+        any_free = []
+        for r in all_rooms:
+            if room_busy[r.id] & my_slots:
+                continue
+            any_free.append(r)
+            if r.capacity >= need:
+                fitting.append(r)
+
+        pool = fitting if fitting else any_free
+        if pool:
+            # Ustuvorlik: (1) allaqachon ishlatilganmi (kam yangi xona
+            # uchun — minimal son), (2) sig'imi eng yaqin (isrofgarchiliksiz)
+            pool.sort(key=lambda r: (room_used_count[r.id] == 0, abs(r.capacity - need)))
+            chosen = pool[0]
+            room_assignment[grp.pk] = chosen
+            room_busy[chosen.id] |= my_slots
+            room_used_count[chosen.id] += 1
+        else:
+            room_assignment[grp.pk] = None
+            unassigned_room_groups.append(grp)
+
+    if request.method == 'POST':
+        with transaction.atomic():
+            for grp in scheduled_groups:
+                grp.room = room_assignment.get(grp.pk)
+                grp.save(update_fields=['room'])
+        assigned_count = sum(1 for v in room_assignment.values() if v)
+        distinct_rooms_used = sum(1 for c in room_used_count.values() if c > 0)
+        messages.success(
+            request,
+            f"✅ {assigned_count} ta guruhga xona tayinlandi "
+            f"(jami {distinct_rooms_used} ta aniq xona ishlatilmoqda)."
+        )
+        if unassigned_room_groups:
+            messages.warning(
+                request,
+                f"⚠ {len(unassigned_room_groups)} ta guruhga bo'sh xona topilmadi: "
+                + ", ".join(str(g) for g in unassigned_room_groups[:10])
+            )
+        return redirect('lesson_list')
+
+    preview = []
+    for grp in scheduled_groups:
+        preview.append({
+            'group': grp,
+            'old_room': grp.room,
+            'new_room': room_assignment.get(grp.pk),
+        })
+
+    distinct_rooms_used = sum(1 for c in room_used_count.values() if c > 0)
+
+    return render(request, 'raspisaniya/auto_assign_rooms.html', {
+        'preview': preview,
+        'total_groups': len(scheduled_groups),
+        'total_rooms': len(all_rooms),
+        'distinct_rooms_used': distinct_rooms_used,
+        'unassigned_room_groups': unassigned_room_groups,
+    })
+
+
 def teacher_capacity_check(request):
     """
     O'qituvchilar uchun matematik imkoniyat tekshiruvi.

@@ -1,0 +1,66 @@
+{% extends "raspisaniya/base.html" %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <h4 class="mb-0 fw-bold">🚪 Xonalarni avtomatik tayinlash</h4>
+    <span class="badge bg-primary fs-6">{{ total_groups }} ta guruh</span>
+    <span class="badge bg-secondary fs-6">{{ total_rooms }} ta xona mavjud</span>
+    <span class="badge bg-success fs-6">{{ distinct_rooms_used }} ta aniq xona ishlatiladi</span>
+</div>
+
+<div class="alert alert-info" style="font-size:13px;">
+    💡 Bu — <strong>oldindan ko'rish</strong> (hali hech narsa saqlanmadi). Xonalar
+    <strong>sig'imga eng mos</strong> tanlanadi (isrofgarchiliksiz); mos sig'imli xona
+    topilmasa ham, <strong>bo'sh turgan istalgan xona</strong> beriladi. Bir xil
+    kun/vaqtda bitta xona ikkita guruhga berilmaydi.
+</div>
+
+{% if unassigned_room_groups %}
+<div class="alert alert-warning" style="font-size:13px;">
+    ⚠ <strong>{{ unassigned_room_groups|length }} ta guruhga</strong> bo'sh xona topilmadi
+    (shu vaqtda barcha xonalar band):
+    {% for g in unassigned_room_groups %}<span class="badge bg-warning text-dark me-1">{{ g }}</span>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4" style="border-radius:14px;overflow:hidden;">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size:13px;">
+        <thead class="table-dark">
+            <tr>
+                <th>Guruh</th>
+                <th>Talaba</th>
+                <th>Xona (eski → yangi)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in preview %}
+            <tr>
+                <td class="fw-bold">{{ row.group }}</td>
+                <td>{{ row.group.students.count }}</td>
+                <td>
+                    {% if row.old_room != row.new_room %}
+                        <span class="text-muted text-decoration-line-through">{{ row.old_room|default:"—" }}</span>
+                        →
+                        <span class="fw-bold text-success">{{ row.new_room|default:"❌ topilmadi" }}</span>
+                    {% else %}
+                        {{ row.new_room|default:"—" }}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" class="js-heavy-form" data-loading-text="Xonalar tayinlanmoqda...">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-success btn-lg"
+            onclick="return confirm('{{ total_groups }} ta guruhga xona tayinlashni tasdiqlaysizmi?')">
+        ✅ Qo'llash
+    </button>
+    <a href="{% url 'lesson_list' %}" class="btn btn-secondary btn-lg">Bekor qilish</a>
+</form>
+
+{% endblock %}
