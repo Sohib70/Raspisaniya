@@ -1,6 +1,6 @@
 {% extends 'raspisaniya/base.html' %}
 {% load static %} {% block content %}
-<div class="container mt-4">
+<div class="container-fluid px-4 mt-4">
     <h4>O'qituvchilarni Excel orqali import qilish</h4>
 
     {% if messages %}
@@ -23,7 +23,7 @@
         <small class="text-danger">* Eslatma: Fanlar tizimda bo'lmasa, avtomatik yaratiladi.</small>
     </div>
 
-    <form method="post" enctype="multipart/form-data" class="card p-4 shadow-sm">
+    <form method="post" enctype="multipart/form-data" class="card p-4 shadow-sm js-heavy-form" data-loading-text="O'qituvchilar yuklanmoqda... biroz kuting">
         {% csrf_token %}
         <div class="mb-3">
             <label class="form-label font-weight-bold">Excel faylni tanlang</label>

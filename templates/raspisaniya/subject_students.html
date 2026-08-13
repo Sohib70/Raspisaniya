@@ -12,6 +12,7 @@
 </div>
 
 {% if students %}
+<div class="table-responsive">
 <table class="table table-bordered table-hover align-middle">
     <thead class="table-dark">
         <tr>
@@ -45,6 +46,7 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 {% else %}
 <div class="alert alert-info">Bu fandan qarzdor o'quvchi yo'q.</div>
 {% endif %}

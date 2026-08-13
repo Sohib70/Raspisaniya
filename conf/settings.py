@@ -27,7 +27,7 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = 'django-insecure-d6447_-38u3#%q&7=94s!n$s+3=ixljl&l4x+f96)di!9zphit'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['ro.pharmi.uz', 'www.ro.pharmi.uz', 'localhost', '127.0.0.1']
 

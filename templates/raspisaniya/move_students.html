@@ -1,6 +1,6 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid px-4 mt-4">
     <div class="card shadow-lg">
         <div class="card-body">
 
@@ -71,7 +71,7 @@
                 </div>
 
                 <div class="d-flex gap-2">
-                    <a href="{% url 'build_schedule' %}" class="btn btn-secondary">← Orqaga</a>
+                    <a href="{% url 'build_schedule' %}" class="btn btn-secondary js-build-schedule-btn">← Orqaga</a>
                     <button type="submit" class="btn btn-primary w-100">
                         🔄 Tanlangan talabalarni ko'chirish
                     </button>

@@ -1,6 +1,6 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid px-4 mt-4">
     <div class="card shadow-lg">
         <div class="card-body">
             <h2 class="mb-4 text-danger">⚠ Jadval tuzishda xatoliklar</h2>
@@ -154,6 +154,7 @@
                     <!-- O'qituvchi to'qnashuvlari -->
                     {% if detail.teacher_conflicts_display %}
                     <h6 class="fw-bold text-warning">⏰ O'qituvchi band bo'lgan guruhlar:</h6>
+<div class="table-responsive">
                     <table class="table table-sm table-bordered mb-3">
                         <thead class="table-warning">
                             <tr><th>Namuna sana</th><th>Vaqt</th><th>Fan</th><th>Guruh</th></tr>
@@ -169,11 +170,13 @@
                             {% endfor %}
                         </tbody>
                     </table>
+</div>
                     {% endif %}
 
                     <!-- Talabalar band -->
                     {% if detail.student_conflicts_display %}
                     <h6 class="fw-bold text-danger">👥 Band talabalar:</h6>
+<div class="table-responsive">
                     <table class="table table-sm table-bordered mb-3">
                         <thead class="table-danger">
                             <tr><th>Sana</th><th>Vaqt</th><th>Fan</th><th>Guruh</th><th>Band talabalar</th></tr>
@@ -196,11 +199,13 @@
                             {% endfor %}
                         </tbody>
                     </table>
+</div>
                     {% endif %}
 
                     <!-- Boshqa guruhlar -->
                     <h6 class="fw-bold">Bu fandan boshqa guruhlar:</h6>
                     {% if detail.other_groups %}
+<div class="table-responsive">
                     <table class="table table-sm table-bordered">
                         <thead class="table-light">
                             <tr><th>Guruh</th><th>O'qituvchi</th><th>Vaqt</th><th>Talabalar</th><th>Amal</th></tr>
@@ -222,6 +227,7 @@
                             {% endfor %}
                         </tbody>
                     </table>
+</div>
                     {% else %}
                     <p class="text-muted">Boshqa guruh yo'q.</p>
                     {% endif %}

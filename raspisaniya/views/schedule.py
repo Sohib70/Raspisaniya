@@ -1239,7 +1239,7 @@ def _try_deep_cascade_relocate(grp, course, teacher, max_depth=12, max_nodes=400
             new_locked = locked | {g.pk}
             saved_keys = set(virtual.keys())
             all_resolved = True
-            for bgid in blockers:
+            for bgid in sorted(blockers):  # ── YANGI: barqaror tartib ──
                 if bgid in new_locked:
                     all_resolved = False
                     break
@@ -1297,6 +1297,85 @@ def _try_deep_cascade_relocate(grp, course, teacher, max_depth=12, max_nodes=400
     else:
         msg = f"'{grp}' guruhi to'liq bo'sh vaqtga joylashtirildi."
     return True, msg
+
+
+def _try_nuclear_subject_redistribution(grp, course, teacher):
+    """
+    ENG OXIRGI, ENG KUCHLI CHORA — foydalanuvchi tajribasiga asoslangan:
+    "ba'zida yechim faqat BUTUN FAN doirasida talabalarni qaytadan
+    taqsimlash orqali topiladi, faqat 'qolgan' guruhni alohida tuzatish
+    orqali emas".
+
+    `_try_regroup_same_subject` kuchli vosita, lekin u FAQAT quyidagi
+    ikkala shart bajarilgandagina chaqirilardi:
+      1) bir vaqtda kamida 2 ta guruh "tuzilmagan" bo'lishi kerak edi;
+      2) HECH QAYSI qardosh (bir xil fandan) guruh ALLAQACHON
+         joylashtirilmagan bo'lishi kerak edi.
+    Amalda esa eng qiyin holatlar aynan — "N ta guruhdan N-1 tasi
+    muvaffaqiyatli joylashgan, faqat BITTASI qolib ketgan" — kabi
+    vaziyatlarda yuzaga keladi, va aynan shu paytda yuqoridagi 2-shart
+    vositani butunlay bloklab qo'yardi.
+
+    Bu funksiya boshqacha yo'l tutadi: `grp` joylasha olmasa va boshqa
+    barcha (yengilroq) usullar ishlamasa, BUTUN FANNING barcha
+    guruhlarini (hatto muvaffaqiyatli joylashganlarini ham!) VAQTINCHA
+    bo'shatib, HAMMA talabani birgalikda qayta klasterlaydi — xuddi
+    foydalanuvchi qo'lda qilganidek. Agar natijada BARCHA talaba qayta
+    joylasha olsa — bu qabul qilinadi. Aks holda (birortasi ham
+    "qoldiq" bo'lib qolsa) — HAMMASI avvalgi holatiga AVTOMATIK
+    qaytariladi (hech narsa buzilmaydi, faqat False qaytadi).
+    """
+    course_id = course.id
+    same_course_groups = list(
+        CourseGroup.objects.filter(course_id=course_id).select_related('teacher')
+    )
+    if len(same_course_groups) < 2:
+        return False, None  # yolg'iz guruhni "qayta taqsimlash" foyda bermaydi
+
+    total_students_before = len(set(
+        sid for g in same_course_groups for sid in g.students.values_list('id', flat=True)
+    ))
+
+    teacher_here = None
+    for g in same_course_groups:
+        if g.teacher_id:
+            teacher_here = g.teacher
+            break
+
+    with transaction.atomic():
+        sid = transaction.savepoint()
+        try:
+            for g in same_course_groups:
+                GroupSchedule.objects.filter(group=g).delete()
+                g.is_scheduled = False
+                g.save(update_fields=['is_scheduled'])
+
+            fresh_groups = list(CourseGroup.objects.filter(course_id=course_id))
+            ok, msg = _try_regroup_same_subject(course, teacher_here, fresh_groups)
+
+            still_unresolved = CourseGroup.objects.filter(
+                course_id=course_id, is_scheduled=False
+            ).exists()
+            total_students_after = len(set(
+                sid for g in CourseGroup.objects.filter(course_id=course_id, is_scheduled=True)
+                for sid in g.students.values_list('id', flat=True)
+            ))
+
+            if ok and not still_unresolved and total_students_after >= total_students_before:
+                transaction.savepoint_commit(sid)
+                new_msg = (
+                    f"'{course.subject}' fani uchun BUTUN GURUHLAR TO'PLAMI "
+                    f"(hatto avval muvaffaqiyatli joylashganlari ham) qayta "
+                    f"tashkil etilib, barcha {total_students_before} ta talaba "
+                    f"muvaffaqiyatli joylashtirildi."
+                )
+                return True, new_msg
+            else:
+                transaction.savepoint_rollback(sid)
+                return False, None
+        except Exception:
+            transaction.savepoint_rollback(sid)
+            return False, None
 
 
 def _try_relocate_blocking_groups(grp, course, teacher):
@@ -2884,6 +2963,34 @@ def build_schedule(request):
     already_moved_students = set()
     total_success_count = 0
 
+    # ── TEZLASHTIRISH: 11- va 12-bosqichlar (chuqur zanjirli qidiruv va
+    # yadroviy qayta taqsimlash) juda "qimmat" — ular ko'plab bazaga
+    # so'rov yuboradi. Lekin ularning ichki qidiruvi ba'zi joylarda
+    # tasodifiy tartibda (Python `set`) ishlaydi, shuning uchun BIR XIL
+    # holatda ham har safar BOSHQACHA natija chiqishi mumkin — ya'ni
+    # bitta muvaffaqiyatsizlik "bu guruh uchun umuman yechim yo'q"
+    # degani EMAS. Shuning uchun har bir guruh/fan uchun bu ikki
+    # bosqichni CHEKSIZ EMAS, balki bir necha marta (MAX_RETRY marta)
+    # qayta sinaymiz — bu ham tezlikni saqlaydi (cheksiz urinishning
+    # oldini oladi), ham tasodifiylik tufayli topiladigan yechimlarni
+    # o'tkazib yubormaydi.
+    from collections import defaultdict as _dd2
+    import time as _time_mod
+    deep_cascade_attempts = _dd2(int)
+    nuclear_attempts = _dd2(int)
+    MAX_EXPENSIVE_RETRY = 1
+
+    # ── GLOBAL VAQT CHEGARASI: 11- va 12-bosqichlar (chuqur zanjir,
+    # yadroviy qayta taqsimlash) — BUTUN "Jadval tuzish" chaqiruvi
+    # davomida — jami 60 soniyadan ortiq vaqt sarflamasin. Bu safar
+    # chegara individual chaqiruvlarga emas, balki ULARNING YIG'INDISIGA
+    # qo'yiladi — shunda nechta guruh qiyin bo'lishidan qat'iy nazar,
+    # "Jadval tuzish" hech qachon bir necha daqiqadan ortiq davom etmaydi.
+    _expensive_stage_deadline = _time_mod.monotonic() + 60.0
+
+    def _expensive_budget_left():
+        return _time_mod.monotonic() < _expensive_stage_deadline
+
     def sort_key(g):
         total_lessons = g.course.total_lessons if g.course else 0
         student_count = len(g.students.all())
@@ -2966,6 +3073,7 @@ def build_schedule(request):
                     is_scheduled=False
                 ).select_related('course', 'course__subject', 'teacher')
                 .prefetch_related('students')
+                .order_by('pk')  # ── YANGI: barqaror (deterministik) tartib ──
             )
 
             if not unscheduled_groups:
@@ -3238,13 +3346,37 @@ def build_schedule(request):
                 # bosqichgacha) zanjirli qidiruvni sinaymiz: to'siq
                 # guruhni ko'chirish uchun UNI bloklovchi guruh(lar)ni ham,
                 # kerak bo'lsa ularni ham bloklovchilarni ham ko'chiramiz. ──
-                if found_count < course.total_lessons:
+                if (found_count < course.total_lessons
+                        and deep_cascade_attempts[grp.pk] < MAX_EXPENSIVE_RETRY
+                        and _expensive_budget_left()):
                     deep_ok, deep_msg = _try_deep_cascade_relocate(grp, course, teacher)
                     if deep_ok:
                         auto_resolve_messages.append(deep_msg)
                         busy_index = None
                         iteration_success_count += 1
                         continue
+                    else:
+                        deep_cascade_attempts[grp.pk] += 1
+
+                # ── 12-BOSQICH (YADRO CHORASI, MUTLAQ OXIRGI URINISH):
+                # foydalanuvchi tajribasiga asoslangan — ba'zida yechim
+                # faqat BUTUN FAN doirasida (hatto ALLAQACHON
+                # joylashtirilgan qardosh guruhlarni ham vaqtincha
+                # bo'shatib) hammani birgalikda qayta taqsimlashda
+                # topiladi. Bu — eng "qimmat" va eng keng ta'sirli chora
+                # bo'lgani uchun FAQAT boshqa hamma narsa ishlamaganda,
+                # oxirgi chora sifatida sinab ko'riladi. ──
+                if (found_count < course.total_lessons
+                        and nuclear_attempts[course.id] < MAX_EXPENSIVE_RETRY
+                        and _expensive_budget_left()):
+                    nuclear_ok, nuclear_msg = _try_nuclear_subject_redistribution(grp, course, teacher)
+                    if nuclear_ok:
+                        auto_resolve_messages.append(nuclear_msg)
+                        busy_index = None
+                        iteration_success_count += 1
+                        continue
+                    else:
+                        nuclear_attempts[course.id] += 1
 
                 # ── 5.7-BOSQICH: agar jadval TOPILGAN bo'lsa-yu, lekin hajmi
                 # MIN_GROUP_SIZE dan kam bo'lgani uchun saqlanmasa — ABSORB
@@ -3600,11 +3732,115 @@ def build_schedule(request):
         return evicted_count
 
 
-    MAX_AUTO_RESOLVE_ATTEMPTS = 8
+    MAX_AUTO_RESOLVE_ATTEMPTS = 5
     for _outer_attempt in range(MAX_AUTO_RESOLVE_ATTEMPTS):
+        # Har bir yangi tashqi urinishda urinish-hisoblagichlarini
+        # nolga qaytaramiz — shunda har bir "davr" o'ziga xos to'liq
+        # MAX_EXPENSIVE_RETRY imkoniyatiga ega bo'ladi.
+        deep_cascade_attempts.clear()
+        nuclear_attempts.clear()
+
         _evicted_this_pass = _run_scheduling_pass()
         if _evicted_this_pass == 0:
             break
+
+    # ── 🧹💪 YAKUNIY, MAKSIMAL KUCH BILAN TOZALASH BOSQICHI: foydalanuvchi
+    # talabiga ko'ra — "hech qanday qo'lda ish qolmasin, iloji boricha
+    # hamma narsa (hatto bloklovchi fanlarni ham) siljitib ko'rsin,
+    # natija bo'lsa qabul qilinsin, bo'lmasa hech narsa buzilmasin".
+    #
+    # Bu bosqich endi bir martalik emas — u KO'P TUR davomida, BARCHA
+    # mavjud vositalarni (yadroviy qayta taqsimlash, bloklovchi
+    # guruhlarni bitta bosqichli ko'chirish, talaba almashtirish, chuqur
+    # zanjirli ko'chirish) birgalikda, takroriy qo'llaydi — men avval
+    # qo'lda (shell orqali) qilgan "maksimal kuch" sinovini AYNAN
+    # takrorlaydi, lekin endi bu HAR QANDAY bazada, HAR SAFAR "Jadval
+    # tuzish" bosilganda AVTOMATIK ishlaydi.
+    #
+    # Har bir tur hech qanday o'zgarish keltirmasa — takrorlash
+    # to'xtatiladi (foyda bermaydi). Vaqt chegarasi tugasa ham
+    # to'xtatiladi — hozirgacha erishilgan yaxshilanish saqlanib qoladi,
+    # hech narsa buzilmaydi (har bir urinish alohida, xavfsiz — muvaffaqiyatsiz
+    # bo'lsa hech narsani o'zgartirmaydi).
+    _cleanup_deadline = _time_mod.monotonic() + 90.0
+
+    def _cleanup_budget_left():
+        return _time_mod.monotonic() < _cleanup_deadline
+
+    from django.db.models import Count as _CountAgg
+    _multi_group_subjects = list(
+        CourseGroup.objects.values('course__subject__name')
+        .annotate(_n=_CountAgg('id')).filter(_n__gte=2)
+        .values_list('course__subject__name', flat=True)
+    )
+
+    _cleanup_round = 0
+    while _cleanup_budget_left():
+        _cleanup_round += 1
+        _count_before = CourseGroup.objects.filter(is_scheduled=False).count()
+        if _count_before == 0:
+            break  # hammasi allaqachon joylashdi
+
+        # 1) Barcha ko'p-guruhli fanlarga yadroviy qayta taqsimlash —
+        # bu bloklovchi fanlarning ICHKI talaba/vaqt tarkibini butunlay
+        # qayta ko'rib chiqadi, ba'zan yangi bo'sh joy ochib beradi.
+        for sname in _multi_group_subjects:
+            if not _cleanup_budget_left():
+                break
+            grp0 = CourseGroup.objects.filter(course__subject__name=sname).first()
+            if grp0:
+                res, msg = _try_nuclear_subject_redistribution(grp0, grp0.course, grp0.teacher)
+                if res:
+                    auto_resolve_messages.append(msg)
+
+        # 2) Hali joylashmagan (target bo'lishi mumkin bo'lgan) HAR BIR
+        # guruhga ham — bitta bosqichli ko'chirish va talaba almashtirish
+        # sinaymiz. Bu bosqich MUHIM: shu orqali "bloklovchi" fanning
+        # o'zi ham (agar imkoni bo'lsa) boshqa vaqtga suriladi — foydalanuvchi
+        # aynan shuni so'ragan edi.
+        for grp in list(
+            CourseGroup.objects.filter(is_scheduled=False)
+            .select_related('course', 'course__subject', 'teacher')
+        ):
+            if not _cleanup_budget_left():
+                break
+            if not grp.course:
+                continue
+            reloc_ok, reloc_msg = _try_relocate_blocking_groups(grp, grp.course, grp.teacher)
+            if reloc_ok:
+                auto_resolve_messages.append(reloc_msg)
+                continue
+            mds_ok, mds_msg, _ = _try_minimal_disruption_swap(grp, grp.course, grp.teacher)
+            if mds_ok:
+                auto_resolve_messages.append(mds_msg)
+
+        # 3) Hali ham joylashmagan guruhlar uchun — chuqur zanjirli
+        # ko'chirish (kattaroq byudjet bilan), kichikroqdan kattaga.
+        still_unscheduled_for_cleanup = list(
+            CourseGroup.objects.filter(is_scheduled=False)
+            .select_related('course', 'course__subject', 'teacher')
+            .prefetch_related('students')
+        )
+        still_unscheduled_for_cleanup.sort(key=lambda g: g.students.count())
+        for grp in still_unscheduled_for_cleanup:
+            if not _cleanup_budget_left():
+                break
+            if not grp.course:
+                continue
+            ok, msg = _try_deep_cascade_relocate(grp, grp.course, grp.teacher, max_depth=18, max_nodes=1200)
+            if ok:
+                auto_resolve_messages.append(msg)
+
+        # ── MUHIM: "muvaffaqiyat" faqat HAQIQIY natija (joylashmagan
+        # guruhlar soni haqiqatan kamaygan) bo'lsagina hisoblanadi —
+        # aks holda (masalan, allaqachon to'g'ri joylashgan fanlarni
+        # yadroviy qayta taqsimlash "muvaffaqiyatli" deb qaytarishi
+        # mumkin, lekin bu HECH QANDAY haqiqiy foyda bermaydi) tsikl
+        # behuda, hech qanday yutuqsiz 90 soniyagacha davom etib
+        # ketmasligi kerak.
+        _count_after = CourseGroup.objects.filter(is_scheduled=False).count()
+        if _count_after >= _count_before:
+            break  # bu turda haqiqiy yutuq bo'lmadi — yana takrorlash foyda bermaydi
 
     # ── 🚨 XATOLIKLARNI YIG'ISH (FAQAT OXIRGI NUQTADA SIG'MAY QOLGANLAR UCHUN) ──
     final_unscheduled_groups = list(

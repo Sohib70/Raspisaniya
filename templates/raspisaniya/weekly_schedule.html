@@ -2,6 +2,27 @@
 
 {% block content %}
 <style>
+  /* ── Yopishqoq (sticky) sarlavha va Kun/Vaqt ustunlari ──
+     Jadval pastga yoki yon tomonga surilganda ham, foydalanuvchi
+     qaysi kun/vaqt/ustunga qarayotganini yo'qotmasligi uchun. */
+  #weekly-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+  }
+  #weekly-table .wk-sticky-day {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+  }
+  #weekly-table .wk-sticky-time {
+      position: sticky;
+      left: 90px;
+      z-index: 2;
+  }
+  #weekly-table thead .wk-sticky-corner {
+      z-index: 4;
+  }
   #lessonInfoModal .modal-title,
   #lessonInfoModal #modalSubject {
     color: #1e293b !important;
@@ -82,15 +103,15 @@
 
   <div id="toast-container" style="position:fixed;top:80px;right:20px;z-index:9999;min-width:300px;"></div>
 
-  <div class="table-responsive">
+  <div class="table-responsive" style="max-height: 75vh; overflow-y: auto;">
     <table class="table table-bordered align-middle text-center mb-0" id="weekly-table"
            style="font-size:13px; min-width: {{ group_numbers|length|add:2 }}00px;">
       <thead class="table-dark">
         <tr>
-          <th style="min-width:90px;">Kun</th>
-          <th style="min-width:110px;">Vaqt</th>
+          <th class="wk-sticky-corner wk-sticky-day" style="min-width:90px;">Kun</th>
+          <th class="wk-sticky-corner wk-sticky-time" style="min-width:110px;">Vaqt</th>
           {% for gnum in group_numbers %}
-            <th style="min-width:140px;">{{ gnum }}-QATOR</th>
+            <th class="wk-sticky-head" style="min-width:140px;">{{ gnum }}-QATOR</th>
           {% endfor %}
         </tr>
       </thead>
@@ -98,14 +119,14 @@
         {% for row in table_data %}
           <tr>
             {% if row.show_day %}
-              <td rowspan="{{ row.para_count }}" class="fw-bold"
+              <td rowspan="{{ row.para_count }}" class="fw-bold wk-sticky-day"
                   style="background:#1A252F;color:#fff;vertical-align:middle;
                          writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:2px;">
                 {{ row.day }}
               </td>
             {% endif %}
 
-            <td style="background:#5D6D7E;color:#fff;font-weight:600;white-space:nowrap;">
+            <td class="wk-sticky-time" style="background:#5D6D7E;color:#fff;font-weight:600;white-space:nowrap;">
               {{ row.time }}
             </td>
 

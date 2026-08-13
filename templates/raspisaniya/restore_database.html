@@ -36,6 +36,7 @@
         </div>
         <div class="card-body p-0">
             {% if backups %}
+            <div class="table-responsive">
             <table class="table table-hover mb-0" style="font-size:0.88rem;">
                 <thead style="background:#f8f9fa;">
                     <tr>
@@ -83,6 +84,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="p-4 text-center text-muted">
                 Hozircha saqlangan backup yo'q. Yuqoridan backup oling.

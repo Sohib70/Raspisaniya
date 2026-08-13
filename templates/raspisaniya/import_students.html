@@ -11,7 +11,7 @@
     📥 Namuna Excel yuklab olish
 </a>
 
-<form method="post" enctype="multipart/form-data">
+<form method="post" enctype="multipart/form-data" class="js-heavy-form" data-loading-text="Talabalar yuklanmoqda... biroz kuting">
     {% csrf_token %}
     {{ form.file|add_class:"form-control" }}
     <br>
