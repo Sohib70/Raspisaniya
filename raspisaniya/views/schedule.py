@@ -1,3 +1,4 @@
+import itertools
 from ._shared import *
 from ..scheduling.busy_index import BusyIndex
 
@@ -2210,6 +2211,91 @@ def _try_partial_distribute_and_reschedule(grp, course, teacher, same_course_gro
     return True, msg
 
 
+def _force_place_at_least_blocked_slot(grp, course, teacher):
+    """
+    YANGI (foydalanuvchi so'roviga ko'ra): agar guruh HECH QANDAY usul
+    bilan (talaba almashtirish, ko'chirish, yadroviy qayta taqsimlash,
+    aqlli bo'lish) to'qnashuvsiz joylasha olmasa — uni butunlay
+    "yo'qotib qo'yish" o'rniga, ENG KAM to'siqli vaqtga (ma'lum,
+    kichik to'qnashuv bilan) BAHOSIGA QARAMASDAN joylashtiramiz.
+
+    Sabab: shunda bu guruh HAFTALIK JADVAL sahifasida ko'rinadi va
+    admin uni istalgan boshqa joyga QO'LDA tortib ko'chira oladi —
+    "ko'rinmas, qayerda ekanligi noma'lum" muammoli guruh o'rniga,
+    "ko'rinadigan, lekin diqqat talab qiladigan" guruhga aylanadi.
+
+    MUHIM: bu funksiya `CourseGroup.is_scheduled`ni ATAYLAB `False`
+    holicha QOLDIRADI — shunda "Darslar" ro'yxati sahifasida bu guruh
+    hamon "⏳ Jadval tuzilmagan" deb to'g'ri ko'rsatiladi (haqiqatan
+    ham hali TO'LIQ, XAVFSIZ joylashmagan, faqat VIZUAL/QO'LDA
+    boshqarish uchun taxminiy joyga qo'yilgan). Haftalik jadval
+    sahifasi esa GroupSchedule yozuvlari MAVJUDLIGIGA qarab ko'rsatadi
+    (is_scheduled emas) — shu orqali ikkalasi mos keladi.
+    """
+    students = list(grp.students.all())
+    student_ids = set(s.id for s in students)
+    teacher_id = teacher.id if teacher else None
+    total_lessons = course.total_lessons
+    start_date = course.start_date
+    include_saturday = getattr(course, 'include_saturday', False)
+    max_wd = 5 if include_saturday else 4
+
+    if total_lessons >= 20:
+        weekday_options = [(0, 2, 4)]
+    elif 12 <= total_lessons <= 20:
+        weekday_options = [(1, 3)]
+    else:
+        weekday_options = [(wd,) for wd in range(0, max_wd + 1)]
+
+    candidates = []
+    for wds in weekday_options:
+        dates = _slot_occurrence_dates(start_date, wds, total_lessons)
+        if not dates:
+            continue
+        for (p1, p2) in VALID_PARA_PAIRS:
+            times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+            if teacher_id and GroupSchedule.objects.filter(
+                date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
+            ).exclude(group=grp).exists():
+                continue  # o'qituvchi to'qnashuvini baribir hech qachon ruxsat bermaymiz
+            blocker_ids = set(GroupSchedule.objects.filter(
+                date__in=dates, start_time__in=times, group__students__id__in=student_ids,
+            ).exclude(group=grp).values_list('group__students__id', flat=True))
+            candidates.append((len(blocker_ids), wds, p1, p2, dates, blocker_ids))
+
+    if not candidates:
+        return False, None
+
+    candidates.sort(key=lambda c: c[0])
+    blocker_count, wds, p1, p2, dates, blocker_ids = candidates[0]
+    times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+
+    blocker_names = sorted(str(s) for s in students if s.id in blocker_ids)
+
+    grp.weekdays = list(wds)
+    grp.start_time = times[0]
+    # is_scheduled ATAYLAB o'zgartirilmaydi (False holicha qoladi)
+    grp.save(update_fields=['weekdays', 'start_time'])
+
+    GroupSchedule.objects.filter(group=grp).delete()
+    GroupSchedule.objects.bulk_create([
+        GroupSchedule(group=grp, date=d, start_time=times[0], lesson_number=2 * i + 1) for i, d in enumerate(dates)
+    ] + [
+        GroupSchedule(group=grp, date=d, start_time=times[1], lesson_number=2 * i + 2) for i, d in enumerate(dates)
+    ])
+
+    weekday_names = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'][:max_wd + 1]
+    wd_str = ", ".join(weekday_names[w] for w in wds)
+    msg = (
+        f"⚠️ '{grp}' guruhi HECH QANDAY usul bilan to'qnashuvsiz joylasha olmadi — "
+        f"shuning uchun ENG KAM to'siqli vaqtga ({wd_str}, {times[0].strftime('%H:%M')}) "
+        f"TAXMINIY joylashtirildi (bu 'Jadval tuzilmagan' holatida qoladi, lekin haftalik "
+        f"jadvalda ko'rinadi va qo'lda ko'chirish mumkin). "
+        f"To'siq talaba(lar) ({blocker_count} ta): {', '.join(blocker_names)}."
+    )
+    return True, msg
+
+
 def _diagnose_true_blockers(grp, course, teacher):
     """
     YANGI: DIAGNOSTIKA funksiyasi (hech narsani o'zgartirmaydi, faqat
@@ -2524,30 +2610,97 @@ def _try_minimal_disruption_swap(grp, course, teacher):
 
 def _try_split_group_and_schedule(grp, course, teacher, num_parts=2):
     """
-    YANGI: Guruhni N ta (standart 2) kichik qismga bo'lib, HAR BIRINI
-    ALOHIDA (mustaqil) vaqtga joylashtirishga urinadi.
+    YANGILANGAN (AQLLI): Guruhni N ta (standart 2) kichik qismga bo'lib,
+    HAR BIRINI ALOHIDA vaqtga joylashtirishga urinadi.
 
     Sabab: 18 kishilik guruhning BARCHASI bir vaqtda bo'sh bo'lishi kam
     ehtimol, lekin uni 2 ta 9 kishilik qismga bo'lsak, har bir kichik
-    qismning o'z ichida bo'sh vaqt topish ehtimoli SEZILARLI oshadi —
-    va ikkala qism ham bir xil vaqtga tushishi shart emas (ikkalasi
-    turli kunlarga/bloklarga tushishi mumkin).
+    qismning o'z ichida bo'sh vaqt topish ehtimoli SEZILARLI oshadi.
 
-    Faqat BARCHA qismlar to'liq (course.total_lessons ga teng) joylasha
-    olsagina o'zgarish saqlanadi — aks holda hech narsa o'zgarmaydi
-    (rollback), False qaytadi.
+    MUHIM: talabalar TASODIFIY (har n-chisi) emas, balki ULARNING
+    HAQIQIY BAND/BO'SH VAQTIGA QARAB guruhlanadi — har bir mumkin
+    bo'lgan (kun, vaqt) BLOK JUFTLIGI uchun, "faqat A blokda bo'sh"
+    talabalar A guruhga, "faqat B blokda bo'sh" talabalar B guruhga,
+    "ikkalasida ham bo'sh" talabalar esa muvozanat uchun ishlatiladi.
+    Agar biror talaba IKKALA blokda ham band bo'lsa — bu juftlik rad
+    etiladi, keyingi juftlik sinaladi.
+
+    Faqat BARCHA qismlar MIN_GROUP_SIZE dan katta/teng bo'lib, to'liq
+    (course.total_lessons ga teng) joylasha olsagina o'zgarish
+    saqlanadi — aks holda hech narsa o'zgarmaydi (rollback), False
+    qaytadi.
     """
     students = list(grp.students.all())
-    # ── MUHIM: MIN_GROUP_SIZE qoidasini hech qachon buzmaymiz. ──
-    # Har bir qism KAMIDA MIN_GROUP_SIZE (hozir 8) talabaga ega bo'lishi
-    # shart — aks holda bo'lish ma'nosiz (yangi, qoidabuzar kichik
-    # guruhlar yaratib qo'yamiz).
     if len(students) < num_parts * MIN_GROUP_SIZE:
         return False, None
 
-    parts = [[] for _ in range(num_parts)]
-    for i, s in enumerate(students):
-        parts[i % num_parts].append(s)
+    if num_parts != 2:
+        # Hozircha faqat 2 qismga aqlli bo'lish qo'llab-quvvatlanadi;
+        # boshqa qism soni uchun eski (oddiy) usulga qaytamiz.
+        parts = [[] for _ in range(num_parts)]
+        for i, s in enumerate(students):
+            parts[i % num_parts].append(s)
+    else:
+        max_wd = 5 if course.include_saturday else 4
+        if course.total_lessons >= 20:
+            wd_options = [(0, 2, 4)]
+        elif 12 <= course.total_lessons <= 20:
+            wd_options = [(1, 3)]
+        else:
+            wd_options = [(wd,) for wd in range(0, max_wd + 1)]
+
+        all_ids = set(s.id for s in students)
+        students_by_id = {s.id: s for s in students}
+
+        best_partition = None
+        for wds in wd_options:
+            dates = _slot_occurrence_dates(course.start_date, tuple(wds), course.total_lessons)
+            if not dates:
+                continue
+            free_by_block = {}
+            for (p1, p2) in VALID_PARA_PAIRS:
+                t1, t2 = PARA_TIMES[p1][0], PARA_TIMES[p2][0]
+                free = set()
+                for sid in all_ids:
+                    busy = GroupSchedule.objects.filter(
+                        date__in=dates, start_time__in=[t1, t2], group__students__id=sid,
+                    ).exclude(group=grp).exists()
+                    if not busy:
+                        free.add(sid)
+                free_by_block[(t1, t2)] = free
+
+            block_keys = list(free_by_block.keys())
+            for a, b in itertools.permutations(block_keys, 2):
+                free_a, free_b = free_by_block[a], free_by_block[b]
+                if all_ids - free_a - free_b:
+                    continue  # ikkala blokda ham band birov bor -- bu juftlik ishlamaydi
+
+                only_a = free_a - free_b
+                only_b = free_b - free_a
+                both = list(free_a & free_b)
+                group_a = set(only_a)
+                group_b = set(only_b)
+                for sid in both:
+                    if len(group_a) <= len(group_b):
+                        group_a.add(sid)
+                    else:
+                        group_b.add(sid)
+
+                if len(group_a) >= MIN_GROUP_SIZE and len(group_b) >= MIN_GROUP_SIZE:
+                    best_partition = (wds, [
+                        [students_by_id[sid] for sid in group_a],
+                        [students_by_id[sid] for sid in group_b],
+                    ])
+                    break
+            if best_partition:
+                break
+
+        if not best_partition:
+            return False, (
+                f"'{grp}' guruhini {num_parts} qismga aqlli bo'lish ham yordam bermadi "
+                f"(hech qanday 2 ta vaqt bloki kombinatsiyasi barcha talabani qamrab ololmadi)."
+            )
+        parts = best_partition[1]
 
     results = []
     for part_students in parts:
@@ -3068,9 +3221,17 @@ def build_schedule(request):
         while iteration < max_iterations:
             iteration += 1
 
+            # ── MUHIM (XATO TUZATILDI): guruh `is_scheduled=False` bo'lsa
+            # ham, agar unda ALLAQACHON GroupSchedule yozuvlari mavjud
+            # bo'lsa (avval "eng oxirgi chora" orqali taxminiy
+            # joylashtirilgan, YOKI admin allaqachon ba'zi haftalarini
+            # qo'lda tuzatgan bo'lsa) — bu guruhni pipeline QAYTA
+            # ISHLAMAYDI. Aks holda admin qo'lda tuzatgan haftalar
+            # pipeline tomonidan bekor qilib, qaytadan yozib
+            # yuborilishi mumkin edi.
             unscheduled_groups = list(
                 CourseGroup.objects.filter(
-                    is_scheduled=False
+                    is_scheduled=False, schedule__isnull=True
                 ).select_related('course', 'course__subject', 'teacher')
                 .prefetch_related('students')
                 .order_by('pk')  # ── YANGI: barqaror (deterministik) tartib ──
@@ -3458,7 +3619,7 @@ def build_schedule(request):
 
         # ── YANGI, YAKUNIY TOZALASH BOSQICHI ──
         small_leftover_groups = list(
-            CourseGroup.objects.filter(is_scheduled=False)
+            CourseGroup.objects.filter(is_scheduled=False, schedule__isnull=True)
             .select_related('course').prefetch_related('students')
         )
         for leftover in small_leftover_groups:
@@ -3540,7 +3701,7 @@ def build_schedule(request):
         # ── TENGLASHTIRISHDAN KEYIN QOLGAN TUZILMAGAN GURUHLARNI YANA BIR
         # MARTA _try_minimal_disruption_swap BILAN SINAB KO'RISH ──
         still_unscheduled_for_mds = list(
-            CourseGroup.objects.filter(is_scheduled=False)
+            CourseGroup.objects.filter(is_scheduled=False, schedule__isnull=True)
             .select_related('course', 'teacher').prefetch_related('students')
         )
         for grp in still_unscheduled_for_mds:
@@ -3799,7 +3960,7 @@ def build_schedule(request):
         # o'zi ham (agar imkoni bo'lsa) boshqa vaqtga suriladi — foydalanuvchi
         # aynan shuni so'ragan edi.
         for grp in list(
-            CourseGroup.objects.filter(is_scheduled=False)
+            CourseGroup.objects.filter(is_scheduled=False, schedule__isnull=True)
             .select_related('course', 'course__subject', 'teacher')
         ):
             if not _cleanup_budget_left():
@@ -3817,7 +3978,7 @@ def build_schedule(request):
         # 3) Hali ham joylashmagan guruhlar uchun — chuqur zanjirli
         # ko'chirish (kattaroq byudjet bilan), kichikroqdan kattaga.
         still_unscheduled_for_cleanup = list(
-            CourseGroup.objects.filter(is_scheduled=False)
+            CourseGroup.objects.filter(is_scheduled=False, schedule__isnull=True)
             .select_related('course', 'course__subject', 'teacher')
             .prefetch_related('students')
         )
@@ -3841,6 +4002,33 @@ def build_schedule(request):
         _count_after = CourseGroup.objects.filter(is_scheduled=False).count()
         if _count_after >= _count_before:
             break  # bu turda haqiqiy yutuq bo'lmadi — yana takrorlash foyda bermaydi
+
+    # ── 🆘 ENG OXIRGI CHORA (foydalanuvchi so'roviga ko'ra): agar shu
+    # paytgacha HALI HAM joylasha olmagan guruh(lar) qolgan bo'lsa —
+    # ularni butunlay "ko'rinmas" holatda qoldirish o'rniga, ENG KAM
+    # to'siqli vaqtga (ma'lum kichik to'qnashuv bilan) TAXMINIY
+    # joylashtiramiz — shunda ular haftalik jadvalda ko'rinadi va
+    # qo'lda (drag & drop) istalgan joyga ko'chirish mumkin bo'ladi.
+    # `is_scheduled` ATAYLAB False holicha qoladi — "Darslar" ro'yxati
+    # sahifasi hamon buni "tuzilmagan" deb to'g'ri ko'rsatadi.
+    #
+    # MUHIM (XATO TUZATILDI): bu bosqich FAQAT hech qachon jadval
+    # yozuviga ega bo'lmagan (haqiqatan HECH QAYERGA joylashtirilmagan)
+    # guruhlarga tegadi. Agar guruh ALLAQACHON GroupSchedule yozuviga
+    # ega bo'lsa (avval majburiy joylashtirilgan BO'LSIN, yoki admin
+    # allaqachon qo'lda ba'zi haftalarini tuzatgan bo'lsin) — bu
+    # bosqich UNGA TEGMAYDI. Aks holda "Jadval tuzish" qayta
+    # bosilganda, admin qo'lda tuzatgan (lekin guruh hali to'liq
+    # is_scheduled=True bo'lmagan) haftalar BEKOR QILINIB, qaytadan
+    # yozib yuborilar edi — bu jiddiy xato edi.
+    for grp in list(CourseGroup.objects.filter(is_scheduled=False).select_related('course', 'teacher')):
+        if not grp.course:
+            continue
+        if GroupSchedule.objects.filter(group=grp).exists():
+            continue  # allaqachon (qisman bo'lsa ham) joylashtirilgan — tegmaymiz
+        ok, msg = _force_place_at_least_blocked_slot(grp, grp.course, grp.teacher)
+        if ok:
+            messages.warning(request, msg)
 
     # ── 🚨 XATOLIKLARNI YIG'ISH (FAQAT OXIRGI NUQTADA SIG'MAY QOLGANLAR UCHUN) ──
     final_unscheduled_groups = list(

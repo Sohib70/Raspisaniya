@@ -33,6 +33,28 @@ def get_expected_lessons_per_week(total_lessons):
         return 2
 
 
+def _group_has_any_real_conflict(group):
+    """
+    Berilgan guruhning BARCHA (o'zgartirilgan yoki o'zgartirilmagan,
+    o'tgan yoki kelajakdagi) GroupSchedule yozuvlarini tekshirib,
+    HAQIQIY (talaba yoki o'qituvchi darajasidagi) to'qnashuv bor-yo'qligini
+    aniqlaydi. Faqat "shu safar ko'chirilgan" darslarni emas, balki
+    guruhning BUTUN jadvalini tekshirgani uchun — bu funksiya guruhni
+    "to'liq to'g'ri" deb belgilashdan OLDIN ishlatilishi kerak.
+    """
+    student_ids = list(group.students.values_list('id', flat=True))
+    for sc in GroupSchedule.objects.filter(group=group):
+        if student_ids and GroupSchedule.objects.filter(
+            date=sc.date, start_time=sc.start_time, group__students__id__in=student_ids,
+        ).exclude(group=group).exists():
+            return True
+        if group.teacher_id and GroupSchedule.objects.filter(
+            date=sc.date, start_time=sc.start_time, group__teacher_id=group.teacher_id,
+        ).exclude(group=group).exists():
+            return True
+    return False
+
+
 def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=False):
     """
     Bitta darsning (sched) sana/vaqtini o'zgartiradi. `apply_to_future=True`
@@ -128,6 +150,20 @@ def apply_lesson_time_change(sched, new_date_val, new_time_val, apply_to_future=
         t.save(update_fields=['date', 'start_time'])
         updated += 1
 
+    # ── MUHIM (TUZATILDI): agar bu guruh oldin "taxminiy" bo'lgan
+    # bo'lsa, uni "to'liq to'g'ri" (is_scheduled=True) deb belgilashdan
+    # OLDIN — endi shu safar ko'chirilgan (odatda faqat joriy+kelajak
+    # haftalar) darslar emas, balki GURUHNING BARCHA (shu jumladan
+    # o'zgartirilmagan, AVVALGI haftalardagi) darslari HAQIQATAN
+    # to'qnashuvsizligini TO'LIQ tekshiramiz. Aks holda — masalan
+    # "faqat kelajak haftalarga qo'llash" tanlangan bo'lsa — avvalgi
+    # haftalardagi hali ham to'qnashuvli darslar noto'g'ri ravishda
+    # "toza" deb ko'rsatilib qolar edi.
+    if updated > 0 and not skipped_dates and not sched.group.is_scheduled:
+        if not _group_has_any_real_conflict(sched.group):
+            sched.group.is_scheduled = True
+            sched.group.save(update_fields=['is_scheduled'])
+
     return updated, skipped_dates, conflict_details
 
 
@@ -162,9 +198,16 @@ def get_weekly_schedule_data(week_start=None):
         week_start = today - timedelta(days=today.weekday())
     week_end = week_start + timedelta(days=5)
 
+    # ── MUHIM: faqat is_scheduled=True emas, balki HAQIQIY GroupSchedule
+    # yozuviga ega BARCHA guruhlarni ham ko'rsatamiz — shu jumladan
+    # "eng kam to'siqli vaqtga taxminiy joylashtirilgan" (lekin hali
+    # is_scheduled=False bo'lgan) guruhlarni ham. Shunda ular haftalik
+    # jadvalda ko'rinadi va qo'lda (drag & drop) ko'chirish mumkin
+    # bo'ladi — garchi "Darslar" ro'yxatida hamon "tuzilmagan" deb
+    # to'g'ri ko'rsatilsa ham.
     groups = CourseGroup.objects.filter(
-        is_scheduled=True
-    ).select_related('course__subject', 'teacher').prefetch_related('schedule')
+        Q(is_scheduled=True) | Q(schedule__isnull=False)
+    ).distinct().select_related('course__subject', 'teacher').prefetch_related('schedule')
 
     grid_lists = defaultdict(list)
 
@@ -197,6 +240,7 @@ def get_weekly_schedule_data(week_start=None):
                 'sched_id'    : sched.pk,
                 'group_number': grp.group_number,
                 'group_id'    : grp.pk,
+                'is_provisional': not grp.is_scheduled,
                 'display_col' : grp.display_col,
             })
 
@@ -1123,6 +1167,7 @@ def weekly_schedule_view(request):
                         'room': info.get('room', ''),
                         'group_number': info.get('group_number', ''),
                         'group_id': info.get('group_id'),
+                        'is_provisional': info.get('is_provisional', False),
                         'col': gnum,
                         'bg': color['bg'],
                         'text': color['text'],

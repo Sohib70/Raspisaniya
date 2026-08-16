@@ -237,7 +237,7 @@
                     </div>
                     {% endif %}
 
-                    <div class="current-time">
+                    <div class="current-time d-none d-lg-flex">
                         <span class="material-icons-round">schedule</span>
                         <span id="timeDisplay">--:--</span>
                     </div>
@@ -247,18 +247,18 @@
                         <span class="material-icons-round">
                             {% if user.is_superuser %}admin_panel_settings{% else %}account_circle{% endif %}
                         </span>
-                        {{ user.get_full_name|default:user.username }}
+                        <span>{{ user.get_full_name|default:user.username }}</span>
                     </div>
-                    <a href="{% url 'change_password' %}" class="logout-chip" style="background:#fff8e1; color:#b8860b; border-color:#b8860b;">
+                    <a href="{% url 'change_password' %}" class="logout-chip d-none d-lg-inline-flex" style="background:#fff8e1; color:#b8860b; border-color:#b8860b;">
                         <span class="material-icons-round">lock</span>Parol
                     </a>
-                    <a href="{% url 'logout' %}" class="logout-chip">
+                    <a href="{% url 'logout' %}" class="logout-chip d-none d-lg-inline-flex">
                         <span class="material-icons-round">logout</span>Chiqish
                     </a>
                     {% endif %}
 
-                    {% if user.is_authenticated and user.is_superuser %}
-                    <button class="md-chip mobile-menu-toggle" onclick="toggleMobileMenu()">
+                    {% if user.is_authenticated %}
+                    <button class="md-chip mobile-menu-toggle d-lg-none" onclick="toggleMobileMenu()">
                         <span class="material-icons-round">menu</span>
                     </button>
                     {% endif %}
@@ -269,15 +269,24 @@
                 </div>
             </div>
 
-            {% if user.is_authenticated and user.is_superuser %}
+            {% if user.is_authenticated %}
             <div id="mobileMenu" style="display: none; margin-top: 1rem;">
                 <div class="d-flex flex-column gap-2">
+                    {% if user.is_superuser %}
+                    <div style="font-size:0.7rem; font-weight:700; color:var(--md-outline); text-transform:uppercase; letter-spacing:1px; padding:0 6px; margin-top:2px;">Ro'yxatlar</div>
                     <a href="{% url 'lesson_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">schedule</span><span>Darslar</span></a>
-                    <a href="{% url 'lesson_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">add_circle</span><span>Yangi dars</span></a>
-                    <a href="{% url 'teacher_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person_add</span><span>O'qituvchi</span></a>
-                    <a href="{% url 'student_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person_add</span><span>O'quvchi</span></a>
-                    <a href="{% url 'subject_create' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">library_add</span><span>Fan</span></a>
+                    <a href="{% url 'teacher_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">person</span><span>O'qituvchilar</span></a>
+                    <a href="{% url 'student_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">school</span><span>Talabalar</span></a>
+                    <a href="{% url 'subject_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">library_books</span><span>Fanlar</span></a>
                     <a href="{% url 'room_list' %}" class="nav-chip w-100 justify-content-start"><span class="material-icons-round">meeting_room</span><span>Xonalar</span></a>
+                    <hr class="my-1" style="opacity:0.15;">
+                    {% endif %}
+                    <a href="{% url 'change_password' %}" class="logout-chip w-100 justify-content-start" style="background:#fff8e1; color:#b8860b; border-color:#b8860b;">
+                        <span class="material-icons-round">lock</span>Parol
+                    </a>
+                    <a href="{% url 'logout' %}" class="logout-chip w-100 justify-content-start">
+                        <span class="material-icons-round">logout</span>Chiqish
+                    </a>
                 </div>
             </div>
             {% endif %}

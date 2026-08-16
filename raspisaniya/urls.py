@@ -13,6 +13,7 @@ urlpatterns = [
     # Teacher
     path('teachers/', views.teacher_list, name='teacher_list'),
     path('teacher/create/', views.teacher_create, name='teacher_create'),
+    path('teacher/check-id/', views.check_teacher_id_available, name='check_teacher_id_available'),
     path('teacher/<int:pk>/update/', views.teacher_update, name='teacher_update'),
     path('teacher/<int:pk>/delete/', views.teacher_delete, name='teacher_delete'),
     path('teacher/import/', views.teacher_import, name='teacher_import'),

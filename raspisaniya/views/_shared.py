@@ -9,7 +9,7 @@ import random
 import re
 import time
 from collections import defaultdict
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 # 2. Third-party library imports (Tashqi kutubxonalar)
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -150,5 +150,3 @@ def sync_group_language(group):
     if group.language != new_lang:
         group.language = new_lang
         group.save(update_fields=['language'])
-
-

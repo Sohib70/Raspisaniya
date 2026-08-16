@@ -14,6 +14,7 @@ class TeacherForm(forms.ModelForm):
         label="O'qituvchi ID",
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Masalan: T-3'})
     )
+    last_name = forms.CharField(required=False, widget=forms.HiddenInput())
 
     class Meta:
         model = Teacher

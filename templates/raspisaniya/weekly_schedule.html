@@ -23,6 +23,45 @@
   #weekly-table thead .wk-sticky-corner {
       z-index: 4;
   }
+
+  /* ── "Taxminiy" (to'qnashuvi bor, majburiy joylashtirilgan) darslarni
+     BOSHQALARIDAN KESKIN ajratib ko'rsatish — diagonal chiziqli fon,
+     qalin qizil chegara, burchakda "TAXMINIY" lenta, va yengil pulslash. ── */
+  .lesson-card-provisional {
+      border: 3px solid #dc3545 !important;
+      border-style: solid !important;
+      box-shadow: 0 0 0 2px rgba(220,53,69,0.25), 0 3px 8px rgba(220,53,69,0.35) !important;
+      background-image: repeating-linear-gradient(
+          45deg,
+          rgba(220,53,69,0.16) 0px,
+          rgba(220,53,69,0.16) 6px,
+          rgba(255,255,255,0.35) 6px,
+          rgba(255,255,255,0.35) 12px
+      ) !important;
+      position: relative;
+      overflow: hidden;
+      animation: provisional-pulse 1.8s ease-in-out infinite;
+  }
+  .lesson-card-provisional::after {
+      content: "TAXMINIY";
+      position: absolute;
+      top: 3px;
+      right: -18px;
+      background: #dc3545;
+      color: #fff;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      padding: 1px 18px;
+      transform: rotate(35deg);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      pointer-events: none;
+  }
+  @keyframes provisional-pulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(220,53,69,0.25), 0 3px 8px rgba(220,53,69,0.35); }
+      50%      { box-shadow: 0 0 0 4px rgba(220,53,69,0.45), 0 3px 12px rgba(220,53,69,0.55); }
+  }
+
   #lessonInfoModal .modal-title,
   #lessonInfoModal #modalSubject {
     color: #1e293b !important;
@@ -140,7 +179,7 @@
                          transition:background 0.2s;">
 
                 {% if cell.filled %}
-                  <div class="lesson-card"
+                  <div class="lesson-card {% if cell.is_provisional %}lesson-card-provisional{% endif %}"
                        draggable="true"
                        data-sched-id="{{ cell.sched_id }}"
                        data-sched-url="{% url 'change_lesson_time_ajax' cell.sched_id %}"
@@ -153,6 +192,7 @@
                        data-time="{{ row.time }}"
                        data-day="{{ row.day }}"
                        data-date="{{ row.iso_date }}"
+                       {% if cell.is_provisional %}title="⚠️ Bu guruh hali to'liq 'joylashtirilgan' emas — eng kam to'siqli vaqtga taxminiy qo'yilgan, ma'lum to'qnashuvi bor. Kerak bo'lsa boshqa joyga tortib ko'chiring."{% endif %}
                        style="background:{{ cell.bg }};
                               color:{{ cell.text }};
                               border:1.5px solid {{ cell.border }};
@@ -162,6 +202,7 @@
                               user-select:none;
                               transition:opacity 0.2s, box-shadow 0.2s;">
                     <div class="fw-bold" style="font-size:12px;">
+                      {% if cell.is_provisional %}<span title="Taxminiy joylashtirilgan, to'qnashuvi bor">⚠️</span>{% endif %}
                       {{ cell.subject }}
                       {% if cell.group_number %}
                         <span style="font-size:10px;opacity:0.7;">({{ cell.group_number }}-guruh)</span>

@@ -35,6 +35,20 @@
 .btn-save:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(245,87,108,0.45); }
 .btn-back { background: white; color: #6b7280; border: 1.5px solid #e5e7eb; padding: 11px 20px; border-radius: 10px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.88rem; text-decoration: none; transition: all 0.2s; }
 .btn-back:hover { border-color: #9ca3af; color: #374151; }
+
+/* 🔍 Qidiruv inputi uchun qo'shimcha kichik stillar */
+.search-wrapper { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+.search-input-field { position: relative; max-width: 280px; width: 100%; }
+.search-input-field input { width: 100%; padding: 8px 12px 8px 35px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.83rem; outline: none; background: #fafafa; transition: all 0.2s; }
+.search-input-field input:focus { border-color: #f5576c; background: white; }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.85rem; pointer-events: none; }
+.no-results { color: #9ca3af; font-size: 0.85rem; margin-top: 10px; text-align: center; width: 100%; display: none; padding: 15px; border: 1.5px dashed #e5e7eb; border-radius: 10px; background: #fafafa; }
+
+/* 🔴 Teacher ID band bo'lganda real vaqtda qizil belgilash */
+.field input.id-taken { border-color: #ef4444 !important; background: #fef2f2 !important; }
+.field input.id-free { border-color: #22c55e !important; background: #f0fdf4 !important; }
+.note.note-error { color: #ef4444; font-weight: 600; }
+.note.note-ok { color: #22c55e; font-weight: 600; }
 </style>
 
 <div class="form-page">
@@ -54,15 +68,9 @@
 
             <div class="form-section">
                 <div class="section-label">Shaxsiy ma'lumotlar</div>
-                <div class="field-group">
-                    <div class="field">
-                        <label>Ism <span class="req">*</span></label>
-                        <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" placeholder="Ism" required>
-                    </div>
-                    <div class="field">
-                        <label>Familiya <span class="req">*</span></label>
-                        <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}" placeholder="Familiya" required>
-                    </div>
+                <div class="field">
+                    <label>To'liq ism <span class="req">*</span></label>
+                    <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}" placeholder="Masalan: Abdullayev Bobur" required autocomplete="off">
                 </div>
             </div>
 
@@ -71,8 +79,8 @@
                 <div class="field-group">
                     <div class="field">
                         <label>Teacher ID <span class="req">*</span> <span class="hint">— login sifatida</span></label>
-                        <input type="text" name="teacher_id" placeholder="Masalan: T-001" required>
-                        <div class="note">🔑 Bu ID bilan tizimga kiradi</div>
+                        <input type="text" name="teacher_id" id="teacherIdInput" value="{{ suggested_teacher_id }}" placeholder="Masalan: T-001" required autocomplete="off">
+                        <div class="note" id="teacherIdNote">🔑 Avtomatik taklif qilindi (band bo'lmagan eng kichik raqam) — xohlasangiz o'zgartiring</div>
                     </div>
                     <div class="field">
                         <label>Parol <span class="hint">— bo'sh qolsa ID bo'ladi</span></label>
@@ -82,9 +90,19 @@
             </div>
 
             <div class="form-section">
-                <div class="section-label">O'qitiladigan fanlar</div>
+                <div class="search-wrapper">
+                    <div class="section-label" style="margin-bottom: 0;">O'qitiladigan fanlar</div>
+
+                    {% if subjects %}
+                    <div class="search-input-field">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="subjSearchInput" placeholder="Fanni qidirish...">
+                    </div>
+                    {% endif %}
+                </div>
+
                 {% if subjects %}
-                <div class="subjects-grid">
+                <div class="subjects-grid" id="subjectsGrid">
                     {% for subj in subjects %}
                     <label class="subject-item">
                         <input type="checkbox" name="subjects" value="{{ subj.id }}" {% if subj.id in selected_subjects %}checked{% endif %}>
@@ -92,6 +110,10 @@
                         <span class="subj-name">{{ subj.name }}</span>
                     </label>
                     {% endfor %}
+
+                    <div id="noSubjectsMsg" class="no-results">
+                        😞 Mos keladigan fan topilmadi
+                    </div>
                 </div>
                 {% else %}
                 <p style="color:#9ca3af;font-size:0.85rem;margin:0;">Fan yo'q — avval fan qo'shing</p>
@@ -105,5 +127,92 @@
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('subjSearchInput');
+    if (!searchInput) return;
+
+    const subjectItems = document.querySelectorAll('#subjectsGrid .subject-item');
+    const noResultsMsg = document.getElementById('noSubjectsMsg');
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase().trim();
+        let foundAny = false;
+
+        subjectItems.forEach(item => {
+            const subjectName = item.querySelector('.subj-name').textContent.toLowerCase();
+
+            if (subjectName.includes(query)) {
+                item.style.display = 'flex';
+                foundAny = true;
+            } else {
+                item.style.display = 'none';
+            }
+        });
+
+        if (foundAny) {
+            noResultsMsg.style.display = 'none';
+        } else {
+            noResultsMsg.style.display = 'block';
+        }
+    });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const idInput = document.getElementById('teacherIdInput');
+    const idNote = document.getElementById('teacherIdNote');
+    const saveBtn = document.querySelector('.btn-save');
+    const defaultNoteText = idNote ? idNote.textContent : '';
+    if (!idInput) return;
+
+    let debounceTimer = null;
+
+    function resetState() {
+        idInput.classList.remove('id-taken', 'id-free');
+        idNote.classList.remove('note-error', 'note-ok');
+        idNote.textContent = defaultNoteText;
+        if (saveBtn) saveBtn.disabled = false;
+    }
+
+    function checkId() {
+        const value = idInput.value.trim();
+        if (!value) {
+            resetState();
+            return;
+        }
+        fetch(`{% url 'check_teacher_id_available' %}?id=${encodeURIComponent(value)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.available) {
+                    idInput.classList.remove('id-taken');
+                    idInput.classList.add('id-free');
+                    idNote.classList.remove('note-error');
+                    idNote.classList.add('note-ok');
+                    idNote.textContent = '';
+                    if (saveBtn) saveBtn.disabled = false;
+                } else {
+                    idInput.classList.remove('id-free');
+                    idInput.classList.add('id-taken');
+                    idNote.classList.remove('note-ok');
+                    idNote.classList.add('note-error');
+                    idNote.textContent = '';
+                    if (saveBtn) saveBtn.disabled = true;
+                }
+            })
+            .catch(() => resetState());
+    }
+
+    idInput.addEventListener('input', function () {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(checkId, 350);
+    });
+
+    // Sahifa yuklanganda ham (taklif qilingan ID uchun) darhol tekshiramiz
+    checkId();
+});
+</script>
 
 {% endblock %}

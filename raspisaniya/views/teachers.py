@@ -59,23 +59,60 @@ def teacher_list(request):
 
 
 @login_required
+def check_teacher_id_available(request):
+    """
+    Yengil AJAX endpoint — berilgan Teacher ID band yoki bo'shligini
+    darhol (foydalanuvchi yozayotganida) tekshiradi. `exclude_pk`
+    berilsa (tahrirlash sahifasida), o'sha o'qituvchining o'ziga
+    tegishli ID hisobga olinmaydi.
+    """
+    tid = request.GET.get('id', '').strip()
+    exclude_pk = request.GET.get('exclude_pk', '').strip()
+
+    if not tid:
+        return JsonResponse({'available': True})
+
+    qs = User.objects.filter(username=tid)
+    if exclude_pk:
+        qs = qs.exclude(teacher__pk=exclude_pk)
+
+    taken = qs.exists()
+    return JsonResponse({'available': not taken})
+
+
+def _next_available_teacher_id():
+    """
+    Band bo'lmagan ENG KICHIK 'T-N' raqamini topadi (bo'shliqlarni ham
+    hisobga olib) — masalan T-1, T-3 band bo'lsa, T-2 taklif qilinadi.
+    """
+    used_numbers = set()
+    for tid in Teacher.objects.exclude(teacher_id__isnull=True).exclude(teacher_id='').values_list('teacher_id', flat=True):
+        m = re.match(r'^T-(\d+)$', tid.strip())
+        if m:
+            used_numbers.add(int(m.group(1)))
+    n = 1
+    while n in used_numbers:
+        n += 1
+    return f"T-{n}"
+
+
+@login_required
 def teacher_create(request):
     if request.method == 'POST':
         form = TeacherForm(request.POST)
+        submitted_teacher_id = request.POST.get("teacher_id", "").strip()
+        submitted_subject_ids = [int(sid) for sid in request.POST.getlist('subjects') if sid.isdigit()]
+
         if form.is_valid():
-            teacher_id = request.POST.get("teacher_id", "").strip()
+            teacher_id = submitted_teacher_id or _next_available_teacher_id()
             password = request.POST.get("password", "").strip()
 
-            if not teacher_id:
-                messages.error(request, "Teacher ID kiritilmagan")
-                return render(request, 'raspisaniya/teacher_create.html', {
-                    'form': form, 'subjects': Subject.objects.all(), 'selected_subjects': [],
-                })
-
             if User.objects.filter(username=teacher_id).exists():
-                messages.error(request, f"Bu ID ({teacher_id}) allaqachon mavjud")
+                messages.error(request, f"❌ Bu ID ({teacher_id}) allaqachon mavjud — boshqa ID tanlang.")
                 return render(request, 'raspisaniya/teacher_create.html', {
-                    'form': form, 'subjects': Subject.objects.all(), 'selected_subjects': [],
+                    'form': form, 'subjects': Subject.objects.all(),
+                    'selected_subjects': submitted_subject_ids,
+                    'suggested_teacher_id': teacher_id,
                 })
 
             with transaction.atomic():
@@ -92,12 +129,29 @@ def teacher_create(request):
                 teacher.user = user
                 teacher.save()
 
-            messages.success(request, f"O'qituvchi qo'shildi. ID: {teacher_id}")
+            messages.success(request, f"✅ O'qituvchi qo'shildi. ID: {teacher_id}")
             return redirect('teacher_list')
+        else:
+            # ── MUHIM: forma yaroqsiz bo'lsa (masalan siz o'zgartirgan Teacher
+            # ID allaqachon band bo'lsa — bu holat Teacher modelidagi
+            # unique=True cheklovi orqali aniqlanadi), sababini ANIQ
+            # ko'rsatamiz va siz kiritgan qiymatlarni (ID, tanlangan
+            # fanlar) YO'QOTMAY qayta ko'rsatamiz — shunda ID'ni
+            # o'zgartirish haqiqatan ishlaydi, faqat "sababsiz" qayta
+            # yuklanib qolmaydi.
+            for field, errs in form.errors.items():
+                for err in errs:
+                    messages.error(request, f"❌ {err}")
+            return render(request, 'raspisaniya/teacher_create.html', {
+                'form': form, 'subjects': Subject.objects.all(),
+                'selected_subjects': submitted_subject_ids,
+                'suggested_teacher_id': submitted_teacher_id or _next_available_teacher_id(),
+            })
     else:
         form = TeacherForm()
     return render(request, 'raspisaniya/teacher_create.html', {
         'form': form, 'subjects': Subject.objects.all(), 'selected_subjects': [],
+        'suggested_teacher_id': _next_available_teacher_id(),
     })
 
 
@@ -301,5 +355,3 @@ def toggle_all_teacher_edit_permission(request):
             'label': f'Hammaga ruxsat berildi ✅ ({count} guruh)' if permitted else f'Hammadan ruxsat olindi ({count} guruh)',
         })
     return JsonResponse({'success': False}, status=405)
-
-
