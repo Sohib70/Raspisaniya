@@ -20,20 +20,25 @@
     <input type="hidden" name="step" value="2">
 
     <div class="mb-3">
-        <label class="form-label fw-bold">Fan tanlang</label>
-        <select name="subject" class="form-select" required>
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-2">
+            <label class="form-label fw-bold mb-0">Fan tanlang</label>
+            <div class="d-flex align-items-center gap-2">
+                <label for="min_students_input" class="form-label fw-bold mb-0 text-nowrap">
+                    Kamida nechta qarzdor talaba bo'lsin
+                </label>
+                <input type="number" id="min_students_input" class="form-control form-control-sm"
+                       style="width:90px" min="1" value="{{ min_students }}">
+            </div>
+        </div>
+        <select name="subject" id="subject_select" class="form-select" required>
             <option value="">— tanlang —</option>
             {% for item in subjects_data %}
-                <option value="{{ item.subject.id }}">
+                <option value="{{ item.subject.id }}" data-count="{{ item.student_count }}">
                     {{ item.subject }} — {{ item.student_count }} ta talaba
                 </option>
             {% endfor %}
         </select>
-        {% if not subjects_data %}
-            <div class="alert alert-warning mt-2">
-                ⚠ Hozircha 10 yoki undan ko'p talaba qarzdor bo'lgan fan yo'q.
-            </div>
-        {% endif %}
+        <div id="no_subjects_warning" class="alert alert-warning mt-2" style="display:none;"></div>
     </div>
 
     <div class="row mb-3">
@@ -86,6 +91,48 @@ function calcEndDate() {
 document.querySelector('[name=start_date]').addEventListener('change', calcEndDate);
 document.querySelector('[name=total_lessons]').addEventListener('input', calcEndDate);
 document.querySelector('[name=lessons_per_week]').addEventListener('input', calcEndDate);
+
+// ── Fan tanlash ro'yxatini "kamida nechta qarzdor talaba" maydoniga
+// qarab qayta filtrlaydi — sahifa qayta yuklanmaydi, faqat option'lar
+// ko'rsatiladi/yashiriladi.
+(function () {
+    var input = document.getElementById('min_students_input');
+    var select = document.getElementById('subject_select');
+    var warning = document.getElementById('no_subjects_warning');
+    if (!input || !select) return;
+
+    var options = Array.prototype.slice.call(select.querySelectorAll('option[data-count]'));
+
+    function applyFilter() {
+        var min = parseInt(input.value, 10);
+        if (isNaN(min) || min < 1) min = 1;
+
+        var visibleCount = 0;
+        options.forEach(function (opt) {
+            var count = parseInt(opt.getAttribute('data-count'), 10) || 0;
+            var ok = count >= min;
+            opt.hidden = !ok;
+            opt.disabled = !ok;
+            if (ok) visibleCount++;
+        });
+
+        // Agar tanlangan fan endi shartga to'g'ri kelmasa — tanlovni bekor qilamiz
+        var selectedOpt = select.options[select.selectedIndex];
+        if (selectedOpt && selectedOpt.hasAttribute('data-count') && selectedOpt.hidden) {
+            select.value = '';
+        }
+
+        if (visibleCount === 0) {
+            warning.style.display = 'block';
+            warning.textContent = '⚠ Hozircha ' + min + ' yoki undan ko\'p talaba qarzdor bo\'lgan fan yo\'q.';
+        } else {
+            warning.style.display = 'none';
+        }
+    }
+
+    input.addEventListener('input', applyFilter);
+    applyFilter();
+})();
 </script>
 
 {# ================= STEP 2 ================= #}

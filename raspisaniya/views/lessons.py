@@ -319,15 +319,28 @@ def lesson_list(request):
 def lesson_create(request):
     # ── STEP 1 ──
     if request.method == "GET":
+        # Standart chegara — 10, lekin admin buni sahifadagi maydonga
+        # o'zi xohlagan sonni kiritib o'zgartirishi mumkin (masalan 5
+        # kiritsa, 5 va undan ko'p qarzdor talabasi bor fanlar chiqadi).
+        try:
+            min_students = int(request.GET.get("min_students", 10))
+        except (TypeError, ValueError):
+            min_students = 10
+        if min_students < 1:
+            min_students = 1
+
         all_subjects = Subject.objects.all()
         subjects_data = []
         for subj in all_subjects:
             count = Student.objects.filter(debts=subj).count()
-            if count >= 10:
+            if count > 0:
                 subjects_data.append({'subject': subj, 'student_count': count})
+        subjects_data.sort(key=lambda d: d['student_count'], reverse=True)
+
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 1,
             "subjects_data": subjects_data,
+            "min_students": min_students,
         })
 
     # ── STEP 2 ──
