@@ -150,7 +150,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 # 1. Brauzer orqali murojaat qilish uchun URL
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # 2. Asosiy statik fayllar turgan papka (Sizda fayl 'static' ichida edi)
 STATICFILES_DIRS = [
