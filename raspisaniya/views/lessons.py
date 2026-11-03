@@ -11,20 +11,15 @@ def get_lesson_dates(start_date, weekdays, total):
     return result
 
 
-def get_expected_lessons_per_week(total_lessons):
+def get_expected_lessons_per_week(total_lessons, user_lessons_per_week=None, preferred_weekdays=None):
     """
-    `find_schedule_for_group` kurs turi (24/16/8 paralik) uchun HAR DOIM
-    qat'iy shu haftalik dars (para) sonini qo'llaydi — bu son `total_lessons`
-    dan kelib chiqadi, `lessons_per_week` maydonidagi qiymatdan qat'iy nazar:
-      - 24 paralik (>=20)  -> 6 para/hafta (3 kun x 2 para)
-      - 16 paralik (12-20) -> 4 para/hafta (2 kun x 2 para)
-      - 8 paralik  (<12)   -> 2 para/hafta (1 kun x 2 para)
-
-    Kurs yaratish/tahrirlash formalarida admin "Haftada necha marta"
-    maydoniga BOSHQA son kiritib qo'ysa, tugash sanasi (`weeks_needed`)
-    noto'g'ri hisoblanib, jadval bilan sana bir-biriga mos kelmay qolardi.
-    Shu funksiya orqali kiritilgan qiymat tekshiriladi/tuzatiladi.
+    Agar foydalanuvchi o'zi haftalik para sonini kiritgan bo'lsa (masalan 1, 2, 3...),
+    uni o'zgarishsiz qoldiramiz. Faqat kiritilmagan holatda avtomatik hisoblaymiz.
     """
+    if user_lessons_per_week and int(user_lessons_per_week) > 0:
+        return int(user_lessons_per_week)
+    if preferred_weekdays:
+        return len(preferred_weekdays) * 2
     if total_lessons >= 20:
         return 6
     elif 12 <= total_lessons <= 20:
@@ -319,9 +314,6 @@ def lesson_list(request):
 def lesson_create(request):
     # ── STEP 1 ──
     if request.method == "GET":
-        # Standart chegara — 10, lekin admin buni sahifadagi maydonga
-        # o'zi xohlagan sonni kiritib o'zgartirishi mumkin (masalan 5
-        # kiritsa, 5 va undan ko'p qarzdor talabasi bor fanlar chiqadi).
         try:
             min_students = int(request.GET.get("min_students", 10))
         except (TypeError, ValueError):
@@ -352,6 +344,7 @@ def lesson_create(request):
         total_lessons = request.POST.get("total_lessons")
         lessons_per_week = request.POST.get("lessons_per_week")
         include_saturday = request.POST.get("include_saturday", "0")
+        preferred_weekdays = [int(w) for w in request.POST.getlist("preferred_weekdays") if w.isdigit()]
 
         if not all([start_date_raw, total_lessons, lessons_per_week]):
             messages.error(request, "Barcha maydonlarni to'ldiring")
@@ -361,23 +354,23 @@ def lesson_create(request):
         lessons_per_week = int(lessons_per_week)
         start_date = parse_date(start_date_raw)
 
-        # ── YANGI TEKSHIRUV: jadval tuzuvchi algoritm (find_schedule_for_group)
-        # kurs turiga (24/16/8 paralik) qarab HAR DOIM qat'iy belgilangan
-        # haftalik dars sonini qo'llaydi. Agar admin "Haftada necha marta"ga
-        # boshqa son kiritgan bo'lsa, tugash sanasi noto'g'ri hisoblanib
-        # qolardi — shuning uchun bu yerda avtomatik to'g'ri qiymatga
-        # tuzatib, adminga ogohlantirish beramiz ──
-        expected_per_week = get_expected_lessons_per_week(total_lessons)
-        if lessons_per_week != expected_per_week:
-            messages.warning(
-                request,
-                f"⚠ Diqqat: {total_lessons} paralik kurs uchun tizim haftada "
-                f"faqat {expected_per_week} para joylashtira oladi (siz {lessons_per_week} "
-                f"kiritgan edingiz). Tugash sanasi shunga qarab to'g'rilandi."
-            )
-            lessons_per_week = expected_per_week
+        # Agar tanlangan kunlar ichida Shanba (5) bo'lsa, avtomatik Shanbani yoqamiz
+        if 5 in preferred_weekdays:
+            include_saturday = "1"
+        include_saturday_bool = include_saturday == "1"
 
-        weeks_needed = math.ceil(total_lessons / lessons_per_week)
+        # Agar foydalanuvchi kunlarni tanlagan bo'lsa-yu, lekin haftalik dars soni
+        # tanlangan kunlar sonidan kam bo'lsa (masalan 3 kun tanlab, haftada 1 para yozsa),
+        # har bir tanlangan kunga kamida 1 paradan tushishi uchun moslaymiz:
+        if preferred_weekdays and lessons_per_week < len(preferred_weekdays):
+            lessons_per_week = len(preferred_weekdays)
+            messages.info(
+                request,
+                f"Siz {len(preferred_weekdays)} ta hafta kunini tanlaganingiz uchun "
+                f"haftalik dars soni {lessons_per_week} para etib belgilandi."
+            )
+
+        weeks_needed = math.ceil(total_lessons / max(1, lessons_per_week))
         end_date = start_date + timedelta(weeks=weeks_needed)
         end_date_raw = end_date.strftime("%Y-%m-%d")
 
@@ -395,22 +388,9 @@ def lesson_create(request):
         skipped_msgs = []
         group_index = 0
 
-        include_saturday_bool = include_saturday == "1"
-
-        # ── YANGI: talabalar endi RO'YXAT TARTIBIDA emas, balki:
-        #   1) ularning boshqa fanlardagi mavjud band vaqtlariga mos ravishda,
-        #      umumiy bo'sh vaqt topiladigan tarzda (smart_group_students),
-        #   2) kam sonli tillar (masalan rus, agar 10 tadan kam bo'lsa) asosiy
-        #      tilga QO'SHIB, lekin albatta BITTA guruhda birga qoldirilgan
-        #      holda (form_course_groups),
-        #   3) imkon qadar bir xil yo'nalishdagi (masalan "F" bilan
-        #      boshlanadigan akademik guruh) talabalar bir joyga yig'ilgan
-        #      holda guruhlanadi.
-        # Bu — guruh yaratilgan zahoti kamida bitta bo'sh umumiy slot
-        # mavjudligini kafolatlaydi va darslar bir vaqtga tushib qolish
-        # muammosini ildizidan hal qiladi. ──
         formed_groups = form_course_groups(
-            students_by_lang, total_lessons, start_date, include_saturday_bool
+            students_by_lang, total_lessons, start_date, include_saturday_bool,
+            lessons_per_week=lessons_per_week, preferred_weekdays=preferred_weekdays
         )
 
         for gdata in formed_groups:
@@ -437,7 +417,6 @@ def lesson_create(request):
 
         groups_count = len(all_groups)
 
-        # ── O'qituvchi bu yerda YO'Q ──
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 2,
             "subject": subject,
@@ -450,6 +429,7 @@ def lesson_create(request):
             "skipped_langs": skipped_msgs,
             "all_students": all_students,
             "include_saturday": include_saturday,
+            "preferred_weekdays": ",".join(map(str, preferred_weekdays)),
         })
 
     # ── STEP 3 ──
@@ -464,16 +444,12 @@ def lesson_create(request):
         groups_count = int(request.POST.get("groups_count", 1))
         include_saturday = request.POST.get("include_saturday", "0") == "1"
 
-        # ── Ehtiyot chorasi: STEP 2 da to'g'rilangan bo'lsa ham, formani
-        # kimdir qo'lda o'zgartirib yubormasligi uchun bu yerda YANA bir bor
-        # tekshiramiz ──
-        lessons_per_week = get_expected_lessons_per_week(total_lessons)
+        pref_raw = request.POST.get("preferred_weekdays", "")
+        preferred_weekdays = [int(x) for x in pref_raw.split(",") if x.strip().isdigit()]
 
         start_date = parse_date(start_date_raw)
         end_date = parse_date(end_date_raw)
 
-        # ── Indekslarni students_ orqali aniqlaymiz
-        #    (teacher_ endi yo'q) ──────────────────
         all_indices = []
         for key in request.POST.keys():
             if key.startswith("students_"):
@@ -492,6 +468,7 @@ def lesson_create(request):
                 lessons_per_week=lessons_per_week,
                 lesson_duration=80,
                 include_saturday=include_saturday,
+                preferred_weekdays=preferred_weekdays,
             )
 
             group_number = 1
@@ -509,9 +486,6 @@ def lesson_create(request):
                     f"lang_{i}", selected_students[0].language
                 )
 
-                # ── O'qituvchisiz guruh — keyinroq biriktiriladi ──
-                # MUHIM: 10 tadan kam bo'lsa ham guruh HAR DOIM saqlanadi
-                # ("Ruxsat berish" talabi olib tashlandi — eski xatti-harakatga qaytarildi)
                 cgroup = CourseGroup.objects.create(
                     course=course,
                     teacher=None,
@@ -535,8 +509,6 @@ def lesson_create(request):
             "biriktiring, so'ng 'Jadval tuzish' tugmasini bosing."
         )
         return redirect("lesson_list")
-
-
 # ─────────────────────────────────────────
 # LESSON SCHEDULE
 # ─────────────────────────────────────────
@@ -1059,6 +1031,7 @@ def course_update(request, pk):
         end_date_raw = request.POST.get("end_date")
         total_lessons = request.POST.get("total_lessons")
         lessons_per_week = request.POST.get("lessons_per_week")
+        preferred_weekdays = [int(w) for w in request.POST.getlist("preferred_weekdays") if w.isdigit()]
 
         if not all([start_date_raw, end_date_raw, total_lessons, lessons_per_week]):
             messages.error(request, "Barcha maydonlarni to'ldiring")
@@ -1067,31 +1040,12 @@ def course_update(request, pk):
         course.start_date = parse_date(start_date_raw)
         course.end_date = parse_date(end_date_raw)
         course.total_lessons = int(total_lessons)
-        lessons_per_week = int(lessons_per_week)
-
-        # ── YANGI TEKSHIRUV: jadval tuzuvchi algoritm total_lessons turiga
-        # (24/16/8 paralik) qarab HAR DOIM qat'iy haftalik dars sonini
-        # qo'llaydi — "Haftada necha marta" maydoniga boshqa son kiritilgan
-        # bo'lsa ham, haqiqiy jadval baribir shu qat'iy songa muvofiq
-        # tuziladi. Shuning uchun bu yerda mos qiymatga to'g'irlab, adminni
-        # ogohlantiramiz — aks holda u "Haftada necha marta"da ko'rgan soni
-        # bilan haqiqiy natija mos kelmay, keyin tushunarsiz bo'lib qolardi ──
-        expected_per_week = get_expected_lessons_per_week(course.total_lessons)
-        if lessons_per_week != expected_per_week:
-            messages.warning(
-                request,
-                f"⚠ Diqqat: {course.total_lessons} paralik kurs uchun tizim haftada "
-                f"faqat {expected_per_week} para joylashtira oladi (siz {lessons_per_week} "
-                f"kiritgan edingiz). Qiymat avtomatik {expected_per_week} ga to'g'irlandi."
-            )
-        course.lessons_per_week = expected_per_week
+        course.lessons_per_week = int(lessons_per_week)
+        course.preferred_weekdays = preferred_weekdays
+        if 5 in preferred_weekdays:
+            course.include_saturday = True
         course.save()
 
-        # MUHIM: sana/dars soni o'zgargani uchun eski jadval endi noto'g'ri —
-        # shu bilan birga ustozlar ham eski (endi noto'g'ri) vaqtlarga
-        # asosan biriktirilgan edi, shuning uchun ularni ham bo'shatamiz,
-        # "Jadval tuzish" dan keyin "O'qituvchilarni taqsimlash" orqali
-        # qaytadan to'g'ri biriktiriladi.
         course.groups.update(is_scheduled=False, teacher=None)
         GroupSchedule.objects.filter(group__course=course).delete()
 
@@ -1592,6 +1546,19 @@ def student_schedule_info(request, student_pk):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
+
+@login_required
+def change_group_number(request, group_pk):
+    group = get_object_or_404(CourseGroup, pk=group_pk)
+    if request.method == "POST":
+        new_number = request.POST.get("group_number", "").strip()
+        if new_number.isdigit():
+            group.group_number = int(new_number)
+            group.save(update_fields=['group_number'])
+            messages.success(request, f"Guruh raqami {new_number}-guruh etib o'zgartirildi.")
+        else:
+            messages.error(request, "Iltimos, to'g'ri raqam kiriting!")
+    return redirect("lesson_schedule", pk=group.course.pk)
 
 # ==============================================================================
 # 2. HAFTALIK UMUMIY JADVALDA DARS KARTASI BOSILGANDA (sched_id orqali) ISHLAYDIGAN FUNKSIYA

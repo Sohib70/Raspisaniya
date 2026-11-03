@@ -45,6 +45,36 @@
             </div>
         </div>
 
+        <div class="mb-3">
+            <label class="form-label fw-bold">Hafta kunlari (bo'sh qoldirilsa avtomatik tanlanadi)</label>
+            <div class="d-flex flex-wrap gap-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="0" id="u_wd_0" {% if 0 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_0">Dushanba</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="1" id="u_wd_1" {% if 1 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_1">Seshanba</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="2" id="u_wd_2" {% if 2 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_2">Chorshanba</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="3" id="u_wd_3" {% if 3 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_3">Payshanba</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="4" id="u_wd_4" {% if 4 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_4">Juma</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="5" id="u_wd_5" {% if 5 in course.preferred_weekdays %}checked{% endif %}>
+                    <label class="form-check-label" for="u_wd_5">Shanba</label>
+                </div>
+            </div>
+        </div>
+
         <div class="d-flex gap-2">
             <a href="{% url 'lesson_list' %}" class="btn btn-secondary">← Orqaga</a>
             <button type="submit" class="btn btn-primary w-100">💾 Saqlash</button>

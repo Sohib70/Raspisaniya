@@ -64,6 +64,7 @@ class Course(models.Model):
     lessons_per_week = models.PositiveIntegerField()
     lesson_duration = models.PositiveIntegerField(default=80)
     include_saturday = models.BooleanField(default=False)
+    preferred_weekdays = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.subject} ({self.start_date} — {self.end_date})"

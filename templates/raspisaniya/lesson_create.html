@@ -59,17 +59,44 @@
         </div>
     </div>
 
-    <div id="end_date_info" class="alert alert-info py-2 mb-3" style="display:none;">
-        📅 Taxminiy tugash sanasi: <strong id="end_date_text"></strong>
+    {# ── YANGI QO'SHILDI: Hafta kunlarini tanlash ── #}
+    <div class="mb-3 border p-3 rounded bg-light">
+        <label class="form-label fw-bold text-dark">
+            📅 Dars kunlarini tanlang <span class="text-muted fw-normal">(ixtiyoriy — tanlanmasa tizim o'zi avtomatik joylashtiradi)</span>
+        </label>
+        <div class="d-flex flex-wrap gap-3 mt-2">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="0" id="wd_0">
+                <label class="form-check-label fw-medium" for="wd_0">Dushanba</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="1" id="wd_1">
+                <label class="form-check-label fw-medium" for="wd_1">Seshanba</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="2" id="wd_2">
+                <label class="form-check-label fw-medium" for="wd_2">Chorshanba</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="3" id="wd_3">
+                <label class="form-check-label fw-medium" for="wd_3">Payshanba</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="4" id="wd_4">
+                <label class="form-check-label fw-medium" for="wd_4">Juma</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="preferred_weekdays" value="5" id="wd_5">
+                <label class="form-check-label fw-medium" for="wd_5">Shanba</label>
+            </div>
+        </div>
+        <small class="text-muted d-block mt-2">
+            💡 <em>Masalan: Haftada 1 kun 1 para o'tish uchun bitta kunni belgilab, "Haftada necha marta" ga 1 yozing.</em>
+        </small>
     </div>
 
-    <div class="mb-3">
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" name="include_saturday" id="include_saturday" value="1">
-            <label class="form-check-label fw-bold" for="include_saturday">
-                📅 Shanba kuniga ham dars qo'yilsinmi?
-            </label>
-        </div>
+    <div id="end_date_info" class="alert alert-info py-2 mb-3" style="display:none;">
+        📅 Taxminiy tugash sanasi: <strong id="end_date_text"></strong>
     </div>
 
     <button type="submit" class="btn btn-primary w-100">Davom etish →</button>
@@ -92,9 +119,7 @@ document.querySelector('[name=start_date]').addEventListener('change', calcEndDa
 document.querySelector('[name=total_lessons]').addEventListener('input', calcEndDate);
 document.querySelector('[name=lessons_per_week]').addEventListener('input', calcEndDate);
 
-// ── Fan tanlash ro'yxatini "kamida nechta qarzdor talaba" maydoniga
-// qarab qayta filtrlaydi — sahifa qayta yuklanmaydi, faqat option'lar
-// ko'rsatiladi/yashiriladi.
+// ── Fan tanlash ro'yxatini "kamida nechta qarzdor talaba" maydoniga qarab filtrlaydi
 (function () {
     var input = document.getElementById('min_students_input');
     var select = document.getElementById('subject_select');
@@ -116,7 +141,6 @@ document.querySelector('[name=lessons_per_week]').addEventListener('input', calc
             if (ok) visibleCount++;
         });
 
-        // Agar tanlangan fan endi shartga to'g'ri kelmasa — tanlovni bekor qilamiz
         var selectedOpt = select.options[select.selectedIndex];
         if (selectedOpt && selectedOpt.hasAttribute('data-count') && selectedOpt.hidden) {
             select.value = '';
@@ -166,7 +190,7 @@ const ALL_GROUP_INDICES = [
     <input type="hidden" name="end_date" value="{{ end_date }}">
     <input type="hidden" name="total_lessons" value="{{ total_lessons }}">
     <input type="hidden" name="lessons_per_week" value="{{ lessons_per_week }}">
-    <input type="hidden" name="include_saturday" value="{{ include_saturday }}">
+    <input type="hidden" name="preferred_weekdays" value="{{ preferred_weekdays }}">
 
     <div class="alert alert-info">
         <b>{{ subject }}</b> fanidan <b>{{ groups_count }}</b> ta guruh —
@@ -217,9 +241,6 @@ const ALL_GROUP_INDICES = [
             <span class="badge bg-danger d-none" id="warn_{{ gi }}">⚠ 10 tadan kam!</span>
             {% endif %}
         </h5>
-
-        {# ── O'QITUVCHI BLOKI OLIB TASHLANDI ── #}
-        {# O'qituvchi keyinroq "Dars jadvali" sahifasida biriktiriladi #}
 
         <div class="alert alert-secondary py-2 mb-3 small">
             👤 O'qituvchi keyinroq biriktiriladi

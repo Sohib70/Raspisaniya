@@ -76,7 +76,16 @@
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2"
                  style="background:linear-gradient(135deg,#1a237e,#1565c0);color:white;">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="fw-bold">👥 {{ item.group.group_number }}-Guruh</span>
+                    <span class="fw-bold">👥 <span id="group-num-text-{{ item.group.pk }}">{{ item.group.group_number }}</span>-Guruh</span>
+                    <button class="btn btn-sm btn-outline-light py-0 px-1" title="Guruh raqamini o'zgartirish"
+                        onclick="const f = document.getElementById('group-edit-form-{{ item.group.pk }}'); f.style.display = f.style.display === 'none' ? 'inline-flex' : 'none';">
+                        ✏️
+                    </button>
+                    <form method="post" action="{% url 'change_group_number' item.group.pk %}" id="group-edit-form-{{ item.group.pk }}" style="display:none;" class="d-flex gap-1 align-items-center ms-2">
+                        {% csrf_token %}
+                        <input type="number" name="group_number" value="{{ item.group.group_number }}" class="form-control form-control-sm" style="width: 70px;" min="1" required>
+                        <button type="submit" class="btn btn-sm btn-light py-0">Saqlash</button>
+                    </form>
                     <span class="badge bg-white text-primary">
                         {% if item.group.language == 'uz' %}O'zbek
                         {% elif item.group.language == 'ru' %}Rus
