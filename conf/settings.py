@@ -27,7 +27,8 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SECRET_KEY = 'django-insecure-d6447_-38u3#%q&7=94s!n$s+3=ixljl&l4x+f96)di!9zphit'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
+
 
 ALLOWED_HOSTS = ['ro.pharmi.uz', 'www.ro.pharmi.uz', 'localhost', '127.0.0.1']
 
@@ -209,6 +210,6 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'xolburiyev@gmail.com'
-EMAIL_HOST_PASSWORD = 'c b q v q w a e n z d h g z g c'  # Google account dan olingan maxsus ilova paroli
+EMAIL_HOST_PASSWORD = 'tnaf shym fyzj qdqj'  # Google account dan olingan maxsus ilova paroli
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 ADMIN_RESET_TARGET_EMAIL = env.str('ADMIN_RESET_TARGET_EMAIL', default='xolburiyev@gmail.com')

@@ -18,19 +18,26 @@ def split_into_groups(students, max_size=15, min_size=10):
         start += size
     return groups
 
+
 def _get_course_schedule_params(total_lessons, lessons_per_week, include_saturday, preferred_weekdays=None, group_number=1):
     """
     Kurs uchun hafta kunlari variantlari, necha kun kerakligi va
-    har bir kunda nechta para (1 yoki 2) o'tilishini aniqlaydi.
+    har bir kunda nechta para o'tilishini aniqlaydi.
     """
     max_wd = 5 if include_saturday else 4
     available_wds = list(range(0, max_wd + 1))
 
     if preferred_weekdays:
-        valid_prefs = tuple(sorted(set(w for w in preferred_weekdays if 0 <= w <= 5)))
+        valid_prefs = tuple(sorted(set(w for w in preferred_weekdays if 0 <= int(w) <= 5)))
         if valid_prefs:
             days_needed = len(valid_prefs)
-            paras_per_day = 1 if lessons_per_week <= days_needed else 2
+            # ✅ TO'G'RILANDI: Haftalik dars soni kunlar sonidan ko'p bo'lsa,
+            # har bir kunga to'g'ri keladigan para sonini hisoblaymiz (masalan: 3 para / 1 kun = 3 para)
+            if lessons_per_week > days_needed:
+                paras_per_day = math.ceil(lessons_per_week / days_needed)
+            else:
+                paras_per_day = 1
+            paras_per_day = min(paras_per_day, len(PARA_TIMES))
             return [valid_prefs], days_needed, paras_per_day
 
     # Tanlanmagan bo'lsa — standart avtomatik algoritm:
@@ -49,6 +56,62 @@ def _get_course_schedule_params(total_lessons, lessons_per_week, include_saturda
         rotated_wds = available_wds[start_offset:] + available_wds[:start_offset]
         return [(wd,) for wd in rotated_wds], 1, 2
 
+def _split_paras_per_day(lessons_per_week, n_days):
+    """Haftalik para sonini tanlangan kunlarga TENG BO'LMASA HAM aniq taqsimlaydi.
+    Masalan 3 para / 2 kun -> [2, 1]; 5 para / 2 kun -> [3, 2]; 4 / 2 -> [2, 2]."""
+    n_days = max(1, int(n_days))
+    lpw = min(max(n_days, int(lessons_per_week)), 6 * n_days)
+    base, extra = divmod(lpw, n_days)
+    return [min(6, base + (1 if i < extra else 0)) for i in range(n_days)]
+
+def _get_course_options_for_obj(course, group_number=1):
+    """Course obyekti uchun (weekday_options, days_needed, paras_per_day, para_blocks) qaytaradi."""
+    wds_list, days_needed, paras_per_day = _get_course_schedule_params(
+        course.total_lessons,
+        course.lessons_per_week,
+        getattr(course, 'include_saturday', False),
+        getattr(course, 'preferred_weekdays', None),
+        group_number=group_number,
+    )
+    if paras_per_day <= 1:
+        para_blocks = [(i, None) for i in range(len(PARA_TIMES))]
+    elif paras_per_day == 2:
+        para_blocks = list(VALID_PARA_PAIRS)
+    else:
+        k = min(paras_per_day, len(PARA_TIMES))
+        para_blocks = [(i, i + k - 1) for i in range(len(PARA_TIMES) - k + 1)]
+    return wds_list, days_needed, paras_per_day, para_blocks
+
+
+def _lpw_for_split(course):
+    """Admin hafta kunlarini O'ZI tanlagan bo'lsagina haftalik para sonini
+    kunlarga notekis (masalan 3 para / 2 kun -> 2+1) taqsimlash kerak.
+    Aks holda None qaytaradi (eski avtomatik xatti-harakat o'zgarmaydi)."""
+    if getattr(course, 'preferred_weekdays', None):
+        return course.lessons_per_week
+    return None
+
+
+def _create_group_schedules_bulk(group, dates, p1, p2, total_lessons=None, lessons_per_week=None):
+    span = range(p1, (p2 if p2 is not None else p1) + 1)
+    per_wd = {}
+    if lessons_per_week:
+        wds_sorted = sorted({d.weekday() for d in dates})
+        per_wd = dict(zip(wds_sorted, _split_paras_per_day(lessons_per_week, len(wds_sorted))))
+    objs = []
+    lesson_num = 1
+    for d in dates:
+        day_span = list(span)
+        if per_wd:
+            # kunga tegishli para soni (blokdan oshmasin)
+            day_span = day_span[:max(1, min(per_wd.get(d.weekday(), len(day_span)), len(day_span)))]
+        for p in day_span:
+            if total_lessons and lesson_num > total_lessons:
+                break
+            objs.append(GroupSchedule(group=group, date=d, start_time=PARA_TIMES[p][0], lesson_number=lesson_num))
+            lesson_num += 1
+    GroupSchedule.objects.bulk_create(objs)
+
 
 def _slot_candidates_for_course(total_lessons, include_saturday, lessons_per_week=None, preferred_weekdays=None):
     """
@@ -62,33 +125,23 @@ def _slot_candidates_for_course(total_lessons, include_saturday, lessons_per_wee
     valid_prefs = tuple(sorted(set(int(w) for w in (preferred_weekdays or []) if 0 <= int(w) <= max_wd)))
     lpw = lessons_per_week or (6 if total_lessons >= 20 else (4 if total_lessons >= 12 else 2))
 
-    if valid_prefs:
-        weekday_sets = [valid_prefs]
-        paras_per_day = 1 if lpw <= len(valid_prefs) else 2
-    elif lpw == 1 or total_lessons == 1:
-        weekday_sets = [(wd,) for wd in range(0, max_wd + 1)]
-        paras_per_day = 1
-    elif lpw == 3 and total_lessons < 20:
-        weekday_sets = [(0, 2, 4)]
-        paras_per_day = 1
-    elif total_lessons >= 20 or lpw >= 6:
-        weekday_sets = [(0, 2, 4)]          # Dush-Chor-Jum
-        paras_per_day = 2
-    elif 12 <= total_lessons <= 20 or lpw == 4:
-        weekday_sets = [(1, 3)]             # Sesh-Pay
-        paras_per_day = 2
-    else:
-        weekday_sets = [(wd,) for wd in range(0, max_wd + 1)]  # istalgan 1 kun
-        paras_per_day = 2
+    # ✅ TO'G'RILANDI: _get_course_schedule_params dan keladigan to'g'ri paras_per_day ni ishlatamiz
+    weekday_sets, _, paras_per_day = _get_course_schedule_params(
+        total_lessons, lpw, include_saturday, preferred_weekdays
+    )
 
     if paras_per_day == 1:
         single_blocks = [(i, i) for i in range(len(PARA_TIMES))]
         return [(wds, block) for wds in weekday_sets for block in single_blocks]
+    elif paras_per_day >= 3:
+        k = min(paras_per_day, len(PARA_TIMES))
+        windows = [(i, i + k - 1) for i in range(len(PARA_TIMES) - k + 1)]
+        return [(wds, block) for wds in weekday_sets for block in windows]
 
     return [(wds, block) for wds in weekday_sets for block in VALID_PARA_PAIRS]
 
 
-def _slot_occurrence_dates(start_date, weekday_set, total_lessons, paras_per_day=2):
+def _slot_occurrence_dates(start_date, weekday_set, total_lessons, paras_per_day=2, lessons_per_week=None):
     """
     Berilgan hafta-kunlari to'plami bo'yicha, kurs davomida HAQIQATDA qaysi
     sanalarda dars bo'lishini hisoblab chiqaradi (kuniga paras_per_day paradan,
@@ -98,6 +151,12 @@ def _slot_occurrence_dates(start_date, weekday_set, total_lessons, paras_per_day
     cur_monday = start_date - timedelta(days=start_date.weekday())
     lessons_left = total_lessons
     safety = 0
+    # Kunlar bo'yicha para soni: lessons_per_week berilsa notekis taqsimlanadi
+    # (3 para / 2 kun -> [2, 1]); aks holda hamma kunga paras_per_day.
+    per_wd = {}
+    if lessons_per_week:
+        wds_sorted = sorted(weekday_set)
+        per_wd = dict(zip(wds_sorted, _split_paras_per_day(lessons_per_week, len(wds_sorted))))
     while lessons_left > 0 and safety < 60:
         for wd in weekday_set:
             if lessons_left <= 0:
@@ -106,7 +165,8 @@ def _slot_occurrence_dates(start_date, weekday_set, total_lessons, paras_per_day
             if d < start_date:
                 continue
             dates.append(d)
-            lessons_left -= min(paras_per_day, lessons_left)
+            day_paras = min(per_wd.get(wd, paras_per_day), paras_per_day)
+            lessons_left -= min(day_paras, lessons_left)
         cur_monday += timedelta(weeks=1)
         safety += 1
     return dates
@@ -138,36 +198,36 @@ def _sort_by_direction(ids, by_id):
     counts = Counter(dirs.values())
     return sorted(ids, key=lambda sid: (-counts[dirs[sid]], dirs[sid] or '\uffff'))
 
-    def smart_group_students(students, total_lessons, start_date, include_saturday,
-                             max_size=15, min_size=10, mandatory_blocks=None,
-                             lessons_per_week=None, preferred_weekdays=None):
-        mandatory_blocks = [b for b in (mandatory_blocks or []) if b]
-        all_involved = list(students) + [s for block in mandatory_blocks for s in block]
-        if not all_involved:
-            return []
+def smart_group_students(students, total_lessons, start_date, include_saturday,
+                         max_size=15, min_size=10, mandatory_blocks=None,
+                         lessons_per_week=None, preferred_weekdays=None):
+    mandatory_blocks = [b for b in (mandatory_blocks or []) if b]
+    all_involved = list(students) + [s for block in mandatory_blocks for s in block]
+    if not all_involved:
+        return []
 
-        student_busy = {}
-        for st in all_involved:
-            student_busy[st.id] = set(
-                GroupSchedule.objects.filter(
-                    group__students=st, group__is_scheduled=True
-                ).values_list('date', 'start_time')
-            )
+    student_busy = {}
+    for st in all_involved:
+        student_busy[st.id] = set(
+            GroupSchedule.objects.filter(
+                group__students=st, group__is_scheduled=True
+            ).values_list('date', 'start_time')
+        )
 
-        lpw = lessons_per_week or (6 if total_lessons >= 20 else (4 if total_lessons >= 12 else 2))
-        _, _, paras_per_day = _get_course_schedule_params(total_lessons, lpw, include_saturday, preferred_weekdays)
-        candidates = _slot_candidates_for_course(total_lessons, include_saturday, lpw, preferred_weekdays)
-        dates_cache = {
-            (wds, block): _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day)
-            for wds, block in candidates
-        }
+    lpw = lessons_per_week or (6 if total_lessons >= 20 else (4 if total_lessons >= 12 else 2))
+    _, _, paras_per_day = _get_course_schedule_params(total_lessons, lpw, include_saturday, preferred_weekdays)
+    candidates = _slot_candidates_for_course(total_lessons, include_saturday, lpw, preferred_weekdays)
+    dates_cache = {
+        (wds, block): _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day,
+                               lessons_per_week=(lpw if preferred_weekdays else None))
+        for wds, block in candidates
+    }
 
     def fits(sid, wds, block):
         busy = student_busy[sid]
-        p1_time = PARA_TIMES[block[0]][0]
-        p2_time = PARA_TIMES[block[1]][0]
+        times = [PARA_TIMES[p][0] for p in range(block[0], block[1] + 1)]
         for d in dates_cache[(wds, block)]:
-            if (d, p1_time) in busy or (d, p2_time) in busy:
+            if any((d, tm) in busy for tm in times):
                 return False
         return True
 
@@ -360,6 +420,7 @@ def find_schedule_for_group(
 
     # ── 1. HAFTA KUNLARI VA KUNIGA NECHTA PARA O'TILISHINI ANIQLASH ──
     valid_prefs = []
+    paras_by_wd = {}
     if preferred_weekdays:
         valid_prefs = tuple(sorted(set(int(w) for w in preferred_weekdays if 0 <= int(w) <= max_wd)))
 
@@ -367,9 +428,10 @@ def find_schedule_for_group(
         # Admin hafta kunlarini O'ZI tanlagan bo'lsa:
         preferred = [valid_prefs]
         days_needed = len(valid_prefs)
-        # Agar haftalik dars soni tanlangan kunlar soniga teng yoki kam bo'lsa -> kuniga 1 para,
-        # aks holda (masalan 2 kun tanlab, haftada 4 para desa) -> kuniga 2 para (juft)
-        paras_per_day = 1 if lessons_per_week <= days_needed else 2
+        paras_per_day = _get_course_schedule_params(
+            total_lessons, lessons_per_week, include_saturday, valid_prefs
+        )[2]
+        paras_by_wd = dict(zip(valid_prefs, _split_paras_per_day(lessons_per_week, days_needed)))
     else:
         # Admin kun tanlamagan bo'lsa — ESKI AVTOMATIK ALGORITM + 1 paralik rejim:
         if lessons_per_week == 1 or total_lessons == 1:
@@ -464,53 +526,39 @@ def find_schedule_for_group(
     # ── Birinchi haftadan pattern qidirish mantiqi ──
     MAX_GROUPS_PER_SLOT_NO_TEACHER = 4  # o'qituvchisiz bosqichda bitta parada eng ko'pi bilan shuncha guruh joylasha oladi
 
-    def find_best_pair(date):
+    def find_best_pair(date, day_paras=None):
+        ppd = day_paras or paras_per_day
         hard_busy = get_hard_busy(date)
         subject_busy_counts = get_subject_busy_paras(date)
-        strict_candidates = []    # subj_conflicts == 0 (hech kim band qilmagan)
-        fallback_candidates = []  # 0 < mavjud guruhlar soni < MAX_GROUPS_PER_SLOT_NO_TEACHER
+        strict_candidates = []
+        fallback_candidates = []
 
-        # ── YANGI: AGAR KUNIGA 1 PARA BO'LSA (paras_per_day == 1) ──
-        if paras_per_day == 1:
-            for p1 in range(len(PARA_TIMES)):
-                if p1 in hard_busy:
-                    continue
-                subj_conflicts = subject_busy_counts[p1]
-                existing_groups_here = subj_conflicts
-
-                if teacher_id is None:
-                    if existing_groups_here >= MAX_GROUPS_PER_SLOT_NO_TEACHER:
-                        continue
-                    if subj_conflicts > 0:
-                        fallback_candidates.append((subj_conflicts, p1, None))
-                        continue
-
-                strict_candidates.append((subj_conflicts, p1, None))
+        n_paras = len(PARA_TIMES)
+        if ppd <= 1:
+            blocks = [(p, None) for p in range(n_paras)]
+        elif ppd == 2:
+            blocks = list(VALID_PARA_PAIRS)
         else:
-            # ── ESKI MANTIQ: KUNIGA 2 PARA (JUFTLIK) QIDIRISH ──
-            for p1, p2 in VALID_PARA_PAIRS:
-                # Ustoz yoki TALABA haqiqiy to'qnashuvi — QAT'IY TAQIQ.
-                student_conflicts = sum(1 for p in (p1, p2) if p in hard_busy)
-                if student_conflicts > 0:
+            k = min(ppd, n_paras)
+            blocks = [(p, p + k - 1) for p in range(n_paras - k + 1)]
+
+        for p1, p2 in blocks:
+            span = range(p1, (p2 if p2 is not None else p1) + 1)
+            if any(p in hard_busy for p in span):
+                continue
+            subj_conflicts = sum(subject_busy_counts[p] for p in span)
+            existing_groups_here = subj_conflicts // len(span)
+            if teacher_id is None:
+                if existing_groups_here >= MAX_GROUPS_PER_SLOT_NO_TEACHER:
                     continue
-
-                subj_conflicts = subject_busy_counts[p1] + subject_busy_counts[p2]
-                existing_groups_here = subj_conflicts // 2
-
-                if teacher_id is None:
-                    if existing_groups_here >= MAX_GROUPS_PER_SLOT_NO_TEACHER:
-                        continue
-                    if subj_conflicts > 0:
-                        fallback_candidates.append((subj_conflicts, p1, p2))
-                        continue
-
-                strict_candidates.append((subj_conflicts, p1, p2))
+                if subj_conflicts > 0:
+                    fallback_candidates.append((subj_conflicts, p1, p2))
+                    continue
+            strict_candidates.append((subj_conflicts, p1, p2))
 
         candidates = strict_candidates if strict_candidates else fallback_candidates
-
         if not candidates:
             return None
-
         candidates.sort(key=lambda x: x[0])
         best = candidates[0]
         return (best[1], best[2], best[0])
@@ -564,7 +612,7 @@ def find_schedule_for_group(
                 d += timedelta(weeks=1)
             if d > end_date:
                 continue
-            pair = find_best_pair(d)
+            pair = find_best_pair(d, paras_by_wd.get(wd))
             if pair is not None:
                 trial_pattern.append((wd, pair[0], pair[1]))
 
@@ -617,12 +665,10 @@ def find_schedule_for_group(
 
             remaining = total_lessons - len(result)
 
-            # ── YANGILANGAN: 1 para (p2 is None) YOKI juft para (p1 va p2) mantiqi ──
-            if p2 is None or remaining == 1:
-                result.append((d, PARA_TIMES[p1][0], PARA_TIMES[p1][1]))
-            else:
-                result.append((d, PARA_TIMES[p1][0], PARA_TIMES[p1][1]))
-                result.append((d, PARA_TIMES[p2][0], PARA_TIMES[p2][1]))
+            remaining = total_lessons - len(result)
+            span = list(range(p1, (p2 if p2 is not None else p1) + 1))
+            for p in span[:remaining]:
+                result.append((d, PARA_TIMES[p][0], PARA_TIMES[p][1]))
 
         cur_monday += timedelta(weeks=1)
 
@@ -642,7 +688,7 @@ def find_schedule_for_group(
                     continue
                 bd = get_busy_detailed(d)
                 # p2 None bo'lishi mumkinligini hisobga olamiz (1 parali rejimda):
-                para_list = (p1,) if p2 is None else (p1, p2)
+                para_list = tuple(range(p1, (p2 if p2 is not None else p1) + 1))
                 for pi in para_list:
                     if pi in bd:
                         for occ in bd[pi]:
@@ -1408,32 +1454,7 @@ def _try_nuclear_subject_redistribution(grp, course, teacher):
 
 
 def _try_relocate_blocking_groups(grp, course, teacher):
-    """
-    YANGI, ENG KUCHLI ZANJIRLI CHORA — foydalanuvchi so'rovi bo'yicha:
-    "eng kam xato ko'rsatgan vaqtni aniqlab, shu vaqtga to'sqinlik
-    qilayotgan talabalarni boshqa guruhga o'tkazing yoki almashtiring;
-    bo'lmasa — o'sha boshqa guruhning O'ZINI boshqa joyga ko'chiring".
-
-    Farqi `_try_minimal_disruption_swap`dan: o'sha funksiya to'siq
-    talabani xuddi SHU FANNING boshqa GURUHIGA almashtirar edi (agar
-    parallel guruh bo'lsa). Bu funksiya esa — agar parallel guruh
-    UMUMAN BO'LMASA (masalan yolg'iz 18 kishilik guruh) — to'siq
-    qiluvchi talabani band qilib turgan BOSHQA FANNING guruhini
-    TOPIB, O'SHA guruhning o'zini (agar imkoni bo'lsa) BOSHQA vaqtga
-    ko'chiradi — shu orqali to'siq talaba ozod bo'ladi.
-
-    Xavfsizlik: ko'chiriladigan "to'siq guruh" boshqa joyga ko'chganda,
-    UNING o'z a'zolari uchun YANGI to'qnashuv yaratmasligi kifoya
-    tekshiriladi. Faqat BARCHA to'siq guruhlar muvaffaqiyatli
-    ko'chirilsa (yoki umuman to'siq bo'lmasa) — natija saqlanadi.
-    """
     students = list(grp.students.all())
-    # ── MUHIM BUG TUZATISH: MIN_GROUP_SIZE tekshiruvi yo'q edi! Bu funksiya
-    # guruh a'zoligini o'zgartirmaydi (faqat BOSHQA guruhlarni ko'chiradi),
-    # shuning uchun agar `grp`ning o'zi allaqachon MIN_GROUP_SIZE dan kam
-    # bo'lsa (masalan qayta guruhlashdan qolgan 4 kishilik "qoldiq"), bu
-    # funksiya uni baribir "muvaffaqiyatli" deb belgilab qo'yishi mumkin
-    # edi — bu sizning 8-18 qoidangizni ochiqchasiga buzardi.
     if len(students) < MIN_GROUP_SIZE:
         return False, None
 
@@ -1441,41 +1462,28 @@ def _try_relocate_blocking_groups(grp, course, teacher):
     teacher_id = teacher.id if teacher else None
     total_lessons = course.total_lessons
     start_date = course.start_date
-    include_saturday = getattr(course, 'include_saturday', False)
-    max_wd = 5 if include_saturday else 4
 
-    if total_lessons >= 20:
-        weekday_options = [(0, 2, 4)]
-    elif 12 <= total_lessons <= 20:
-        weekday_options = [(1, 3)]
-    else:
-        weekday_options = [(wd,) for wd in range(0, max_wd + 1)]
+    weekday_options, _, paras_per_day, para_blocks = _get_course_options_for_obj(course, grp.group_number)
 
-    # ── 1-BOSQICH: eng kam to'siqli vaqtni topish (blocker GURUHLAR bilan) ──
     candidates = []
     for wds in weekday_options:
-        dates = _slot_occurrence_dates(start_date, wds, total_lessons)
+        dates = _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day,
+                                       lessons_per_week=_lpw_for_split(course))
         if not dates:
             continue
-        for (p1, p2) in VALID_PARA_PAIRS:
-            times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+        for (p1, p2) in para_blocks:
+            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
                 continue
-            # ── MUHIM TUZATISH: bu yerda ham "bitta fandan bir parada
-            # MAX_GROUPS_PER_SLOT_NO_TEACHER (4) tadan ortiq guruh
-            # bo'lmasin" chegarasi yo'q edi — grp shu funksiya orqali
-            # allaqachon 4 ta guruh bilan to'lgan slotga ham joylashib
-            # qolishi mumkin edi (agar u yerda haqiqiy talaba to'qnashuvi
-            # bo'lmasa). Endi bunday to'lgan slotlar chetlab o'tiladi.
             if teacher_id is None:
                 existing_same_subject = GroupSchedule.objects.filter(
                     date__in=dates, start_time__in=times,
                     group__course__subject=course.subject,
                     group__is_scheduled=True,
                 ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
-                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER
+                if existing_same_subject >= 4:
                     continue
             blocking_group_ids = set(GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__students__id__in=student_ids,
@@ -1487,13 +1495,12 @@ def _try_relocate_blocking_groups(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     _, wds, p1, p2, dates, blocking_group_ids = candidates[0]
-    times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
 
     if not blocking_group_ids:
-        return False, None  # (bu holat allaqachon boshqa funksiyalar tomonidan qamrab olingan)
+        return False, None
 
-    # ── 2-BOSQICH: har bir to'siq guruh uchun muqobil vaqt qidirish ──
-    relocations = []  # [(blocking_grp, new_wds, new_p1, new_p2, new_dates), ...]
+    relocations = []
     for bgid in blocking_group_ids:
         bg = CourseGroup.objects.select_related('course', 'course__subject').get(pk=bgid)
         if not bg.course:
@@ -1501,25 +1508,18 @@ def _try_relocate_blocking_groups(grp, course, teacher):
         bg_students = list(bg.students.all())
         bg_teacher_id = bg.teacher_id
         bg_total = bg.course.total_lessons
-        bg_include_sat = getattr(bg.course, 'include_saturday', False)
-        bg_max_wd = 5 if bg_include_sat else 4
-
-        if bg_total >= 20:
-            bg_wd_opts = [(0, 2, 4)]
-        elif 12 <= bg_total <= 20:
-            bg_wd_opts = [(1, 3)]
-        else:
-            bg_wd_opts = [(wd,) for wd in range(0, bg_max_wd + 1)]
+        bg_wd_opts, _, bg_ppd, bg_blocks = _get_course_options_for_obj(bg.course, bg.group_number)
 
         found_alt = None
         for bwds in bg_wd_opts:
-            bdates = _slot_occurrence_dates(bg.course.start_date, bwds, bg_total)
+            bdates = _slot_occurrence_dates(bg.course.start_date, bwds, bg_total, paras_per_day=bg_ppd,
+                                            lessons_per_week=_lpw_for_split(bg.course))
             if not bdates:
                 continue
-            for (bp1, bp2) in VALID_PARA_PAIRS:
+            for (bp1, bp2) in bg_blocks:
                 if bwds == tuple(bg.weekdays or []) and PARA_TIMES[bp1][0] == bg.start_time:
-                    continue  # bu — uning HOZIRGI vaqti, o'tkazib yuboramiz
-                btimes = [PARA_TIMES[bp1][0], PARA_TIMES[bp2][0]]
+                    continue
+                btimes = [PARA_TIMES[bp1][0]] if bp2 is None else [PARA_TIMES[bp1][0], PARA_TIMES[bp2][0]]
                 if bg_teacher_id and GroupSchedule.objects.filter(
                     date__in=bdates, start_time__in=btimes, group__teacher_id=bg_teacher_id,
                 ).exclude(group=bg).exists():
@@ -1535,11 +1535,10 @@ def _try_relocate_blocking_groups(grp, course, teacher):
                 break
 
         if not found_alt:
-            return False, None  # Bu to'siq guruhni ko'chirib bo'lmadi -> butun urinish bekor
+            return False, None
 
         relocations.append((bg, *found_alt))
 
-    # ── 3-BOSQICH: barcha ko'chirishlar + grp'ni saqlash ──
     with transaction.atomic():
         for bg, bwds, bp1, bp2, bdates in relocations:
             bg.start_time = PARA_TIMES[bp1][0]
@@ -1547,13 +1546,8 @@ def _try_relocate_blocking_groups(grp, course, teacher):
             bg.save()
             sync_group_language(bg)
             GroupSchedule.objects.filter(group=bg).delete()
-            GroupSchedule.objects.bulk_create([
-                GroupSchedule(group=bg, date=d, start_time=PARA_TIMES[bp1][0], lesson_number=2 * i + 1)
-                for i, d in enumerate(bdates)
-            ] + [
-                GroupSchedule(group=bg, date=d, start_time=PARA_TIMES[bp2][0], lesson_number=2 * i + 2)
-                for i, d in enumerate(bdates)
-            ])
+            _create_group_schedules_bulk(bg, bdates, bp1, bp2, bg.course.total_lessons,
+                                         lessons_per_week=_lpw_for_split(bg.course))
 
         grp.start_time = times[0]
         grp.weekdays = list(wds)
@@ -1561,13 +1555,8 @@ def _try_relocate_blocking_groups(grp, course, teacher):
         grp.save()
         sync_group_language(grp)
         GroupSchedule.objects.filter(group=grp).delete()
-        GroupSchedule.objects.bulk_create([
-            GroupSchedule(group=grp, date=d, start_time=times[0], lesson_number=2 * i + 1)
-            for i, d in enumerate(dates)
-        ] + [
-            GroupSchedule(group=grp, date=d, start_time=times[1], lesson_number=2 * i + 2)
-            for i, d in enumerate(dates)
-        ])
+        _create_group_schedules_bulk(grp, dates, p1, p2, total_lessons,
+                                 lessons_per_week=_lpw_for_split(course))
 
     names = ", ".join(str(bg) for bg, *_ in relocations)
     return True, (
@@ -1735,6 +1724,9 @@ def _try_last_resort_expand_weekdays(grp, course, teacher):
     USTUVOR bo'lishi kerak — 16-paralik kurs ularning joyini "o'g'irlab"
     qo'ymasligi kerak.
     """
+    if getattr(course, 'preferred_weekdays', None):
+        return False, None
+
     if not (12 <= course.total_lessons <= 20):
         return False, None  # Faqat 16-paralik oralig'idagi kurslar uchun
 
@@ -1768,6 +1760,7 @@ def _try_last_resort_expand_weekdays(grp, course, teacher):
             og_course.lessons_per_week, og.teacher, list(og.students.all()),
             group_number=og.group_number,
             include_saturday=getattr(og_course, 'include_saturday', False),
+            preferred_weekdays=getattr(og_course, 'preferred_weekdays', None),
         )
         if len(og_sched) >= og_course.total_lessons:
             other_24_unresolved = True  # HALI real umidga ega -> ustuvorlik saqlanadi
@@ -1847,29 +1840,6 @@ def _try_last_resort_expand_weekdays(grp, course, teacher):
 
 
 def _try_regroup_same_subject(course, teacher, unresolved_groups):
-    """
-    YANGI: Bitta fanning BIR NECHTA tuzilmagan guruhi bo'lsa (masalan
-    "Organik kimyo 3-semestr — 2,3,4-guruh", uchalasi ham tuzilmagan, va
-    ular orasida hech qanday TUZILGAN parallel guruh yo'q — shuning uchun
-    oddiy almashtirish/taqsimlash ISHLAMAYDI), bu funksiya original guruh
-    chegaralarini butunlay unutib, BARCHA talabalarni birlashtirib, ularni
-    bo'sh vaqtlariga qarab ENG YAXSHI tarzda QAYTADAN guruhlaydi.
-
-    MUHIM QOIDA: yangi yaratiladigan HAR BIR guruh MIN_GROUP_SIZE (8) dan
-    kam va MAX_GROUP_SIZE (18) dan ko'p bo'la olmaydi — bu chegara hech
-    qachon buzilmaydi.
-
-    Algoritm (ochko'z klasterlash):
-    1. Barcha talabalarni bitta ro'yxatga yig'amiz (takrorlarsiz).
-    2. Har bir mumkin (hafta_kuni, para_blok) kombinatsiyasi uchun, hozircha
-       joylashtirilmagan talabalardan aynan KIMLAR to'liq mos kelishini
-       hisoblaymiz.
-    3. Eng KO'P talabaga mos keladigan kombinatsiyani tanlaymiz, undan
-       (MAX_GROUP_SIZE tagacha) yangi guruh yaratamiz.
-    4. Talabalar tugagunча yoki mos kombinatsiya qolmaguncha takrorlaymiz.
-    5. Oxirida MIN_GROUP_SIZE dan kam qolgan "guruh" hosil bo'lsa — uni
-       yaratmaymiz, o'sha talabalar tuzilmagan holicha qoladi.
-    """
     all_students = []
     seen_ids = set()
     for g in unresolved_groups:
@@ -1883,67 +1853,38 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
 
     total_lessons = course.total_lessons
     start_date = course.start_date
-    include_saturday = getattr(course, 'include_saturday', False)
-    max_wd = 5 if include_saturday else 4
     teacher_id = teacher.id if teacher else None
 
-    if total_lessons >= 20:
-        weekday_options = [(0, 2, 4)]
-    elif 12 <= total_lessons <= 20:
-        weekday_options = [(1, 3)]
-    else:
-        weekday_options = [(wd,) for wd in range(0, max_wd + 1)]
+    weekday_options, _, paras_per_day, para_blocks = _get_course_options_for_obj(course)
 
     all_candidates = []
     for wds in weekday_options:
-        dates = _slot_occurrence_dates(start_date, wds, total_lessons)
+        dates = _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day,
+                                       lessons_per_week=_lpw_for_split(course))
         if not dates:
             continue
-        for (p1, p2) in VALID_PARA_PAIRS:
-            times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+        for (p1, p2) in para_blocks:
+            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exists():
-                continue  # o'qituvchi shu vaqtda band -> bu kombinatsiya umuman ishlatilmaydi
+                continue
             all_candidates.append((wds, p1, p2, dates, times))
 
     remaining = list(all_students)
-    new_groups = []  # [(students, wds, p1, p2, dates), ...]
-
-    # ── MUHIM TUZATISH: bu "ochko'z klasterlash" tsikli ilgari HAR BIR
-    # iteratsiyada eng ko'p talabaga mos keladigan (hafta_kuni, para)
-    # kombinatsiyasini tanlar, lekin shu kombinatsiya ALLAQACHON NECHTA
-    # YANGI GURUHGA ishlatilganini hisobga OLMAS edi. Natijada — agar
-    # talabalarning aksariyati faqat BITTA vaqtda bo'sh bo'lsa (masalan
-    # 08:30) — barcha yangi guruhlar (6 tagacha yoki undan ham ko'p)
-    # xuddi shu bitta vaqtga cheksiz ravishda to'planib qolardi, chunki
-    # o'qituvchi biriktirilmagan bosqichda bu combo hech qachon "band"
-    # deb belgilanmasdi. Endi har bir combo uchun nechta guruh
-    # yaratilganini sanaymiz va MAX_GROUPS_PER_SLOT_NO_TEACHER (4) ga
-    # yetgach, o'sha combo keyingi tanlovlardan CHIQARIB TASHLANADI —
-    # shunda qolgan talabalar haqiqatan ham BOSHQA vaqtga taqsimlanadi.
+    new_groups = []
     MAX_GROUPS_PER_SLOT_NO_TEACHER = 4
     combo_usage_count = defaultdict(int)
 
-    # ── TUZATILGAN: endi bu tsikl "eng ko'p talabaga mos keladigan"
-    # combo'ni EMAS, balki "ENG KAM ISHLATILGAN (iloji bo'lsa hali
-    # umuman ishlatilmagan) combo'ni AFZAL ko'radi — mos keladigan
-    # talaba soni faqat TENGLIK bo'lganda hal qiluvchi omil bo'ladi.
-    # Shunday qilib guruhlar avval BOSHQA-BOSHQA bo'sh vaqtlarga
-    # tarqaladi (masalan 2-2-2), va faqat haqiqatan boshqa imkoniyat
-    # qolmaganda bitta vaqtga 4 tagacha to'planadi. Bu — kamroq
-    # o'qituvchi bilan ko'proq guruhni qamrab olish imkonini beradi
-    # (turli vaqtdagi guruhlarni bitta o'qituvchi ketma-ket o'qitishi
-    # mumkin bo'ladi).
     while len(remaining) >= MIN_GROUP_SIZE and all_candidates:
-        best = None  # (score, wds, p1, p2, dates, matched_students)
+        best = None
         for wds, p1, p2, dates, times in all_candidates:
             usage = 0
             if teacher_id is None:
                 combo_key = (wds, p1, p2)
                 usage = combo_usage_count[combo_key]
                 if usage >= MAX_GROUPS_PER_SLOT_NO_TEACHER:
-                    continue  # bu vaqt allaqachon 4 ta guruh bilan to'lgan — o'tkazib yuboramiz
+                    continue
             matched = [
                 s for s in remaining
                 if not GroupSchedule.objects.filter(
@@ -1951,7 +1892,6 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
                 ).exists()
             ]
             if len(matched) >= MIN_GROUP_SIZE:
-                # Ustuvorlik: 1) kamroq ishlatilgan combo, 2) ko'proq mos kelgan talaba
                 score = (usage, -len(matched))
                 if best is None or score < best[0]:
                     best = (score, wds, p1, p2, dates, matched)
@@ -1960,19 +1900,12 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
             break
 
         _, wds, p1, p2, dates, matched = best
-        group_students = matched[:MAX_GROUP_SIZE]  # MAX_GROUP_SIZE — hech qachon buzilmaydi
+        group_students = matched[:MAX_GROUP_SIZE]
         new_groups.append([group_students, wds, p1, p2, dates])
         combo_usage_count[(wds, p1, p2)] += 1
         matched_ids = {s.id for s in group_students}
         remaining = [s for s in remaining if s.id not in matched_ids]
 
-    # ── YANGI: "TO'LDIRISH" BOSQICHI ──
-    # Asosiy klasterlash tugagach, ba'zi YANGI guruhlarda hali bo'sh joy
-    # qolgan bo'lishi mumkin (masalan 13/18), va `remaining`da qolgan
-    # talabalardan ba'zilari aynan o'sha guruhning vaqtiga mos kelishi
-    # mumkin (garchi ular "eng katta" klasterga tushmagan bo'lsa ham).
-    # Bunday talabalarni MAX_GROUP_SIZE chegarasini buzmasdan qo'shib
-    # chiqamiz — bu "qoldiq" sonini kamaytiradi.
     if remaining and new_groups:
         still_remaining = []
         for s in remaining:
@@ -1981,7 +1914,7 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
                 group_students, wds, p1, p2, dates = group_ref
                 if len(group_students) >= MAX_GROUP_SIZE:
                     continue
-                times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+                times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
                 conflict = GroupSchedule.objects.filter(
                     date__in=dates, start_time__in=times, group__students=s,
                 ).exists()
@@ -2018,13 +1951,8 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
             new_grp.weekdays = list(wds)
             new_grp.save()
             sync_group_language(new_grp)
-            GroupSchedule.objects.bulk_create([
-                GroupSchedule(group=new_grp, date=d, start_time=PARA_TIMES[p1][0], lesson_number=2 * i + 1)
-                for i, d in enumerate(dates)
-            ] + [
-                GroupSchedule(group=new_grp, date=d, start_time=PARA_TIMES[p2][0], lesson_number=2 * i + 2)
-                for i, d in enumerate(dates)
-            ])
+            _create_group_schedules_bulk(new_grp, dates, p1, p2, total_lessons,
+                                 lessons_per_week=_lpw_for_split(course))
 
         if remaining:
             leftover_grp = CourseGroup.objects.create(
@@ -2188,6 +2116,7 @@ def _try_partial_distribute_and_reschedule(grp, course, teacher, same_course_gro
             course.lessons_per_week, teacher, remaining_students,
             group_number=grp.group_number,
             include_saturday=getattr(course, 'include_saturday', False),
+            preferred_weekdays=getattr(course, 'preferred_weekdays', None),
         )
         remaining_scheduled = len(new_schedule) >= course.total_lessons
 
@@ -2240,26 +2169,6 @@ def _try_partial_distribute_and_reschedule(grp, course, teacher, same_course_gro
 
 
 def _force_place_at_least_blocked_slot(grp, course, teacher):
-    """
-    YANGI (foydalanuvchi so'roviga ko'ra): agar guruh HECH QANDAY usul
-    bilan (talaba almashtirish, ko'chirish, yadroviy qayta taqsimlash,
-    aqlli bo'lish) to'qnashuvsiz joylasha olmasa — uni butunlay
-    "yo'qotib qo'yish" o'rniga, ENG KAM to'siqli vaqtga (ma'lum,
-    kichik to'qnashuv bilan) BAHOSIGA QARAMASDAN joylashtiramiz.
-
-    Sabab: shunda bu guruh HAFTALIK JADVAL sahifasida ko'rinadi va
-    admin uni istalgan boshqa joyga QO'LDA tortib ko'chira oladi —
-    "ko'rinmas, qayerda ekanligi noma'lum" muammoli guruh o'rniga,
-    "ko'rinadigan, lekin diqqat talab qiladigan" guruhga aylanadi.
-
-    MUHIM: bu funksiya `CourseGroup.is_scheduled`ni ATAYLAB `False`
-    holicha QOLDIRADI — shunda "Darslar" ro'yxati sahifasida bu guruh
-    hamon "⏳ Jadval tuzilmagan" deb to'g'ri ko'rsatiladi (haqiqatan
-    ham hali TO'LIQ, XAVFSIZ joylashmagan, faqat VIZUAL/QO'LDA
-    boshqarish uchun taxminiy joyga qo'yilgan). Haftalik jadval
-    sahifasi esa GroupSchedule yozuvlari MAVJUDLIGIGA qarab ko'rsatadi
-    (is_scheduled emas) — shu orqali ikkalasi mos keladi.
-    """
     students = list(grp.students.all())
     student_ids = set(s.id for s in students)
     teacher_id = teacher.id if teacher else None
@@ -2268,24 +2177,20 @@ def _force_place_at_least_blocked_slot(grp, course, teacher):
     include_saturday = getattr(course, 'include_saturday', False)
     max_wd = 5 if include_saturday else 4
 
-    if total_lessons >= 20:
-        weekday_options = [(0, 2, 4)]
-    elif 12 <= total_lessons <= 20:
-        weekday_options = [(1, 3)]
-    else:
-        weekday_options = [(wd,) for wd in range(0, max_wd + 1)]
+    weekday_options, _, paras_per_day, para_blocks = _get_course_options_for_obj(course, grp.group_number)
 
     candidates = []
     for wds in weekday_options:
-        dates = _slot_occurrence_dates(start_date, wds, total_lessons)
+        dates = _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day,
+                                       lessons_per_week=_lpw_for_split(course))
         if not dates:
             continue
-        for (p1, p2) in VALID_PARA_PAIRS:
-            times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+        for (p1, p2) in para_blocks:
+            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
-                continue  # o'qituvchi to'qnashuvini baribir hech qachon ruxsat bermaymiz
+                continue
             blocker_ids = set(GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__students__id__in=student_ids,
             ).exclude(group=grp).values_list('group__students__id', flat=True))
@@ -2296,29 +2201,24 @@ def _force_place_at_least_blocked_slot(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     blocker_count, wds, p1, p2, dates, blocker_ids = candidates[0]
-    times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
 
     blocker_names = sorted(str(s) for s in students if s.id in blocker_ids)
 
     grp.weekdays = list(wds)
     grp.start_time = times[0]
-    # is_scheduled ATAYLAB o'zgartirilmaydi (False holicha qoladi)
     grp.save(update_fields=['weekdays', 'start_time'])
 
     GroupSchedule.objects.filter(group=grp).delete()
-    GroupSchedule.objects.bulk_create([
-        GroupSchedule(group=grp, date=d, start_time=times[0], lesson_number=2 * i + 1) for i, d in enumerate(dates)
-    ] + [
-        GroupSchedule(group=grp, date=d, start_time=times[1], lesson_number=2 * i + 2) for i, d in enumerate(dates)
-    ])
+    _create_group_schedules_bulk(grp, dates, p1, p2, total_lessons,
+                                 lessons_per_week=_lpw_for_split(course))
 
-    weekday_names = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'][:max_wd + 1]
-    wd_str = ", ".join(weekday_names[w] for w in wds)
+    weekday_names = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba']
+    wd_str = ", ".join(weekday_names[w] for w in wds if w < len(weekday_names))
     msg = (
         f"⚠️ '{grp}' guruhi HECH QANDAY usul bilan to'qnashuvsiz joylasha olmadi — "
         f"shuning uchun ENG KAM to'siqli vaqtga ({wd_str}, {times[0].strftime('%H:%M')}) "
-        f"TAXMINIY joylashtirildi (bu 'Jadval tuzilmagan' holatida qoladi, lekin haftalik "
-        f"jadvalda ko'rinadi va qo'lda ko'chirish mumkin). "
+        f"TAXMINIY joylashtirildi. "
         f"To'siq talaba(lar) ({blocker_count} ta): {', '.join(blocker_names)}."
     )
     return True, msg
@@ -2439,84 +2339,36 @@ def _diagnose_true_blockers(grp, course, teacher):
 
 
 def _try_minimal_disruption_swap(grp, course, teacher):
-    """
-    YANGI, ENG KUCHLI resolver — foydalanuvchi talabiga ko'ra:
-    "100% avtomatlashtirilishi kerak, qolganlari buzilsa ham sinab ko'raversin,
-    eng kam muammolisini topsin".
-
-    Ishlash tartibi:
-    1. Guruh uchun BARCHA mumkin (hafta_kuni, para_blok) kombinatsiyalarini
-       sanaydi va HAR BIRIDA nechta talaba to'siq ekanini hisoblaydi.
-    2. ENG KAM to'siqli variantni tanlaydi (masalan 08:30da 2ta, 12:00da 5ta
-       bo'lsa — 08:30 tanlanadi).
-    3. Har bir to'siq talaba uchun, xuddi shu fanning BOSHQA (hatto
-       muvaffaqiyatli tuzilgan) guruhlaridan mos NOMZOD qidiradi — ya'ni
-       "meni band qilgan talaba" bilan "u band bo'lgan boshqa guruhdagi,
-       lekin MENING vaqtimda bo'sh bo'lgan talaba"ni ALMASHTIRADI. Bu —
-       ikkala tomon ham o'z jadvaliga mos kelishini talab qiladigan haqiqiy
-       (ikki tomonlama) almashtirish, shuning uchun boshqa muvaffaqiyatli
-       guruh HAM davom etadi (faqat bitta talabasi almashadi).
-    4. Agar biror to'siq talaba uchun HECH QANDAY nomzod topilmasa (masalan
-       uning butun haftasi allaqachon boshqa fanlar bilan to'lgan) — faqat
-       O'SHA talaba(lar) asosiy guruhdan chiqarilib, alohida (tuzilmagan)
-       kichik guruhga o'tkaziladi — BUTUN guruh emas, faqat haqiqatan iloji
-       yo'q individual talaba(lar) "hal qilinmagan" deb qoladi.
-
-    Natija: MIN_GROUP_SIZE (8) qoidasi doim saqlanadi — agar juda ko'p
-    talaba chiqib ketishi kerak bo'lib, qolgan qism 8 dan kam bo'lib
-    qolsa, bu urinish butunlay bekor qilinadi (False qaytadi).
-    """
     students = list(grp.students.all())
     student_ids = set(s.id for s in students)
     teacher_id = teacher.id if teacher else None
     total_lessons = course.total_lessons
     start_date = course.start_date
-    include_saturday = getattr(course, 'include_saturday', False)
-    max_wd = 5 if include_saturday else 4
 
-    # ── MUHIM: agar guruh BOSHIDANOQ MIN_GROUP_SIZE dan kam bo'lsa
-    # (masalan 6-7 kishilik "qoldiq"), bu funksiya uni MUSTAQIL guruh
-    # sifatida TUZMAYDI — hatto to'qnashuvsiz vaqt topilsa ham. Sabab:
-    # foydalanuvchi qoidasi — "hech qaysi guruh 8 dan kam bo'lmasin" —
-    # bu funksiyaning o'zi hajmni o'zgartirmasa ham amal qiladi. Bunday
-    # kichik qoldiqlar boshqa (parallel) guruhga QO'SHILISHI kerak, mustaqil
-    # guruh sifatida emas — buni `_try_partial_distribute_and_reschedule`
-    # yoki `_try_dissolve_and_distribute_group` bajaradi.
     if len(students) < MIN_GROUP_SIZE:
         return False, None, []
 
-    if total_lessons >= 20:
-        weekday_options = [(0, 2, 4)]
-    elif 12 <= total_lessons <= 20:
-        weekday_options = [(1, 3)]
-    else:
-        weekday_options = [(wd,) for wd in range(0, max_wd + 1)]
+    weekday_options, _, paras_per_day, para_blocks = _get_course_options_for_obj(course, grp.group_number)
 
-    # ── 1-2 BOSQICH: eng kam to'siqli (hafta_kuni, blok) ni topish ──
     candidates = []
     for wds in weekday_options:
-        dates = _slot_occurrence_dates(start_date, wds, total_lessons)
+        dates = _slot_occurrence_dates(start_date, wds, total_lessons, paras_per_day=paras_per_day,
+                                       lessons_per_week=_lpw_for_split(course))
         if not dates:
             continue
-        for (p1, p2) in VALID_PARA_PAIRS:
-            times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+        for (p1, p2) in para_blocks:
+            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
-                continue  # o'qituvchi band -> bu slot umuman ishlamaydi
-            # ── MUHIM TUZATISH: bu yerda ham "bitta fandan bir parada
-            # MAX_GROUPS_PER_SLOT_NO_TEACHER (4) tadan ortiq guruh
-            # bo'lmasin" chegarasi hisobga olinmagan edi — natijada bu
-            # funksiya (talaba almashtirish orqali) allaqachon 4 ta guruh
-            # bilan TO'LGAN slotga yana bir guruhni "siqib kirita" olardi.
-            # Endi bunday to'lgan slotlar butunlay nomzodlikdan chiqariladi.
+                continue
             if teacher_id is None:
                 existing_same_subject = GroupSchedule.objects.filter(
                     date__in=dates, start_time__in=times,
                     group__course__subject=course.subject,
                     group__is_scheduled=True,
                 ).exclude(group=grp).values_list('group_id', flat=True).distinct().count()
-                if existing_same_subject >= 4:  # MAX_GROUPS_PER_SLOT_NO_TEACHER
+                if existing_same_subject >= 4:
                     continue
             blocker_ids = set(GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__students__id__in=student_ids,
@@ -2528,9 +2380,8 @@ def _try_minimal_disruption_swap(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     _, wds, p1, p2, dates, blocker_ids = candidates[0]
-    times = [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
 
-    # ── 3-BOSQICH: har bir to'siq talaba uchun almashtirish nomzodi qidirish ──
     same_subject_groups = list(course.groups.exclude(pk=grp.pk).filter(is_scheduled=True).order_by('pk'))
     swaps = []
     unresolved = []
@@ -2567,33 +2418,14 @@ def _try_minimal_disruption_swap(grp, course, teacher):
         else:
             unresolved.append(blocker)
 
-    # ── MUHIM BUG TUZATISH: agar boshidanoq HECH QANDAY to'siq bo'lmasa
-    # (blocker_ids bo'sh) — bu ALLAQACHON to'liq bo'sh, mukammal slot
-    # topilgani, hech qanday almashtirish kerak emasligini bildiradi.
-    # Eski kod buni "swaps bo'sh -> muvaffaqiyatsiz" deb XATO talqin
-    # qilardi — aslida bu ENG YAXSHI holat (0 talaba chiqarish/almashtirish
-    # kerak emas). Endi bu holatni alohida, to'g'ri tekshiramiz.
     if not blocker_ids:
-        pass  # swaps=[] bilan davom etamiz — pastdagi saqlash bloki buni to'g'ri bajaradi
+        pass
     elif not swaps:
         return False, None, []
 
-    # YANGI (foydalanuvchi talabiga ko'ra): endi FAQAT hamma to'siq talaba
-    # uchun almashtirish topilgan bo'lsagina davom etamiz. Agar birortasiga
-    # ham nomzod topilmasa — BUTUN urinish bekor qilinadi, hech kim
-    # guruhdan chiqarilmaydi va hech qanday kichik "qoldiq" guruh
-    # yaratilmaydi (guruh shunchaki "hal qilinmagan" bo'lib qoladi, keyingi
-    # resolverga yoki qo'lda ko'rib chiqishga o'tadi).
     if unresolved:
         return False, None, []
 
-    # Eslatma: bu yerda MIN_GROUP_SIZE tekshiruvi KERAK EMAS — chunki bu
-    # funksiya `grp` hajmini HECH QACHON o'zgartirmaydi (har bir chiqqan
-    # talabaga aynan bittadan kiruvchi to'g'ri keladi, sof almashtirish).
-    # Agar `grp` boshidanoq MIN_GROUP_SIZE dan kam bo'lgan "qoldiq" guruh
-    # bo'lsa ham (masalan 6 kishi) — bu funksiya uning hajmini
-    # o'zgartirmagani uchun bu holat qoidani buzmaydi.
-    # ── 4-BOSQICH: saqlash (swap + yakuniy guruh tarkibi) ──
     with transaction.atomic():
         for blocker, cand, og in swaps:
             og_students = [s for s in og.students.all() if s.id != cand.id]
@@ -2613,17 +2445,8 @@ def _try_minimal_disruption_swap(grp, course, teacher):
         sync_group_language(grp)
 
         GroupSchedule.objects.filter(group=grp).delete()
-        GroupSchedule.objects.bulk_create([
-            GroupSchedule(group=grp, date=d, start_time=times[0], lesson_number=2 * i + 1)
-            for i, d in enumerate(dates)
-        ] + [
-            GroupSchedule(group=grp, date=d, start_time=times[1], lesson_number=2 * i + 2)
-            for i, d in enumerate(dates)
-        ])
-        # YANGI: endi bu funksiya faqat TO'LIQ muvaffaqiyatli bo'lgandagina
-        # shu yergacha yetib keladi (barcha to'siqlar almashtirilgan), shuning
-        # uchun "qoldiq guruh" yaratish shart emas — hech kim ortiqcha
-        # chiqarilmaydi, MIN_GROUP_SIZE hech qachon buzilmaydi.
+        _create_group_schedules_bulk(grp, dates, p1, p2, total_lessons,
+                                 lessons_per_week=_lpw_for_split(course))
 
     names_swapped = ", ".join(f"{b} <-> {c}" for b, c, _ in swaps)
     if swaps:
@@ -2736,6 +2559,8 @@ def _try_split_group_and_schedule(grp, course, teacher, num_parts=2):
             course.start_date, course.end_date, course.total_lessons,
             course.lessons_per_week, teacher, part_students,
             group_number=grp.group_number,
+            include_saturday=getattr(course, 'include_saturday', False),  # ← YANGI
+            preferred_weekdays=getattr(course, 'preferred_weekdays', None),
         )
         if len(sched) < course.total_lessons:
             return False, (
@@ -3748,6 +3573,16 @@ def build_schedule(request):
             if not course or not grp.weekdays or not grp.start_time:
                 continue
             wds = tuple(sorted(grp.weekdays))
+            _, _, grp_paras_per_day = _get_course_schedule_params(
+                course.total_lessons, course.lessons_per_week,
+                getattr(course, 'include_saturday', False),
+                getattr(course, 'preferred_weekdays', None),
+                group_number=grp.group_number,
+            )
+            if getattr(course, 'preferred_weekdays', None):
+                continue
+            if grp_paras_per_day != 2:
+                continue  # 1-parali kurslar uchun juftlik tekshiruvi qo'llanilmaydi
             target_pair = None
             for (pp1, pp2) in VALID_PARA_PAIRS:
                 if PARA_TIMES[pp1][0] == grp.start_time:

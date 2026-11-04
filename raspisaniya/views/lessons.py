@@ -28,6 +28,26 @@ def get_expected_lessons_per_week(total_lessons, user_lessons_per_week=None, pre
         return 2
 
 
+def normalize_lessons_per_week(lessons_per_week, preferred_weekdays):
+    """Haftalik para soni YOZILGANIDEK qoladi (3 para/2 kun = 2+1).
+    Faqat har tanlangan kunga kamida 1 para tushmasa (kunlar soni > para soni)
+    yoki kuniga 6 paradan oshib ketsa, moslashtiriladi."""
+    n = len(preferred_weekdays or [])
+    lpw = int(lessons_per_week)
+    if n == 0:
+        return lpw, None
+    if lpw < n:
+        return n, (
+            f"Siz {n} ta hafta kunini tanladingiz: har kunga kamida 1 para tushishi uchun "
+            f"haftalik para soni {lpw} dan {n} ga o'zgartirildi."
+        )
+    if lpw > 6 * n:
+        return 6 * n, (
+            f"Bir kunda 6 paradan ko'p bo'lmaydi: haftalik para soni {lpw} dan {6 * n} ga o'zgartirildi."
+        )
+    return lpw, None
+
+
 def _group_has_any_real_conflict(group):
     """
     Berilgan guruhning BARCHA (o'zgartirilgan yoki o'zgartirilmagan,
@@ -362,16 +382,12 @@ def lesson_create(request):
         # Agar foydalanuvchi kunlarni tanlagan bo'lsa-yu, lekin haftalik dars soni
         # tanlangan kunlar sonidan kam bo'lsa (masalan 3 kun tanlab, haftada 1 para yozsa),
         # har bir tanlangan kunga kamida 1 paradan tushishi uchun moslaymiz:
-        if preferred_weekdays and lessons_per_week < len(preferred_weekdays):
-            lessons_per_week = len(preferred_weekdays)
-            messages.info(
-                request,
-                f"Siz {len(preferred_weekdays)} ta hafta kunini tanlaganingiz uchun "
-                f"haftalik dars soni {lessons_per_week} para etib belgilandi."
-            )
+        lessons_per_week, lpw_note = normalize_lessons_per_week(lessons_per_week, preferred_weekdays)
+        if lpw_note:
+            messages.info(request, lpw_note)
 
         weeks_needed = math.ceil(total_lessons / max(1, lessons_per_week))
-        end_date = start_date + timedelta(weeks=weeks_needed)
+        end_date = start_date + timedelta(weeks=weeks_needed, days=6)
         end_date_raw = end_date.strftime("%Y-%m-%d")
 
         all_students = list(Student.objects.filter(debts=subject).distinct())
@@ -1040,7 +1056,10 @@ def course_update(request, pk):
         course.start_date = parse_date(start_date_raw)
         course.end_date = parse_date(end_date_raw)
         course.total_lessons = int(total_lessons)
-        course.lessons_per_week = int(lessons_per_week)
+        lpw_value, lpw_note = normalize_lessons_per_week(int(lessons_per_week), preferred_weekdays)
+        course.lessons_per_week = lpw_value
+        if lpw_note:
+            messages.info(request, lpw_note)
         course.preferred_weekdays = preferred_weekdays
         if 5 in preferred_weekdays:
             course.include_saturday = True

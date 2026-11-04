@@ -52,13 +52,13 @@
                 </button>
             </form>
             {% endif %}
-                            <form method="post" action="{% url 'add_group_and_redistribute' course.pk 'uz' %}"
-      onsubmit="return confirm('Yangi guruh qo\'shilsin va barcha O\'zbek guruhlar qayta taqsimlansinmi? Eski jadval o\'chadi!');">
-    {% csrf_token %}
-    <button type="submit" class="btn btn-sm btn-success">
-        ➕ Guruh qo'shish
-    </button>
-</form>
+            <form method="post" action="{% url 'add_group_and_redistribute' course.pk 'uz' %}"
+                  onsubmit="return confirm('Yangi guruh qo\'shilsin va barcha O\'zbek guruhlar qayta taqsimlansinmi? Eski jadval o\'chadi!');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success">
+                    ➕ Guruh qo'shish
+                </button>
+            </form>
             <a href="{% url 'lesson_schedule_excel' course.pk %}" class="btn btn-success">
                 ⬇ Excel
             </a>
@@ -76,16 +76,26 @@
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2 py-2"
                  style="background:linear-gradient(135deg,#1a237e,#1565c0);color:white;">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
-                    <span class="fw-bold">👥 <span id="group-num-text-{{ item.group.pk }}">{{ item.group.group_number }}</span>-Guruh</span>
-                    <button class="btn btn-sm btn-outline-light py-0 px-1" title="Guruh raqamini o'zgartirish"
-                        onclick="const f = document.getElementById('group-edit-form-{{ item.group.pk }}'); f.style.display = f.style.display === 'none' ? 'inline-flex' : 'none';">
-                        ✏️
-                    </button>
-                    <form method="post" action="{% url 'change_group_number' item.group.pk %}" id="group-edit-form-{{ item.group.pk }}" style="display:none;" class="d-flex gap-1 align-items-center ms-2">
+
+                    {# ── Guruh raqamini joyida o'zgartirish ── #}
+                    <form method="post" action="{% url 'change_group_number' item.group.pk %}"
+                          class="group-num-form d-flex align-items-center gap-2 mb-0">
                         {% csrf_token %}
-                        <input type="number" name="group_number" value="{{ item.group.group_number }}" class="form-control form-control-sm" style="width: 70px;" min="1" required>
-                        <button type="submit" class="btn btn-sm btn-light py-0">Saqlash</button>
+                        <span class="fw-bold">👥</span>
+                        <span class="fw-bold group-num-view" id="group-num-text-{{ item.group.pk }}">{{ item.group.group_number }}</span>
+                        <input type="number" name="group_number"
+                               value="{{ item.group.group_number }}"
+                               data-original="{{ item.group.group_number }}"
+                               class="form-control form-control-sm group-num-input d-none"
+                               style="width:70px;" min="1" required>
+                        <span class="fw-bold">-Guruh</span>
+                        <button type="button" class="btn btn-sm btn-outline-light py-0 px-1 group-num-edit-btn"
+                                title="Guruh raqamini o'zgartirish">✏️</button>
+                        <button type="submit" class="btn btn-sm btn-light py-0 fw-bold group-num-save-btn d-none">
+                            💾 Saqlash
+                        </button>
                     </form>
+
                     <span class="badge bg-white text-primary">
                         {% if item.group.language == 'uz' %}O'zbek
                         {% elif item.group.language == 'ru' %}Rus
@@ -150,7 +160,6 @@
                             </button>
                         </p>
 
-                        {# SHU ERDA DROP-DOWN O'ZGARTIRILDI #}
                         <div style="display:none;" class="px-3 mb-2 gap-2">
                             <form method="post" action="{% url 'change_teacher' item.group.pk %}" class="d-flex gap-2 w-100">
                                 {% csrf_token %}
@@ -333,11 +342,8 @@
                                                         <option value="16:30" {% if sched_item.start_time == "16:30" %}selected{% endif %}>6-para — 16:30–17:50</option>
                                                     </select>
                                                 </div>
-                                                {# ── YANGI: "Bu va keyingi barcha haftalarga qo'llash" checkbox.
-                                                     Faqat VAQT o'zgarganda ishlaydi — agar KUN (sana) ham
-                                                     o'zgartirilsa, bu bitta istisno hisoblanadi va checkbox
-                                                     belgilangan bo'lsa ham e'tiborga olinmaydi (backendda
-                                                     shunday himoyalangan). ── #}
+                                                {# "Bu va keyingi barcha haftalarga qo'llash" — faqat VAQT o'zgarganda ishlaydi;
+                                                   sana ham o'zgartirilsa, backendda e'tiborga olinmaydi. #}
                                                 <div class="form-check mt-1">
                                                     <input class="form-check-input" type="checkbox"
                                                         name="apply_to_future" value="1"
@@ -374,6 +380,36 @@ function toggleTimeEdit(pk) {
     const el = document.getElementById('time-edit-' + pk);
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
+
+// ── Guruh raqamini joyida o'zgartirish ──
+document.querySelectorAll('.group-num-form').forEach(function(form) {
+    const view  = form.querySelector('.group-num-view');
+    const input = form.querySelector('.group-num-input');
+    const edit  = form.querySelector('.group-num-edit-btn');
+    const save  = form.querySelector('.group-num-save-btn');
+
+    function setEditing(on) {
+        view.classList.toggle('d-none', on);
+        input.classList.toggle('d-none', !on);
+        save.classList.toggle('d-none', !on);
+        edit.textContent = on ? '✖' : '✏️';
+        edit.title = on ? 'Bekor qilish' : "Guruh raqamini o'zgartirish";
+        if (on) {
+            input.focus();
+            input.select();
+        } else {
+            input.value = input.dataset.original; // bekor qilinsa eski qiymat
+        }
+    }
+
+    edit.addEventListener('click', function() {
+        setEditing(input.classList.contains('d-none'));
+    });
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') setEditing(false);
+    });
+});
 
 // ── Talaba qidiruvli dropdown ──
 document.querySelectorAll('.student-search-input').forEach(function(input) {
