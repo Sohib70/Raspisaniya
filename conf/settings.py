@@ -109,12 +109,24 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     )
 # }
 
+# DATABASES = {
+#     'default': dj_database_url.config(
+#         default=env.str('DATABASE_URL', default='sqlite:///db.sqlite3'),
+#         conn_max_age=600
+#     )
+# }
+
 DATABASES = {
     'default': dj_database_url.config(
-        default=env.str('DATABASE_URL', default='sqlite:///db.sqlite3'),
-        conn_max_age=600
+        default=env.str('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+        conn_max_age=600,
     )
 }
+
+# Lokal kompyuterda (SQLite da) qotmasligi uchun avtomatik himoya:
+if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+    DATABASES['default']['CONN_MAX_AGE'] = 0
+    DATABASES['default']['OPTIONS'] = {'timeout': 30}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

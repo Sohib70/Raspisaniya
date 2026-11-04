@@ -341,13 +341,16 @@ def lesson_create(request):
         if min_students < 1:
             min_students = 1
 
-        all_subjects = Subject.objects.all()
-        subjects_data = []
-        for subj in all_subjects:
-            count = Student.objects.filter(debts=subj).count()
-            if count > 0:
-                subjects_data.append({'subject': subj, 'student_count': count})
-        subjects_data.sort(key=lambda d: d['student_count'], reverse=True)
+        from django.db.models import Count
+        annotated_subjects = (
+            Subject.objects.annotate(student_count=Count('debt_students', distinct=True))
+            .filter(student_count__gt=0)
+            .order_by('-student_count')
+        )
+        subjects_data = [
+            {'subject': subj, 'student_count': subj.student_count}
+            for subj in annotated_subjects
+        ]
 
         return render(request, "raspisaniya/lesson_create.html", {
             "step": 1,
@@ -548,37 +551,34 @@ def lesson_schedule(request, pk):
         id__in=all_group_student_ids
     )
 
-    # 2. Shu fanga ixtisoslashgan barcha o'qituvchilar ro'yxati (Dropdown uchun asos)
-    course_teachers = Teacher.objects.filter(subjects=course.subject).order_by('first_name')
+    # 2. Shu fanga ixtisoslashgan barcha o'qituvchilar ro'yxati
+    course_teachers = list(Teacher.objects.filter(subjects=course.subject).order_by('first_name'))
 
-    # Hafta kunlari nomlari lug'ati (agar loyihangizda yuqorida bo'lsa o'chirib qo'yishingiz mumkin)
+    # ✅ OPTIMALLASHTIRILDI: Barcha shu fan o'qituvchilarining band vaqtlarini BITTA SQL so'rovda olamiz
+    teacher_busy_slots = defaultdict(set)
+    if course_teachers:
+        for tid, d, st in GroupSchedule.objects.filter(
+                group__teacher__in=course_teachers
+        ).values_list('group__teacher_id', 'date', 'start_time'):
+            if st:
+                teacher_busy_slots[tid].add((d, st))
+
     WEEKDAY_NAMES = {0: 'Dushanba', 1: 'Seshanba', 2: 'Chorshanba', 3: 'Payshanba', 4: 'Juma', 5: 'Shanba'}
 
     groups_data = []
     for grp in groups:
-        # Guruhning dars vaqtlari ro'yxatini shakllantiramiz
-        group_schedules = grp.schedule.exclude(start_time__isnull=True).values('date', 'start_time')
+        my_slots = {
+            (s.date, s.start_time or grp.start_time)
+            for s in grp.schedule.all()
+            if (s.start_time or grp.start_time)
+        }
 
-        # ── O'QITUVCHILARNING BANDLIGINI TEKSHIRISH (Joriy guruh uchun) ──
         teachers_with_status = []
         for teacher in course_teachers:
-            is_busy = False
-
-            # Agar o'qituvchi joriy guruhning o'z o'qituvchisi bo'lsa, uni band deb ko'rsatmaymiz
-            if grp.teacher == teacher:
+            if grp.teacher_id == teacher.id:
                 is_busy = False
             else:
-                # O'qituvchining dars vaqtlarini joriy guruhniki bilan solishtiramiz
-                for sched in group_schedules:
-                    clash_exists = GroupSchedule.objects.filter(
-                        date=sched['date'],
-                        start_time=sched['start_time'],
-                        group__teacher=teacher
-                    ).exists()
-
-                    if clash_exists:
-                        is_busy = True
-                        break  # Bitta to'qnashuv topilsa, ushbu o'qituvchi uchun tekshiruvni to'xtatamiz
+                is_busy = bool(my_slots & teacher_busy_slots[teacher.id])
 
             teachers_with_status.append({
                 'id': teacher.id,
@@ -586,9 +586,8 @@ def lesson_schedule(request, pk):
                 'is_busy': is_busy
             })
 
-        # Jadvallarni formatlash
         schedule_list = []
-        for s in grp.schedule.all().order_by('lesson_number'):
+        for s in sorted(grp.schedule.all(), key=lambda x: x.lesson_number):
             st = s.start_time or grp.start_time
             if st:
                 end_t = (datetime.datetime.combine(s.date, st) + duration).time()
@@ -605,12 +604,11 @@ def lesson_schedule(request, pk):
                 "end_time": end_str,
             })
 
-        # Har bir guruh uchun unga xos bo'lgan o'qituvchilar ro'yxatini (band/bo'sh statusi bilan) qo'shamiz
         groups_data.append({
             "group": grp,
             "schedule_list": schedule_list,
             "addable_students": addable_students,
-            "teachers_list": teachers_with_status,  # <--- Yangi qo'shilgan qism
+            "teachers_list": teachers_with_status,
         })
 
     return render(request, "raspisaniya/lesson_schedule.html", {
@@ -664,23 +662,25 @@ def lesson_schedule_excel(request, pk):
         else:
             ws = wb.create_sheet(title=f"{grp.group_number}-guruh")
 
-        ws.append(["#", "Sana", "Hafta kuni", "Boshlanish", "Tugash", "O'qituvchi"])
-        for s in grp.schedule.all():
-            if grp.start_time:
-                end_t = (datetime.datetime.combine(s.date, grp.start_time) + duration).time()
-                ws.append([
-                    s.lesson_number,
-                    s.date.strftime("%d.%m.%Y"),
-                    WEEKDAYS.get(s.date.weekday(), ""),
-                    grp.start_time.strftime("%H:%M"),
-                    end_t.strftime("%H:%M"),
-                    str(grp.teacher),
-                ])
+    teacher_name = str(grp.teacher) if grp.teacher else "O'qituvchi biriktirilmagan"
+    ws.append(["#", "Sana", "Hafta kuni", "Boshlanish", "Tugash", "O'qituvchi"])
+    for s in grp.schedule.all().order_by('lesson_number'):
+        st_time = s.start_time or grp.start_time
+        if st_time:
+            end_t = (datetime.datetime.combine(s.date, st_time) + duration).time()
+            ws.append([
+                s.lesson_number,
+                s.date.strftime("%d.%m.%Y"),
+                WEEKDAYS.get(s.date.weekday(), ""),
+                st_time.strftime("%H:%M"),
+                end_t.strftime("%H:%M"),
+                teacher_name,
+            ])
 
-        ws2 = wb.create_sheet(title=f"{grp.group_number}-guruh talabalar")
-        ws2.append(["#", "O'quvchi", "O'qituvchi"])
-        for idx, st in enumerate(grp.students.all(), 1):
-            ws2.append([idx, str(st), str(grp.teacher)])
+    ws2 = wb.create_sheet(title=f"{grp.group_number}-guruh talabalar")
+    ws2.append(["#", "O'quvchi", "O'qituvchi"])
+    for idx, st in enumerate(grp.students.all(), 1):
+        ws2.append([idx, str(st), teacher_name])
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1440,7 +1440,7 @@ def sched_info(request, sched_pk):
         'group_number': sched.group.group_number,
     })
 
-
+@login_required
 def sched_info_ajax(request, sched_id):
     try:
         current_sched = get_object_or_404(GroupSchedule, pk=sched_id)
@@ -1508,7 +1508,7 @@ def sched_info_ajax(request, sched_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
-
+@login_required
 def student_schedule_info(request, student_pk):
     try:
         # Talabani bazadan qidiramiz

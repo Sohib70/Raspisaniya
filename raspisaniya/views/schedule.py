@@ -1472,7 +1472,7 @@ def _try_relocate_blocking_groups(grp, course, teacher):
         if not dates:
             continue
         for (p1, p2) in para_blocks:
-            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+            times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
@@ -1495,7 +1495,7 @@ def _try_relocate_blocking_groups(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     _, wds, p1, p2, dates, blocking_group_ids = candidates[0]
-    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
 
     if not blocking_group_ids:
         return False, None
@@ -1519,7 +1519,7 @@ def _try_relocate_blocking_groups(grp, course, teacher):
             for (bp1, bp2) in bg_blocks:
                 if bwds == tuple(bg.weekdays or []) and PARA_TIMES[bp1][0] == bg.start_time:
                     continue
-                btimes = [PARA_TIMES[bp1][0]] if bp2 is None else [PARA_TIMES[bp1][0], PARA_TIMES[bp2][0]]
+                btimes = [PARA_TIMES[p][0] for p in range(bp1, (bp2 if bp2 is not None else bp1) + 1)]
                 if bg_teacher_id and GroupSchedule.objects.filter(
                     date__in=bdates, start_time__in=btimes, group__teacher_id=bg_teacher_id,
                 ).exclude(group=bg).exists():
@@ -1864,7 +1864,7 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
         if not dates:
             continue
         for (p1, p2) in para_blocks:
-            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+            times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exists():
@@ -1914,7 +1914,7 @@ def _try_regroup_same_subject(course, teacher, unresolved_groups):
                 group_students, wds, p1, p2, dates = group_ref
                 if len(group_students) >= MAX_GROUP_SIZE:
                     continue
-                times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+                times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
                 conflict = GroupSchedule.objects.filter(
                     date__in=dates, start_time__in=times, group__students=s,
                 ).exists()
@@ -2186,7 +2186,7 @@ def _force_place_at_least_blocked_slot(grp, course, teacher):
         if not dates:
             continue
         for (p1, p2) in para_blocks:
-            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+            times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
@@ -2201,7 +2201,7 @@ def _force_place_at_least_blocked_slot(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     blocker_count, wds, p1, p2, dates, blocker_ids = candidates[0]
-    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
 
     blocker_names = sorted(str(s) for s in students if s.id in blocker_ids)
 
@@ -2357,7 +2357,7 @@ def _try_minimal_disruption_swap(grp, course, teacher):
         if not dates:
             continue
         for (p1, p2) in para_blocks:
-            times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+            times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
             if teacher_id and GroupSchedule.objects.filter(
                 date__in=dates, start_time__in=times, group__teacher_id=teacher_id,
             ).exclude(group=grp).exists():
@@ -2380,7 +2380,7 @@ def _try_minimal_disruption_swap(grp, course, teacher):
 
     candidates.sort(key=lambda c: c[0])
     _, wds, p1, p2, dates, blocker_ids = candidates[0]
-    times = [PARA_TIMES[p1][0]] if p2 is None else [PARA_TIMES[p1][0], PARA_TIMES[p2][0]]
+    times = [PARA_TIMES[p][0] for p in range(p1, (p2 if p2 is not None else p1) + 1)]
 
     same_subject_groups = list(course.groups.exclude(pk=grp.pk).filter(is_scheduled=True).order_by('pk'))
     swaps = []

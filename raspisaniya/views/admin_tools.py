@@ -79,7 +79,7 @@ def reset_database_view(request):
 
     return render(request, 'raspisaniya/reset_database.html', {'done': False})
 
-
+@staff_member_required
 def export_database_view(request):
     """Backup yaratish — serverda saqlaydi va yuklab olish imkonini beradi."""
     from datetime import datetime as dt
@@ -129,6 +129,7 @@ def restore_database_view(request):
         )
         try:
             # Ketma-ketlikda tozalaymiz (foreign key tartibida)
+            DailyGrade.objects.all().delete()  # <-- QO'SHILDI
             Attendance.objects.all().delete()
             Grade.objects.all().delete()
             GroupSchedule.objects.all().delete()
@@ -138,17 +139,22 @@ def restore_database_view(request):
             Teacher.objects.all().delete()
             Room.objects.all().delete()
             Subject.objects.all().delete()
-            # MUHIM: `Group` (talaba guruhi, masalan "21-KI-01") oldin o'chirilmagan edi —
-            # shu sabab eski nomlar bazada qolib, tiklashda `UNIQUE constraint failed:
-            # raspisaniya_group.name` xatosini berardi.
             Group.objects.all().delete()
-            # Auth userlarni ham tozalaymiz (superuser qolsin)
             User.objects.filter(is_superuser=False).delete()
         except Exception as e:
             return f"Tozalashda xato: {e}"
 
         try:
             management.call_command('loaddata', filepath, ignorenonexistent=True)
+            # ✅ PostgreSQL uchun ID hisoblagichlarni (sequence) avtomatik to'g'irlash:
+            from django.core.management.color import no_style
+            from django.db import connection
+            from django.apps import apps
+            app_models = list(apps.get_app_config('raspisaniya').get_models()) + [User]
+            sequence_sql = connection.ops.sequence_reset_sql(no_style(), app_models)
+            with connection.cursor() as cursor:
+                for sql in sequence_sql:
+                    cursor.execute(sql)
             return None  # Xato yo'q
         except Exception as e:
             return str(e)
@@ -183,7 +189,7 @@ def restore_database_view(request):
 
         # 2. Serverda saqlangan backup dan tiklash
         if action == 'restore_saved':
-            filename = request.POST.get('filename', '')
+            filename = os.path.basename(request.POST.get('filename', ''))
             filepath = os.path.join(backup_dir, filename)
             if os.path.exists(filepath):
                 err = do_restore(filepath)
@@ -197,7 +203,7 @@ def restore_database_view(request):
 
         # 3. Backup o'chirish
         if action == 'delete_backup':
-            filename = request.POST.get('filename', '')
+            filename = os.path.basename(request.POST.get('filename', ''))
             filepath = os.path.join(backup_dir, filename)
             if os.path.exists(filepath) and filename.endswith('.json'):
                 os.remove(filepath)

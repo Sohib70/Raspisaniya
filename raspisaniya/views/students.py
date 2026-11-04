@@ -176,7 +176,10 @@ def admin_change_student_password(request, pk):
 def student_delete(request, pk):
     student = get_object_or_404(Student, pk=pk)
     if request.method == 'POST':
+        user = student.user
         student.delete()
+        if user and not user.is_superuser and not user.is_staff:
+            user.delete()
         messages.success(request, "O'quvchi o'chirildi")
         return redirect('student_list')
     return render(request, 'raspisaniya/student_delete.html', {'student': student})

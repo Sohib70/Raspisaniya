@@ -98,9 +98,17 @@ def download_vedomost(request, group_id):
     elements.append(Spacer(1, 10))
 
     # Hujjat haqida avtomatik ma'lumotlar
+    teacher_str = (
+        f"{group.teacher.last_name} {group.teacher.first_name}".strip()
+        if group.teacher else "O'qituvchi biriktirilmagan"
+    )
+    # Hujjat haqida avtomatik ma'lumotlar
+    teacher_str = (
+        f"{group.teacher.last_name} {group.teacher.first_name}".strip()
+        if group.teacher else "O'qituvchi biriktirilmagan"
+    )
     elements.append(Paragraph(f"<b>Fan nomi:</b> {group.course.subject.name}", subtitle_style))
-    elements.append(
-        Paragraph(f"<b>Fan o'qituvchisi:</b> {group.teacher.last_name} {group.teacher.first_name}", subtitle_style))
+    elements.append(Paragraph(f"<b>Fan o'qituvchisi:</b> {teacher_str}", subtitle_style))
     elements.append(Paragraph(f"<b>Qaydnoma to'ldirilgan sana:</b> {qayd_sana}", subtitle_style))
     elements.append(Spacer(1, 12))
 
@@ -119,27 +127,37 @@ def download_vedomost(request, group_id):
 
     table_data = [headers]
 
+    # ✅ OPTIMALLASHTIRILDI: Tsikl ichida har bir talaba uchun alohida SQL yubormasdan,
+    # barcha baholar va qoldirilgan darslar sonini oldindan 2 ta so'rovda olamiz:
+    students = list(group.students.select_related('group').order_by('last_name', 'first_name'))
+    total_lessons = group.schedule.count()
+
+    grade_map = {
+        g.student_id: g
+        for g in Grade.objects.filter(course_group=group)
+    }
+    from django.db.models import Count as _Count
+    missed_map = dict(
+        Attendance.objects.filter(schedule__group=group, is_present=False)
+        .values_list('student_id')
+        .annotate(cnt=_Count('id'))
+    )
+
     # Talabalarni aylantirib jadval qatorlarini to'ldirish
     for idx, student in enumerate(students, 1):
         full_name = f"{student.last_name} {student.first_name}"
         haqiqiy_guruh = student.group.name if student.group else "Mavjud emas"
 
-        # Baholarni Grade modelidan olish
-        grade_obj = Grade.objects.filter(student=student, course_group=group).first()
-
-        # Davomat foizini aniqlash (25% lik blok sharti uchun)
-        total_lessons = group.schedule.count()
-        missed_count = Attendance.objects.filter(student=student, schedule__in=group.schedule.all(),
-                                                 is_present=False).count()
+        grade_obj = grade_map.get(student.id)
+        missed_count = missed_map.get(student.id, 0)
         missed_percent = (missed_count / total_lessons * 100) if total_lessons > 0 else 0
 
-        # 🌟 O'ZGARISH SHU YERDA: Bloklangan yoki yiqilgan talabaga 2 qo'yilmaydi
         if missed_percent > 25:
             jn = "0"
             on = "0"
             yn = "0"
             umumiy = "0"
-            baho = "-"  # "2 (Blok)" o'rniga faqat chiziqcha qoldiramiz
+            baho = "-"
         else:
             jn_val = grade_obj.current if (grade_obj and grade_obj.current is not None) else 0
             on_val = grade_obj.midterm if (grade_obj and grade_obj.midterm is not None) else 0
@@ -152,7 +170,6 @@ def download_vedomost(request, group_id):
             yn = str(yn_val)
             umumiy = str(total_val)
 
-            # Reyting shkalasi konvertatsiyasi
             if total_val >= 86:
                 baho = "5"
             elif total_val >= 71:
@@ -160,9 +177,8 @@ def download_vedomost(request, group_id):
             elif total_val >= 56:
                 baho = "3"
             else:
-                baho = "-"  # 56 dan kam bo'lsa ham "2" qo'yilmaydi, bo'sh (chiziqcha) qoladi
+                baho = "-"
 
-        # Qator ma'lumotlarini o'z stillari bilan jadvalga qo'shish
         table_data.append([
             Paragraph(str(idx), table_center_text),
             Paragraph(f"<b>{full_name}</b>", table_text_style),
@@ -174,7 +190,6 @@ def download_vedomost(request, group_id):
             Paragraph(baho, table_center_text),
             Paragraph("", table_text_style),
         ])
-
     # Ustunlar kengligi
     col_widths = [28, 155, 72, 35, 35, 35, 50, 60, 65]
 

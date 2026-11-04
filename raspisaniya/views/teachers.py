@@ -222,7 +222,10 @@ def teacher_update(request, pk):
 def teacher_delete(request, pk):
     teacher = get_object_or_404(Teacher, pk=pk)
     if request.method == 'POST':
+        user = teacher.user
         teacher.delete()
+        if user and not user.is_superuser and not user.is_staff:
+            user.delete()
         messages.success(request, "O'qituvchi o'chirildi")
         return redirect('teacher_list')
     return render(request, 'raspisaniya/teacher_delete.html', {'teacher': teacher})
