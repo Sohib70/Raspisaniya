@@ -125,11 +125,11 @@ def restore_database_view(request):
         from django.contrib.auth.models import User
         from raspisaniya.models import (
             Student, Teacher, Subject, CourseGroup, Group,
-            GroupSchedule, Room, Course, Attendance, Grade
+            GroupSchedule, Room, Course, Attendance, Grade, DailyGrade
         )
         try:
             # Ketma-ketlikda tozalaymiz (foreign key tartibida)
-            DailyGrade.objects.all().delete()  # <-- QO'SHILDI
+            DailyGrade.objects.all().delete()
             Attendance.objects.all().delete()
             Grade.objects.all().delete()
             GroupSchedule.objects.all().delete()
@@ -146,6 +146,7 @@ def restore_database_view(request):
 
         try:
             management.call_command('loaddata', filepath, ignorenonexistent=True)
+
             # ✅ PostgreSQL uchun ID hisoblagichlarni (sequence) avtomatik to'g'irlash:
             from django.core.management.color import no_style
             from django.db import connection
@@ -155,6 +156,7 @@ def restore_database_view(request):
             with connection.cursor() as cursor:
                 for sql in sequence_sql:
                     cursor.execute(sql)
+
             return None  # Xato yo'q
         except Exception as e:
             return str(e)

@@ -222,6 +222,6 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'xolburiyev@gmail.com'
-EMAIL_HOST_PASSWORD = 'tnaf shym fyzj qdqj'  # Google account dan olingan maxsus ilova paroli
+EMAIL_HOST_PASSWORD = 'parol'  # Google account dan olingan maxsus ilova paroli
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 ADMIN_RESET_TARGET_EMAIL = env.str('ADMIN_RESET_TARGET_EMAIL', default='xolburiyev@gmail.com')
