@@ -40,7 +40,6 @@ def download_vedomost(request, group_id):
 
     # Guruh ma'lumotlarini bazadan olish
     group = get_object_or_404(CourseGroup, pk=group_id)
-    students = group.students.all().order_by('last_name', 'first_name')
 
     # 1. AVTOMATIK VEDOMOST RAQAMINI SHAKLLANTIRISH
     start_year = group.course.start_date.year if group.course.start_date else datetime.date.today().year

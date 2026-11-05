@@ -87,6 +87,11 @@ VALID_PARA_PAIRS = [
     (4, 5),  # 3-blok: 15:00 - 17:50
 ]
 
+HEADER_FONT = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+HEADER_FILL = PatternFill(start_color="1A237E", end_color="1A237E", fill_type="solid")
+CENTER_ALIGN = Alignment(horizontal="center", vertical="center")
+LEFT_ALIGN = Alignment(horizontal="left", vertical="center")
+
 # ── Guruh hajmi chegaralari (konflikt-hal qiluvchi barcha avtomatik
 # funksiyalarda BIR XIL qo'llanadi — talaba ko'chirish/almashtirish/
 # majburiy chiqarishda guruh bu chegaradan tashqariga chiqmasligi kerak) ──
@@ -100,6 +105,7 @@ def is_admin(user):
     return user.is_superuser
 
 
+@login_required
 def stats_api(request):
     return JsonResponse({
         'lessons': Course.objects.count(),

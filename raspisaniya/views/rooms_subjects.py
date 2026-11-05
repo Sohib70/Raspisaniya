@@ -80,35 +80,24 @@ def assign_room(request, group_pk):
 @login_required
 def subject_list(request):
     q = request.GET.get('q', '').strip()
+    sort_by = request.GET.get('sort_by', 'subject')   # subject yoki debt
+    direction = request.GET.get('direction', 'asc')   # asc yoki desc
 
-    # Saralash parametrlari (default holatda Fan nomi bo'yicha ASC)
-    sort_by = request.GET.get('sort_by', 'subject')  # subject yoki debt
-    direction = request.GET.get('direction', 'asc')  # asc yoki desc
-
-    # Fanlarni va ularga tegishli qarzdorlarni bazadan yuklash
-    subjects_queryset = Subject.objects.prefetch_related('debt_students').all()
-
+    subjects_queryset = Subject.objects.all()
     if q:
         subjects_queryset = subjects_queryset.filter(name__icontains=q)
+    subjects_queryset = subjects_queryset.prefetch_related('debt_students')
 
-    # Saralash mantiqi aniq ishlashi uchun ma'lumotlar ro'yxatini yig'amiz
-    subjects_data = []
-    for subj in subjects_queryset:
-        subjects_data.append({
-            'subject': subj,
-            'debt_count': subj.debt_students.count()  # Qarzdorlar soni
-        })
+    subjects_data = [
+        {'subject': subj, 'debt_count': len(subj.debt_students.all())}  # prefetch keshidan
+        for subj in subjects_queryset
+    ]
 
-    # Python orqali mukammal saralash
     is_reverse = (direction == 'desc')
-
-    if sort_by == 'subject':
-        # Fan nomi bo'yicha saralash
-        subjects_data.sort(key=lambda x: (x['subject'].name or '').lower(), reverse=is_reverse)
-
-    elif sort_by == 'debt':
-        # Qarzdor talabalar soni bo'yicha saralash
+    if sort_by == 'debt':
         subjects_data.sort(key=lambda x: x['debt_count'], reverse=is_reverse)
+    else:
+        subjects_data.sort(key=lambda x: (x['subject'].name or '').lower(), reverse=is_reverse)
 
     return render(request, 'raspisaniya/subject_list.html', {
         'subjects_data': subjects_data,
@@ -116,7 +105,6 @@ def subject_list(request):
         'sort_by': sort_by,
         'direction': direction,
     })
-
 
 @login_required
 def subject_create(request):

@@ -313,8 +313,10 @@ def lesson_list(request):
 
     courses_data = []
     for course in courses:
-        total = course.groups.count()
-        scheduled = course.groups.filter(is_scheduled=True).count()
+        all_grps = list(course.groups.all())
+        total = len(all_grps)
+        scheduled = sum(1 for g in all_grps if g.is_scheduled)
+        has_unassigned = any(g.teacher_id is None for g in all_grps)
 
         # Kurs guruhlari ichida o'qituvchisi biriktirilmagan guruh bormi?
         # Agar kamida 1 ta o'qituvchisiz guruh bo'lsa True, hammasida bo'lsa False qaytaradi
@@ -1435,7 +1437,7 @@ def sched_info(request, sched_pk):
         'students': students,
         'total': len(students),
         'subject': str(sched.group.course.subject),
-        'teacher': str(sched.group.teacher),
+        'teacher': str(sched.group.teacher) if sched.group.teacher else "O'qituvchi biriktirilmagan",
         'room': str(sched.group.room) if sched.group.room else '—',
         'group_number': sched.group.group_number,
     })
