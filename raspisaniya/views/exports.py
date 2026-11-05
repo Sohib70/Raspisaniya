@@ -97,11 +97,7 @@ def download_vedomost(request, group_id):
     elements.append(Paragraph(f"BAHOLASH QAYDNOMASI № {vedomost_no}", title_style))
     elements.append(Spacer(1, 10))
 
-    # Hujjat haqida avtomatik ma'lumotlar
-    teacher_str = (
-        f"{group.teacher.last_name} {group.teacher.first_name}".strip()
-        if group.teacher else "O'qituvchi biriktirilmagan"
-    )
+
     # Hujjat haqida avtomatik ma'lumotlar
     teacher_str = (
         f"{group.teacher.last_name} {group.teacher.first_name}".strip()

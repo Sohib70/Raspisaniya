@@ -4035,7 +4035,7 @@ def apply_expand_weekdays_suggestion(request, group_pk):
         )
     return redirect('build_schedule')
 
-
+@login_required
 def apply_teacher_suggestion(request, group_pk, teacher_pk):
     """Taklif: guruhga boshqa o'qituvchini biriktirish."""
     if request.method == "POST":
@@ -4455,6 +4455,7 @@ def auto_assign_rooms(request):
     })
 
 
+@login_required
 def teacher_capacity_check(request):
     """
     O'qituvchilar uchun matematik imkoniyat tekshiruvi.

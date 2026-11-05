@@ -117,6 +117,7 @@ def export_database_view(request):
     return response
 
 
+@staff_member_required
 def restore_database_view(request):
     backup_dir = get_backups_dir()
 

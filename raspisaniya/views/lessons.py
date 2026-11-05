@@ -662,25 +662,25 @@ def lesson_schedule_excel(request, pk):
         else:
             ws = wb.create_sheet(title=f"{grp.group_number}-guruh")
 
-    teacher_name = str(grp.teacher) if grp.teacher else "O'qituvchi biriktirilmagan"
-    ws.append(["#", "Sana", "Hafta kuni", "Boshlanish", "Tugash", "O'qituvchi"])
-    for s in grp.schedule.all().order_by('lesson_number'):
-        st_time = s.start_time or grp.start_time
-        if st_time:
-            end_t = (datetime.datetime.combine(s.date, st_time) + duration).time()
-            ws.append([
-                s.lesson_number,
-                s.date.strftime("%d.%m.%Y"),
-                WEEKDAYS.get(s.date.weekday(), ""),
-                st_time.strftime("%H:%M"),
-                end_t.strftime("%H:%M"),
-                teacher_name,
-            ])
+        teacher_name = str(grp.teacher) if grp.teacher else "O'qituvchi biriktirilmagan"
+        ws.append(["#", "Sana", "Hafta kuni", "Boshlanish", "Tugash", "O'qituvchi"])
+        for s in grp.schedule.all().order_by('lesson_number'):
+            st_time = s.start_time or grp.start_time
+            if st_time:
+                end_t = (datetime.datetime.combine(s.date, st_time) + duration).time()
+                ws.append([
+                    s.lesson_number,
+                    s.date.strftime("%d.%m.%Y"),
+                    WEEKDAYS.get(s.date.weekday(), ""),
+                    st_time.strftime("%H:%M"),
+                    end_t.strftime("%H:%M"),
+                    teacher_name,
+                ])
 
-    ws2 = wb.create_sheet(title=f"{grp.group_number}-guruh talabalar")
-    ws2.append(["#", "O'quvchi", "O'qituvchi"])
-    for idx, st in enumerate(grp.students.all(), 1):
-        ws2.append([idx, str(st), teacher_name])
+        ws2 = wb.create_sheet(title=f"{grp.group_number}-guruh talabalar")
+        ws2.append(["#", "O'quvchi", "O'qituvchi"])
+        for idx, st in enumerate(grp.students.all(), 1):
+            ws2.append([idx, str(st), teacher_name])
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1511,7 +1511,6 @@ def sched_info_ajax(request, sched_id):
 @login_required
 def student_schedule_info(request, student_pk):
     try:
-        # Talabani bazadan qidiramiz
         student = get_object_or_404(Student, pk=student_pk)
 
         WEEKDAY_NAMES_LOCAL = {
@@ -1519,7 +1518,6 @@ def student_schedule_info(request, student_pk):
             3: 'Payshanba', 4: 'Juma', 5: 'Shanba', 6: 'Yakshanba'
         }
 
-        # Talaba a'zo bo'lgan barcha guruhlarni (CourseGroup) yuklaymiz
         groups = CourseGroup.objects.filter(
             students=student
         ).select_related('course__subject', 'teacher', 'room').prefetch_related('schedule')
@@ -1527,10 +1525,8 @@ def student_schedule_info(request, student_pk):
         result = []
         for grp in groups:
             days_set = {}
-            # Guruhning bazadagi barcha dars sanalarini tekshiramiz
-            all_scheds = grp.schedule.all().order_by('date', 'start_time')
-
-            for sched in all_scheds:
+            # ✅ .order_by() olib tashlandi — prefetch keshidan o'qiydi (bazaga qayta so'rov yubormaydi)
+            for sched in grp.schedule.all():
                 st = sched.start_time or grp.start_time
                 if not st:
                     continue
@@ -1542,20 +1538,24 @@ def student_schedule_info(request, student_pk):
                     end_min = st.hour * 60 + st.minute + 80
                     end_h, end_m = divmod(end_min, 60)
                     days_set[key] = {
+                        'wd_idx': wd,
                         'weekday': WEEKDAY_NAMES_LOCAL.get(wd, ''),
                         'time': f"{st.strftime('%H:%M')} – {end_h:02d}:{end_m:02d}",
                     }
 
-            # Hafta kunlari tartibida saralash
-            days = sorted(
-                days_set.values(),
-                key=lambda d: list(WEEKDAY_NAMES_LOCAL.values()).index(d['weekday']) if d[
-                                                                                            'weekday'] in WEEKDAY_NAMES_LOCAL.values() else 9
+            # ✅ Hafta kuni va vaqti bo'yicha toza saralash
+            sorted_days = sorted(days_set.values(), key=lambda d: (d['wd_idx'], d['time']))
+            days = [{'weekday': d['weekday'], 'time': d['time']} for d in sorted_days]
+
+            # ✅ O'qituvchi yo'q bo'lsa "O'qituvchi biriktirilmagan" deb chiqaradi
+            teacher_name = (
+                f"{grp.teacher.last_name} {grp.teacher.first_name}".strip()
+                if grp.teacher else "O'qituvchi biriktirilmagan"
             )
 
             result.append({
                 'subject': str(grp.course.subject),
-                'teacher': f"{grp.teacher.last_name} {grp.teacher.first_name}".strip() if grp.teacher else "O'qituvchi",
+                'teacher': teacher_name,
                 'room': str(grp.room) if grp.room else '—',
                 'days': days,
             })
