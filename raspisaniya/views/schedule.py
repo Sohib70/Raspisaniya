@@ -3029,32 +3029,6 @@ def build_schedule(request):
             if not unscheduled_groups:
                 break
 
-            from collections import defaultdict as _dd
-            by_course = _dd(list)
-            for g in unscheduled_groups:
-                if g.course_id:
-                    by_course[g.course_id].append(g)
-
-            regrouped_any = False
-            for course_id, groups_here in by_course.items():
-                if len(groups_here) < 2:
-                    continue
-                course_obj = groups_here[0].course
-                has_scheduled_sibling = CourseGroup.objects.filter(
-                    course_id=course_id, is_scheduled=True
-                ).exists()
-                if has_scheduled_sibling:
-                    continue
-                teacher_here = groups_here[0].teacher if groups_here[0].teacher_id else None
-                ok, msg = _try_regroup_same_subject(course_obj, teacher_here, groups_here)
-                if ok:
-                    auto_resolve_messages.append(msg)
-                    regrouped_any = True
-
-            if regrouped_any:
-                iteration_success_count = 1
-                continue
-
             unscheduled_list = sorted(unscheduled_groups, key=sort_key)
             iteration_success_count = 0
 
@@ -3443,52 +3417,6 @@ def build_schedule(request):
                 leftover.students.set(final_leftover_students)
                 sync_group_language(leftover)
 
-        # ── YANGI: GURUH HAJMLARINI TENGLASHTIRISH ──
-        from collections import defaultdict as _dd2
-        scheduled_by_course = _dd2(list)
-        for g in CourseGroup.objects.filter(is_scheduled=True).select_related('course').prefetch_related('students'):
-            if g.course_id:
-                scheduled_by_course[g.course_id].append(g)
-
-        for course_id, course_groups in scheduled_by_course.items():
-            if len(course_groups) < 2:
-                continue
-            for _ in range(50):
-                course_groups.sort(key=lambda g: g.students.count())
-                smallest = course_groups[0]
-                largest = course_groups[-1]
-                diff = largest.students.count() - smallest.students.count()
-                if diff <= 1:
-                    break
-
-                smallest_times = set(
-                    GroupSchedule.objects.filter(group=smallest).values_list('date', 'start_time')
-                )
-                moved_one = False
-                for s in list(largest.students.all()):
-                    if largest.students.count() - 1 < MIN_GROUP_SIZE:
-                        break
-                    if smallest.students.count() + 1 > MAX_GROUP_SIZE:
-                        break
-                    s_busy = set(
-                        GroupSchedule.objects.filter(group__students=s)
-                        .exclude(group=largest).values_list('date', 'start_time')
-                    )
-                    if s_busy & smallest_times:
-                        continue
-                    new_largest = [x for x in largest.students.all() if x.id != s.id]
-                    largest.students.set(new_largest)
-                    sync_group_language(largest)
-                    new_smallest = list(smallest.students.all()) + [s]
-                    smallest.students.set(new_smallest)
-                    sync_group_language(smallest)
-                    moved_one = True
-                    break
-                if not moved_one:
-                    break
-
-        # ── TENGLASHTIRISHDAN KEYIN QOLGAN TUZILMAGAN GURUHLARNI YANA BIR
-        # MARTA _try_minimal_disruption_swap BILAN SINAB KO'RISH ──
         still_unscheduled_for_mds = list(
             CourseGroup.objects.filter(is_scheduled=False, schedule__isnull=True)
             .select_related('course', 'teacher').prefetch_related('students')
