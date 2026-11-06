@@ -89,4 +89,8 @@ urlpatterns = [
     path('course/<int:course_pk>/add-group/<str:language>/', views.add_group_and_redistribute, name='add_group_and_redistribute'),
 
     path('group/<int:group_pk>/change-number/', views.change_group_number, name='change_group_number'),
+
+    path('apply-minimal-swap/<int:group_pk>/', views.apply_minimal_disruption_swap, name='apply_minimal_disruption_swap'),
+    path('apply-student-swap/<int:group_pk>/', views.apply_student_swap_suggestion, name='apply_student_swap_suggestion'),
+    path('sched-info-modal/<int:sched_pk>/', views.sched_info, name='sched_info'),
 ]

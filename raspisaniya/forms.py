@@ -36,6 +36,8 @@ class TeacherForm(forms.ModelForm):
 
 
 class StudentForm(forms.ModelForm):
+    last_name = forms.CharField(required=False, widget=forms.HiddenInput())
+
     class Meta:
         model = Student
         fields = ['first_name', 'last_name', 'group', 'language', 'debts']

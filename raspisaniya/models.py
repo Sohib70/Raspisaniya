@@ -15,26 +15,26 @@ WEEKDAY_CHOICES = [
 
 
 class Subject(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=255, unique=True)
 
     def __str__(self):
         return self.name
 
 
 class Group(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=150, unique=True)
 
     def __str__(self):
         return self.name
 
 
 class Student(models.Model):
-    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True,related_name='student')
-    student_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
-    first_name = models.CharField(max_length=50)
-    last_name = models.CharField(max_length=50)
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='student')
+    student_id = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150, blank=True, default='')
     group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
-    language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
+    language = models.CharField(max_length=20, choices=LANGUAGE_CHOICES, default='uz')
     debts = models.ManyToManyField(Subject, related_name='debt_students', blank=True)
 
     def get_full_name(self):
@@ -46,10 +46,10 @@ class Student(models.Model):
 
 
 class Teacher(models.Model):
-    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True,related_name='teacher')
-    teacher_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
-    first_name = models.CharField(max_length=50)
-    last_name = models.CharField(max_length=50)
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='teacher')
+    teacher_id = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    first_name = models.CharField(max_length=150)
+    last_name = models.CharField(max_length=150, blank=True, default='')
     subjects = models.ManyToManyField(Subject, related_name='teachers', blank=True)
 
     def __str__(self):
@@ -88,10 +88,10 @@ class CourseGroup(models.Model):
     group_number = models.PositiveIntegerField(default=1)
     start_time = models.TimeField(null=True, blank=True)
     weekdays = models.JSONField(default=list, blank=True)
-    language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='uz')
+    language = models.CharField(max_length=30, default='uz')  # uz, ru, uz-ru va h.k. uchun
     is_scheduled = models.BooleanField(default=False)
     room = models.ForeignKey('Room', null=True, blank=True, on_delete=models.SET_NULL)
-    teacher_can_edit = models.BooleanField(default=False)  # Admin ruxsat bergan
+    teacher_can_edit = models.BooleanField(default=False)
     display_col = models.PositiveIntegerField(null=True, blank=True)  # Haftalik jadval ustuni (N-QATOR) — admin qo'lda tortib qo'ygan ustun raqami
 
     def __str__(self):

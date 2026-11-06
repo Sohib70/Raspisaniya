@@ -318,9 +318,6 @@ def lesson_list(request):
         scheduled = sum(1 for g in all_grps if g.is_scheduled)
         has_unassigned = any(g.teacher_id is None for g in all_grps)
 
-        # Kurs guruhlari ichida o'qituvchisi biriktirilmagan guruh bormi?
-        # Agar kamida 1 ta o'qituvchisiz guruh bo'lsa True, hammasida bo'lsa False qaytaradi
-        has_unassigned = course.groups.filter(teacher__isnull=True).exists()
 
         courses_data.append({
             'course': course,
