@@ -88,6 +88,13 @@ def student_create(request):
 
             with transaction.atomic():
                 student = form.save(commit=False)
+                # Agar familiya va ism alohida kelsa ham, bitta F.I.Sh. qilib birlashtiramiz
+                first_part = request.POST.get("first_name", "").strip()
+                last_part = request.POST.get("last_name", "").strip()
+                full_name = f"{last_part} {first_part}".strip() if last_part else first_part
+
+                student.first_name = full_name
+                student.last_name = ""
                 student.student_id = student_id
                 student.save()
                 form.save_m2m()
@@ -95,7 +102,7 @@ def student_create(request):
                     username=student_id,
                     password=password if password else student_id,
                     first_name=student.first_name,
-                    last_name=student.last_name,
+                    last_name="",
                 )
                 student.user = user
                 student.save()

@@ -39,10 +39,11 @@ class Student(models.Model):
 
     def get_full_name(self):
         """Talabaning ism va familiyasini birlashtirib qaytaradi"""
-        return f"{self.first_name} {self.last_name}".strip()
+        return f"{self.last_name} {self.first_name}".strip()
 
     def __str__(self):
-        return self.first_name or self.student_id or "Talaba"
+        full = f"{self.last_name} {self.first_name}".strip()
+        return full or self.student_id or "Talaba"
 
 
 class Teacher(models.Model):
