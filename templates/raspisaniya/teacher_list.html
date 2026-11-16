@@ -1,10 +1,16 @@
 {% extends 'raspisaniya/base.html' %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>👨‍🏫 O'qituvchilar ro'yxati</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">👨‍🏫 O'qituvchilar ro'yxati</h2>
+
     <div class="d-flex gap-2">
-        <a href="{% url 'teacher_create' %}" class="btn btn-success">➕ O'qituvchi qo'shish</a>
+        <a href="{% url 'export_teachers_excel' %}" class="btn btn-primary shadow-sm">
+            <i class="fas fa-file-excel"></i> Excelda yuklash
+        </a>
+        <a href="{% url 'teacher_create' %}" class="btn btn-success shadow-sm">
+            ➕ O'qituvchi qo'shish
+        </a>
     </div>
 </div>
 

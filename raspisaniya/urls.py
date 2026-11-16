@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views import exports # Funksiya qayerda turganiga qarab import qilasiz
 
 urlpatterns = [
     # Course (Dars)
@@ -17,6 +18,7 @@ urlpatterns = [
     path('teacher/<int:pk>/update/', views.teacher_update, name='teacher_update'),
     path('teacher/<int:pk>/delete/', views.teacher_delete, name='teacher_delete'),
     path('teacher/import/', views.teacher_import, name='teacher_import'),
+    path('teachers/export/excel/', views.export_teachers_excel, name='export_teachers_excel'),
 
     # Student
     path('students/', views.student_list, name='student_list'),
@@ -26,6 +28,7 @@ urlpatterns = [
     path('student/import/', views.import_students, name='import_students'),
     path('student/<int:pk>/change-password/', views.admin_change_student_password, name='admin_change_student_password'),
     path('teacher/group/<int:group_id>/vedomost/download/', views.download_vedomost, name='download_vedomost'),
+    path('export/students/excel/', exports.export_students_excel, name='export_students_excel'),
 
 
     # Subject
@@ -93,4 +96,7 @@ urlpatterns = [
     path('apply-minimal-swap/<int:group_pk>/', views.apply_minimal_disruption_swap, name='apply_minimal_disruption_swap'),
     path('apply-student-swap/<int:group_pk>/', views.apply_student_swap_suggestion, name='apply_student_swap_suggestion'),
     path('sched-info-modal/<int:sched_pk>/', views.sched_info, name='sched_info'),
+    path('teacher/group/<int:group_id>/journal/download/', views.download_journal_pdf, name='download_journal_pdf'),
+
+
 ]

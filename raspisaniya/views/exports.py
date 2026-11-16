@@ -1,4 +1,16 @@
 from ._shared import *
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+import io
+from django.shortcuts import get_object_or_404
+import openpyxl
+from openpyxl.styles import Font, Alignment
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
+from ..models import Student
 
 class NumberedCanvas(canvas.Canvas):
     """PDF sahifalarining ostiga 'Sahifa X / Y' dinamik raqamini qo'yish uchun"""
@@ -22,13 +34,12 @@ class NumberedCanvas(canvas.Canvas):
     def draw_page_number(self, page_count):
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#555555"))
-        page_text = f"Sahifa {self._pageNumber} / {page_count}"
+        page_text = ""
         self.drawRightString(A4[0] - 30, 20, page_text)
 
 
 @login_required
 def download_vedomost(request, group_id):
-    # SIKLIK IMPORT (Circular Import) xatoligini oldini olish uchun importni funksiya ichida bajaramiz
     from ..models import CourseGroup, Attendance, Grade
     import io
     import datetime
@@ -38,66 +49,54 @@ def download_vedomost(request, group_id):
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
 
-    # Guruh ma'lumotlarini bazadan olish
     group = get_object_or_404(CourseGroup, pk=group_id)
 
-    # 1. AVTOMATIK VEDOMOST RAQAMINI SHAKLLANTIRISH
     start_year = group.course.start_date.year if group.course.start_date else datetime.date.today().year
     end_year = start_year + 1
     oq_yil = f"{start_year}/{end_year}"
 
     qayta_oqish_status = "1"
     vedomost_no = f"{oq_yil}/{qayta_oqish_status}-{group.pk}"
-
-    # Qaydnoma to'ldirilgan sana
     qayd_sana = datetime.date.today().strftime("%d.%m.%Y")
 
-    # PDF sahifasi o'lchamlari (A4)
     buffer = io.BytesIO()
+
+    # 1. TEPADAN VA PASTDAN KATTA BO'SHLIQLAR (MARGIN) QISQARTIRILDI
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=40
+        rightMargin=20,
+        leftMargin=20,
+        topMargin=20,  # 30 dan 20 ga qisqardi
+        bottomMargin=20  # 40 dan 20 ga qisqardi
     )
 
     styles = getSampleStyleSheet()
 
-    # Matn va sarlavhalar stillari
+    # 2. SHRIFTLAR VA QATOR ORALIQLARI (LEADING) BIROZ IXCHAMLASHTIRILDI
     title_style = ParagraphStyle(
-        'VTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=12, leading=16, alignment=1, spaceAfter=4
+        'VTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, spaceAfter=2
     )
     subtitle_style = ParagraphStyle(
-        'VSub', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=14, alignment=0, spaceAfter=4
+        'VSub', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=12, alignment=0, spaceAfter=2
     )
-
-    # Oddiy matnlar stili (F.I.Sh va Haqiqiy guruh uchun - chapga tekislangan)
     table_text_style = ParagraphStyle(
-        'VText', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10
+        'VText', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9
     )
-
-    # Raqamlar va baholar stili (No, JN, ON, YN, Jami, Baho uchun - o'rtaga tekislangan)
     table_center_text = ParagraphStyle(
-        'VCenterText', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=1
+        'VCenterText', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=1
     )
-
-    # Jadval sarlavhasi (Header) stili
     table_header_style = ParagraphStyle(
-        'VHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=1,
+        'VHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=1,
         textColor=colors.whitesmoke
     )
 
     elements = []
 
-    # Sarlavha qismini shakllantirish
     elements.append(Paragraph("TOSHKENT FARMATSEVTIKA INSTITUTI", title_style))
     elements.append(Paragraph(f"BAHOLASH QAYDNOMASI № {vedomost_no}", title_style))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 5))  # Spacer (ochiq joylar) qisqartirildi
 
-
-    # Hujjat haqida avtomatik ma'lumotlar
     teacher_str = (
         f"{group.teacher.last_name} {group.teacher.first_name}".strip()
         if group.teacher else "O'qituvchi biriktirilmagan"
@@ -105,9 +104,8 @@ def download_vedomost(request, group_id):
     elements.append(Paragraph(f"<b>Fan nomi:</b> {group.course.subject.name}", subtitle_style))
     elements.append(Paragraph(f"<b>Fan o'qituvchisi:</b> {teacher_str}", subtitle_style))
     elements.append(Paragraph(f"<b>Qaydnoma to'ldirilgan sana:</b> {qayd_sana}", subtitle_style))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 5))
 
-    # Jadval ustunlari sarlavhasi
     headers = [
         Paragraph("<b>No</b>", table_header_style),
         Paragraph("<b>Talabaning familiyasi, ismi, sharifi</b>", table_header_style),
@@ -122,8 +120,6 @@ def download_vedomost(request, group_id):
 
     table_data = [headers]
 
-    # ✅ OPTIMALLASHTIRILDI: Tsikl ichida har bir talaba uchun alohida SQL yubormasdan,
-    # barcha baholar va qoldirilgan darslar sonini oldindan 2 ta so'rovda olamiz:
     students = list(group.students.select_related('group').order_by('last_name', 'first_name'))
     total_lessons = group.schedule.count()
 
@@ -138,7 +134,6 @@ def download_vedomost(request, group_id):
         .annotate(cnt=_Count('id'))
     )
 
-    # Talabalarni aylantirib jadval qatorlarini to'ldirish
     for idx, student in enumerate(students, 1):
         full_name = f"{student.last_name} {student.first_name}"
         haqiqiy_guruh = student.group.name if student.group else "Mavjud emas"
@@ -148,10 +143,10 @@ def download_vedomost(request, group_id):
         missed_percent = (missed_count / total_lessons * 100) if total_lessons > 0 else 0
 
         if missed_percent > 25:
-            jn = "0"
-            on = "0"
-            yn = "0"
-            umumiy = "0"
+            jn = "0";
+            on = "0";
+            yn = "0";
+            umumiy = "0";
             baho = "-"
         else:
             jn_val = grade_obj.current if (grade_obj and grade_obj.current is not None) else 0
@@ -159,10 +154,9 @@ def download_vedomost(request, group_id):
             yn_val = grade_obj.final if (grade_obj and grade_obj.final is not None) else 0
 
             total_val = jn_val + on_val + yn_val
-
-            jn = str(jn_val)
-            on = str(on_val)
-            yn = str(yn_val)
+            jn = str(jn_val);
+            on = str(on_val);
+            yn = str(yn_val);
             umumiy = str(total_val)
 
             if total_val >= 86:
@@ -185,57 +179,49 @@ def download_vedomost(request, group_id):
             Paragraph(baho, table_center_text),
             Paragraph("", table_text_style),
         ])
-    # Ustunlar kengligi
+
+    # Kengliklar ASL HOLIDA (siz xohlagan holatda) qoldirildi
     col_widths = [28, 155, 72, 35, 35, 35, 50, 60, 65]
 
     vedomost_table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    # Jadvalning vizual stillari
+    # 3. ENG MUHIMI: JADVAL QATORLARINING BALANDLIGI QISQARTIRILDI (7 dan 3 ga tushdi)
     vedomost_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1a237e")),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
 
-        ('TOPPADDING', (0, 0), (-1, -1), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),  # <--- Shu qisqardi
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),  # <--- Shu qisqardi
 
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
     ]))
 
     elements.append(vedomost_table)
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 8))
 
-    # Jami talabalar soni qismi
     elements.append(Paragraph(f"<b>Jami talabalar soni:</b> {len(students)} ta", subtitle_style))
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 10))
 
-    # Imzolar qismi
     signature_data = [
         [Paragraph("<b>Fakultet dekani:</b> ___________________________", subtitle_style),
          Paragraph("<b>Kafedra mudiri:</b> ___________________________", subtitle_style)],
-        [Spacer(1, 15), Spacer(1, 15)],
     ]
     signature_table = Table(signature_data, colWidths=[265, 265])
     elements.append(signature_table)
 
-    # PDF faylni qurish — NumberedCanvas shu faylning o'zida (yuqorida)
-    # aniqlangan, shuning uchun uni alohida import qilish shart emas.
-    # ESKI: `from .utils import NumberedCanvas` — mavjud bo'lmagan modulga
-    # ishora qilar edi, shu sababli try/except doim "except" tomonga
-    # tushib, sahifa raqamlash hech qachon ishlamas edi.
     try:
         doc.build(elements, canvasmaker=NumberedCanvas)
     except Exception:
-        doc.build(elements)  # Agar muammo bo'lsa oddiy build qiladi
+        doc.build(elements)
 
     buffer.seek(0)
-
-    # Brauzerga yuklash uchun javob yuborish
+    group_num = getattr(group, 'group_number', group.pk)
     response = HttpResponse(buffer, content_type='application/pdf')
     response[
-        'Content-Disposition'] = f'attachment; filename="Qaydnoma_{group.course.subject.name}_{group.group_number}-guruh.pdf"'
+        'Content-Disposition'] = f'attachment; filename="Qaydnoma_{group.course.subject.name}_{group_num}-guruh.pdf"'
     return response
 
 
@@ -415,4 +401,321 @@ def export_grades_only_excel(request, group_pk):
     )
     response['Content-Disposition'] = f'attachment; filename=baholar_{group.group_number}.xlsx'
     wb.save(response)
+    return response
+
+
+@login_required
+def export_teachers_excel(request):
+    """Barcha o'qituvchilar ro'yxati, login va parollarini Excelga yuklash"""
+    from ..models import Teacher
+
+    teachers = Teacher.objects.prefetch_related('subjects').all().order_by('first_name')
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "O'qituvchilar loginlari"
+
+    headers = ["#", "F.I.Sh.", "Login (ID)", "Parol", "Fanlari"]
+    ws.append(headers)
+
+    for idx, teacher in enumerate(teachers, 1):
+        full_name = f"{teacher.last_name} {teacher.first_name}".strip()
+        login = teacher.teacher_id or "—"
+        # Agar admin ataylab o'zgartirmagan bo'lsa, parol login bilan bir xil bo'ladi
+        password = teacher.teacher_id or "—"
+        subjects = ", ".join([s.name for s in teacher.subjects.all()])
+
+        ws.append([idx, full_name, login, password, subjects])
+
+    # exports.py dagi format_excel_sheet yordamchi funksiyasidan foydalanamiz
+    format_excel_sheet(ws)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="oqituvchilar_login_parollari.xlsx"'
+    wb.save(response)
+    return response
+
+
+@login_required
+def export_students_excel(request):
+    """Barcha talabalar, ularning fanlari va login/parollarini Excelda yuklab olish"""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Talabalar"
+
+    # 1. Sarlavhalarga "Fanlar" qo'shildi
+    headers = ["T/r", "F.I.Sh.", "Guruhi", "O'zlashtirilmagan fanlar", "Login", "Parol"]
+    ws.append(headers)
+
+    for col_num, cell in enumerate(ws[1], 1):
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Ustun kengliklari
+    ws.column_dimensions['A'].width = 8
+    ws.column_dimensions['B'].width = 35
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 35  # Fanlar uchun kattaroq joy ajratildi
+    ws.column_dimensions['E'].width = 20
+    ws.column_dimensions['F'].width = 20
+
+    # 2. Bazadan olish: Fanlarni (debts) ham tezkor yuklash uchun prefetch_related qo'shildi
+    students = Student.objects.select_related('group', 'user').prefetch_related('debts').all().order_by('group__name',
+                                                                                                        'first_name')
+
+    for idx, student in enumerate(students, 1):
+        # F.I.Sh.
+        full_name = getattr(student, 'first_name', '')
+        if hasattr(student, 'last_name') and student.last_name:
+            full_name = f"{student.last_name} {full_name}".strip()
+
+        # Guruh nomi
+        group_name = student.group.name if student.group else "Guruhsiz"
+
+        # 3. Fanlarni yig'ish (HTML kodingizdagi debts asosida)
+        subjects_list = [debt.name for debt in student.debts.all()]
+        subjects_str = ", ".join(subjects_list) if subjects_list else "—"
+
+        # 4. Login va Parolni BIR XIL qilish
+        username = student.user.username if hasattr(student, 'user') and student.user else "Login yo'q"
+        password = username  # <--- Parol aynan Login nima bo'lsa, o'shani oladi
+
+        ws.append([idx, full_name, group_name, subjects_str, username, password])
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename="Talabalar_Royxati.xlsx"'
+    wb.save(response)
+
+    return response
+
+
+class NumberedCanvasLandscape(canvas.Canvas):
+    """PDF sahifalarining ostiga 'Sahifa X / Y' dinamik raqamini (Landscape - albom shaklida) qo'yish uchun"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_number(num_pages)
+            super().showPage()
+        super().save()
+
+    def draw_page_number(self, page_count):
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor("#555555"))
+        page_text = ""
+        self.drawRightString(841.89 - 15, 10, page_text)
+
+
+@login_required
+def download_journal_pdf(request, group_id):
+    """O'qituvchi uchun tayyor kunlik jurnali PDF ko'rinishida yuklab olish"""
+    from ..models import CourseGroup, Attendance, DailyGrade
+
+    group = get_object_or_404(CourseGroup, pk=group_id)
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'VTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, spaceAfter=6
+    )
+    subtitle_style = ParagraphStyle(
+        'VSub', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=0
+    )
+    subtitle_right = ParagraphStyle(
+        'VSubR', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=11, alignment=2
+    )
+    text_style = ParagraphStyle(
+        'VText', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9
+    )
+    center_text = ParagraphStyle(
+        'VCenter', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=9, alignment=1
+    )
+    header_style = ParagraphStyle(
+        'VHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=7.5, leading=9, alignment=1,
+        textColor=colors.whitesmoke
+    )
+
+    # Lavozim va Ism-familiyalar xuddi rasmga mos chapga (alignment=0) tekislangan
+    footer_title_style = ParagraphStyle(
+        'VFooterTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, alignment=0
+    )
+    footer_name_style = ParagraphStyle(
+        'VFooterName', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=10, alignment=0
+    )
+
+    elements = []
+
+    elements.append(Paragraph(
+        "Toshkent farmatsevtika instituti __________________________________________________________________ qayta o'qish uchun professor-o‘qituvchi jurnali",
+        title_style))
+
+    info_table_data = [
+        [
+            Paragraph(f"<b>Guruh raqami:</b> {group.group_number}", subtitle_style),
+            Paragraph(f"<b>Modul nomi:</b> {group.course.subject.name}", subtitle_right)
+        ]
+    ]
+    info_table = Table(info_table_data, colWidths=[405, 405])
+    info_table.setStyle(TableStyle([('BOTTOMPADDING', (0, 0), (-1, -1), 4)]))
+    elements.append(info_table)
+
+    schedules = list(group.schedule.all().order_by('date', 'lesson_number'))
+    students = list(group.students.all().order_by('last_name', 'first_name'))
+
+    attendance_qs = Attendance.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'is_present')
+    att_map = {(a['student_id'], a['schedule_id']): a['is_present'] for a in attendance_qs}
+
+    grade_qs = DailyGrade.objects.filter(schedule__group=group).values('student_id', 'schedule_id', 'score')
+    grade_map = {(g['student_id'], g['schedule_id']): g['score'] for g in grade_qs}
+
+    headers = [Paragraph("<b>T/r</b>", header_style), Paragraph("<b>F.I.Sh.</b>", header_style)]
+    for sched in schedules:
+        headers.append(Paragraph(f"<b>{sched.date.strftime('%d.%m')}</b>", header_style))
+    table_data = [headers]
+
+    for idx, student in enumerate(students, 1):
+        full_name = f"{student.last_name} {student.first_name}".strip()
+        row = [Paragraph(str(idx), center_text), Paragraph(full_name, text_style)]
+        for sched in schedules:
+            is_present = att_map.get((student.id, sched.id))
+            score = grade_map.get((student.id, sched.id))
+
+            cell_val = ""
+            if is_present is False:
+                cell_val = "<b>X</b>"
+            elif score is not None:
+                cell_val = str(int(score)) if float(score).is_integer() else str(score)
+            elif is_present is True:
+                cell_val = "✓"
+
+            row.append(Paragraph(cell_val, center_text))
+        table_data.append(row)
+
+    teacher_name = f"{group.teacher.last_name} {group.teacher.first_name}".strip() if group.teacher else "________________________"
+    footer_row = [
+        Paragraph("", text_style),
+        Paragraph(f"<b>O'qituvchi F.I.Sh:</b> {teacher_name}<br/><b></b> ", text_style)
+    ]
+    for _ in schedules:
+        footer_row.append(Paragraph("<font color='#555555' size='6'><i></i></font>", center_text))
+    table_data.append(footer_row)
+
+    avail_width = 841.89 - 30
+    col1_w = 22
+    col2_w = 160
+    rem_width = avail_width - col1_w - col2_w
+    num_lessons = len(schedules)
+    lesson_w = (rem_width / num_lessons) if num_lessons > 0 else 40
+    col_widths = [col1_w, col2_w] + [lesson_w] * num_lessons
+
+    main_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    main_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#bbbbbb")),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (1, 1), (1, -2), 'LEFT'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1a237e")),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+
+        ('VALIGN', (1, -1), (1, -1), 'MIDDLE'),
+        ('ALIGN', (1, -1), (1, -1), 'LEFT'),
+        ('TOPPADDING', (0, -1), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 4),
+    ]))
+    elements.append(main_table)
+
+    # --- MAS'ULLAR RO'YXATI ---
+    # --- MAS'ULLAR RO'YXATI ---
+    elements.append(Spacer(1, 10))
+
+    # E'tibor bering, har bir qatorda endi 7 ta ustun bor (O'rtadagi "" jadvalni 2 ga bo'lib beradi)
+    officials_data = [
+        [
+            Paragraph("O'quv ishlari bo'yicha prorektor", footer_title_style),
+            "",
+            Paragraph("Z.U.Mamatqulov", footer_name_style),
+            "",  # <--- O'RTADAGI AJRATUVCHI BO'SHLIQ
+            Paragraph("Farmatsiya fakulteti dekani", footer_title_style),
+            "",
+            Paragraph("U.M.Jalilov", footer_name_style)
+        ],
+        [
+            Paragraph("Ta'lim sifatini nazorat qilish bo'limi boshlig'i", footer_title_style),
+            "",
+            Paragraph("D.K.Xudoyqulova", footer_name_style),
+            "",  # <--- O'RTADAGI AJRATUVCHI BO'SHLIQ
+            Paragraph("Sanoat farmatsiyasi fakulteti dekani", footer_title_style),
+            "",
+            Paragraph("E.D.Raxmonov", footer_name_style)
+        ],
+        [
+            Paragraph("O'quv-uslubiy boshqarma boshlig'i", footer_title_style),
+            "",
+            Paragraph("V.R.Xaydarov", footer_name_style),
+            "",  # <--- O'RTADAGI AJRATUVCHI BO'SHLIQ
+            Paragraph("Xalqaro va tibbiyot fakulteti dekani", footer_title_style),
+            "",
+            Paragraph("D.Sh.Sabirov", footer_name_style)
+        ],
+        [
+            Paragraph("Registrator ofis boshlig'i", footer_title_style),
+            "",
+            Paragraph("Sh.B.Murotov", footer_name_style),
+            "",  # <--- O'RTADAGI AJRATUVCHI BO'SHLIQ
+            Paragraph("Kafedra mudiri", footer_title_style),
+            "",
+            Paragraph("_________________", footer_name_style)
+        ]
+    ]
+
+    col_title1 = 200  # Chap lavozim
+    col_sig1 = 15  # Chap imzo uchun ixcham joy (Ism lavozimga yopishadi!)
+    col_name1 = 100  # Chap ism
+
+    col_center = 180  # <--- O'RTADAGI KATTA BO'SHLIQ (Jadvalni 2 ga itarib turadi)
+
+    col_title2 = 200  # O'ng lavozim
+    col_sig2 = 15  # O'ng imzo uchun ixcham joy
+    col_name2 = 100  # O'ng ism
+
+    officials_table = Table(officials_data,
+                            colWidths=[col_title1, col_sig1, col_name1, col_center, col_title2, col_sig2, col_name2],
+                            hAlign='CENTER')
+    officials_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+    ]))
+
+    elements.append(officials_table)
+
+    try:
+        doc.build(elements, canvasmaker=NumberedCanvasLandscape)
+    except Exception:
+        doc.build(elements)
+
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response[
+        'Content-Disposition'] = f'attachment; filename="Jurnal_{group.course.subject.name}_{group.group_number}-guruh.pdf"'
     return response
