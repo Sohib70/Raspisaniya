@@ -73,24 +73,25 @@
                         {% endif %}
 
                         <div class="d-flex gap-1 mt-2 flex-wrap">
-                            <a href="{% url 'teacher_group_detail' grp.pk %}"
-                               class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">
-                               👥 Guruh
+                            <a href="{% url 'teacher_group_detail' grp.pk %}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">
+                                👥 Guruh
                             </a>
-                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=att"
-                               class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">
-                               📅 Davomat
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=att" class="btn btn-sm btn-outline-warning" style="font-size:0.75rem;">
+                                📅 Davomat
                             </a>
-                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=grade"
-                               class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">
-                               ⭐ Kunlik baholar
+                            <a href="{% url 'teacher_attendance_overview' grp.pk %}?tab=grade" class="btn btn-sm btn-outline-success" style="font-size:0.75rem;">
+                                ⭐ Kunlik baholar
                             </a>
-                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-success btn-sm">
+                            <a href="{% url 'teacher_grades' grp.pk %}" class="btn btn-success btn-sm" style="font-size:0.75rem;">
                                 📝 ON
                             </a>
-                            <a href="{% url 'download_vedomost' grp.pk %}"
-                               class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;">
-                               📄 Qaydnoma
+                            <a href="{% url 'download_vedomost' grp.pk %}" class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;">
+                                📄 Qaydnoma
+                            </a>
+
+                            <!-- MANA SHU JURNAL TUGMASI QO'SHILDI -->
+                            <a href="{% url 'download_journal_pdf' grp.pk %}" class="btn btn-sm btn-outline-info" style="font-size:0.75rem;">
+                                📓 Jurnal
                             </a>
                         </div>
                     </div>

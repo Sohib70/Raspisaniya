@@ -900,6 +900,24 @@ def teacher_daily_grade(request, sched_pk):
                 else:
                     DailyGrade.objects.create(student=student, schedule=sched, score=score)
 
+            # --- 🌟 ADMIN PANEL UCHUN JORIY BAHONI AVTOMATIK HISOBLASH VA SAQLASH ---
+            total_lessons = group.schedule.count() or 1
+            for student in students:
+                daily_sum = DailyGrade.objects.filter(
+                    student=student,
+                    schedule__group=group
+                ).aggregate(total=Sum('score'))['total'] or 0.0
+
+                average_100 = float(daily_sum) / total_lessons
+                current_30_scale = average_100 * 0.3
+                current_grade = round(min(current_30_scale, 30.0), 2)
+
+                Grade.objects.update_or_create(
+                    student=student, course_group=group,
+                    defaults={'current': current_grade}
+                )
+            # -------------------------------------------------------------------------
+
         messages.success(request, f"{sched.date} kunlik baholar saqlandi ✅")
         return redirect('teacher_attendance_overview', group_pk=group.pk)
 
